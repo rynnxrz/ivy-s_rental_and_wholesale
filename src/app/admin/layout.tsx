@@ -12,6 +12,7 @@ export default async function AdminLayout({
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
+        console.log('[AdminLayout] No user found, redirecting to login')
         redirect('/login')
     }
 
@@ -23,6 +24,7 @@ export default async function AdminLayout({
         .single()
 
     if (profile?.role !== 'admin') {
+        console.log('[AdminLayout] User is not admin, redirecting')
         redirect('/')
     }
 

@@ -25,6 +25,8 @@ export default function LoginPage() {
         setLoading(true)
         setError(null)
 
+        console.log('[Login] Attempting login with:', email, 'Supabase URL set:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -36,8 +38,8 @@ export default function LoginPage() {
             return
         }
 
-        router.push('/admin')
         router.refresh()
+        router.push('/admin')
     }
 
     return (

@@ -100,7 +100,7 @@ export async function uploadItemImage(formData: FormData) {
     const filePath = `items/${fileName}`
 
     const { error } = await supabase.storage
-        .from('item-images')
+        .from('rental_items')
         .upload(filePath, file)
 
     if (error) {
@@ -108,7 +108,7 @@ export async function uploadItemImage(formData: FormData) {
     }
 
     const { data: { publicUrl } } = supabase.storage
-        .from('item-images')
+        .from('rental_items')
         .getPublicUrl(filePath)
 
     return { success: true, error: null, url: publicUrl }

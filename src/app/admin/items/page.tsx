@@ -37,6 +37,18 @@ const statusVariant = (status: Item['status']) => {
 
 export default async function ItemsPage() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // Check if user is admin
+    let isAdmin = false
+    if (user) {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        isAdmin = profile?.role === 'admin'
+    }
 
     const { data: items, error } = await supabase
         .from('items')
@@ -55,12 +67,14 @@ export default async function ItemsPage() {
                     <h1 className="text-3xl font-bold text-slate-900">Items</h1>
                     <p className="text-slate-600">Manage your rental inventory</p>
                 </div>
-                <Button asChild>
-                    <Link href="/admin/items/new">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Item
-                    </Link>
-                </Button>
+                {isAdmin && (
+                    <Button asChild>
+                        <Link href="/admin/items/new">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Item
+                        </Link>
+                    </Button>
+                )}
             </div>
 
             {/* Items Table */}
@@ -82,7 +96,7 @@ export default async function ItemsPage() {
                                     <TableHead>Category</TableHead>
                                     <TableHead className="text-right">Rental Price</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    {isAdmin && <TableHead className="text-right">Actions</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -114,16 +128,18 @@ export default async function ItemsPage() {
                                                 {item.status}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="sm" asChild>
-                                                    <Link href={`/admin/items/${item.id}/edit`}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Link>
-                                                </Button>
-                                                <DeleteItemButton itemId={item.id} itemName={item.name} />
-                                            </div>
-                                        </TableCell>
+                                        {isAdmin && (
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="sm" asChild>
+                                                        <Link href={`/admin/items/${item.id}/edit`}>
+                                                            <Edit className="h-4 w-4" />
+                                                        </Link>
+                                                    </Button>
+                                                    <DeleteItemButton itemId={item.id} itemName={item.name} />
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -135,12 +151,14 @@ export default async function ItemsPage() {
                             <p className="mt-1 text-sm text-slate-600">
                                 Get started by adding your first item to the catalog.
                             </p>
-                            <Button asChild className="mt-4">
-                                <Link href="/admin/items/new">
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Item
-                                </Link>
-                            </Button>
+                            {isAdmin && (
+                                <Button asChild className="mt-4">
+                                    <Link href="/admin/items/new">
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Item
+                                    </Link>
+                                </Button>
+                            )}
                         </div>
                     )}
                 </CardContent>
