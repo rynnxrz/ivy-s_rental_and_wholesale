@@ -49,12 +49,9 @@ export function BookingForm({ item }: BookingFormProps) {
                 buffer = settings.turnaround_buffer
             }
 
-            // 2. Fetch Reservations
+            // 2. Fetch Unavailable Date Ranges via RPC (bypasses RLS)
             const { data, error } = await supabase
-                .from('reservations')
-                .select('start_date, end_date')
-                .eq('item_id', item.id)
-                .in('status', ['confirmed', 'active'])
+                .rpc('get_unavailable_date_ranges', { p_item_id: item.id })
 
             if (error) {
                 console.error('Error fetching availability:', error)
