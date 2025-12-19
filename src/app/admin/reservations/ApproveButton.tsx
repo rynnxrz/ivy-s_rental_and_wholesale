@@ -49,15 +49,14 @@ export function ApproveButton({ reservationId }: { reservationId: string }) {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Confirm Approval</DialogTitle>
-                    <DialogDescription>
-                        Are you sure you want to approve this request?
-                        <br /><br />
-                        This will:
-                        <ul className="list-disc list-inside mt-2">
+                    <div className="text-muted-foreground text-sm">
+                        <p>Are you sure you want to approve this request?</p>
+                        <p className="mt-2">This will:</p>
+                        <ul className="list-disc list-inside mt-1">
                             <li>Mark the reservation as confirmed (To Ship).</li>
                             <li>Send an official invoice email to the customer.</li>
                         </ul>
-                    </DialogDescription>
+                    </div>
                 </DialogHeader>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>

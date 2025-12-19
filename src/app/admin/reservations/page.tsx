@@ -4,6 +4,8 @@ import { format } from 'date-fns'
 import Link from 'next/link'
 import { ApproveButton } from './ApproveButton'
 import { DispatchButton } from './DispatchButton'
+import { ArchiveButton } from './ArchiveButton'
+import { RestoreButton } from './RestoreButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +42,8 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
 
     if (filter === 'action_required') {
         query = query.in('status', ['pending', 'confirmed', 'active'])
+    } else if (filter === 'archived') {
+        query = query.eq('status', 'archived')
     }
 
     const { data: reservations, error } = await query
@@ -70,6 +74,11 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
                         label="All Orders"
                         active={filter === 'all'}
                         href="/admin/reservations?filter=all"
+                    />
+                    <FilterTab
+                        label="Archived"
+                        active={filter === 'archived'}
+                        href="/admin/reservations?filter=archived"
                     />
                 </div>
             </div>
@@ -180,13 +189,25 @@ function ReservationsTable({ reservations }: { reservations: any[] }) {
                             <td className="px-6 py-4 align-top text-right">
                                 <div className="flex flex-col gap-2 items-end opacity-80 group-hover:opacity-100 transition-opacity">
                                     {status === 'pending' && (
-                                        <ApproveButton reservationId={r.id} />
+                                        <>
+                                            <ApproveButton reservationId={r.id} />
+                                            <ArchiveButton reservationId={r.id} />
+                                        </>
                                     )}
                                     {status === 'confirmed' && (
-                                        <DispatchButton reservationId={r.id} />
+                                        <>
+                                            <DispatchButton reservationId={r.id} />
+                                            <ArchiveButton reservationId={r.id} />
+                                        </>
                                     )}
                                     {status === 'active' && (
-                                        <span className="text-xs text-gray-400 italic">No actions</span>
+                                        <ArchiveButton reservationId={r.id} />
+                                    )}
+                                    {status === 'returned' && (
+                                        <ArchiveButton reservationId={r.id} />
+                                    )}
+                                    {status === 'archived' && (
+                                        <RestoreButton reservationId={r.id} />
                                     )}
                                 </div>
                             </td>
@@ -205,6 +226,7 @@ function StatusBadge({ status }: { status: string }) {
         active: 'bg-green-100 text-green-800 border-green-200', // On Rent
         returned: 'bg-gray-100 text-gray-800 border-gray-200',
         cancelled: 'bg-red-50 text-red-800 border-red-100',
+        archived: 'bg-purple-50 text-purple-700 border-purple-100',
     }
 
     const labels: Record<string, string> = {
@@ -213,6 +235,7 @@ function StatusBadge({ status }: { status: string }) {
         active: 'On Rent',
         returned: 'Returned',
         cancelled: 'Cancelled',
+        archived: 'Archived',
     }
 
     const style = styles[status] || 'bg-gray-100 text-gray-800 border-gray-200'

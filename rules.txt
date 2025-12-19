@@ -28,10 +28,12 @@ The goal is a "Single-man MVP": prioritize simplicity, stability, and maintainab
   - For performance, prefer `(select auth.uid())` or wrapper functions (e.g., `is_admin()`) in RLS policies to reduce overhead.
 
 ## 3. Database & Data Model
-- **Dates:** All timestamps must be `timestamptz` (UTC).
-- **Intervals:** Rental periods are **Half-open intervals `[start, end)`** (start is inclusive, end is exclusive).
-- **Consistency:** Use Postgres **Exclusion Constraints (`gist`)** to prevent overlapping reservations at the DB level.
-- **Type Safety:** Always generate and use `database.types.ts`.
+- **Enums Over Constraints:** We use custom Postgres ENUM types for status fields (e.g., `reservation_status`), NOT `TEXT` with `CHECK` constraints. 
+- **Migration Policy:** When adding a new status:
+  1. Use `ALTER TYPE type_name ADD VALUE IF NOT EXISTS 'new_value';`
+  2. Note: `ALTER TYPE ... ADD VALUE` cannot be executed inside a transaction block in some Postgres versions.
+- **Critical Types:**
+  - `reservations.status`: is a custom ENUM `reservation_status`.
 
 ## 4. UI/UX
 - **Responsive:** The UI must be responsive (functional on mobile), but optimized for Desktop usage.
@@ -42,3 +44,9 @@ The goal is a "Single-man MVP": prioritize simplicity, stability, and maintainab
 - **No Over-engineering:** Do not suggest Microservices, complex state management (Redux), or Stripe integration.
 - **Bank Transfer Only:** The flow is Invoice -> Bank Transfer -> Manual "Mark as Paid".
 - **Focus:** If the code involves "Availability", triple-check the logic.
+
+# Schema & Migration Conventions (CRITICAL)
+- **Single Source of Truth:** All schema changes MUST go through `supabase/migrations/`. Never use `setup.sql` directly.
+- **Type Safety:** Always regenerate `database.types.ts` after any schema change: `npx supabase gen types typescript --project-id <id> > src/lib/database.types.ts`
+- **Availability Queries:** All reservation date queries from PUBLIC/ANON users MUST use `get_unavailable_date_ranges()` RPC (SECURITY DEFINER). Never query `reservations` table directly - RLS will block it.
+- **Date Columns:** `start_date`/`end_date` are `timestamptz`. Cast to `::DATE` for UI display.
