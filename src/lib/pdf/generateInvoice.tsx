@@ -14,9 +14,13 @@ interface GenerateInvoiceParams {
     days: number;
     startDate: string;
     endDate: string;
+    companyName?: string;
+    companyEmail?: string;
+    bankInfo?: string;
+    footerText?: string;
 }
 
 export async function generateInvoicePdf(params: GenerateInvoiceParams): Promise<Buffer> {
     // @ts-ignore: react-pdf types vs react 19 might be tricky, but buffer generation usually works
-    return await renderToBuffer(<InvoicePdf { ...params } />);
+    return await renderToBuffer(<InvoicePdf {...params} />);
 }

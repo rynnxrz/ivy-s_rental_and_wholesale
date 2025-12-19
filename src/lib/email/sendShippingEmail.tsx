@@ -1,57 +1,45 @@
 import { Resend } from 'resend';
-import { EmailTemplate } from './EmailTemplate';
+import { ShippingEmailTemplate } from './ShippingEmailTemplate';
 
-// Initiate Resend client
-// Note: In a real app, ensure process.env.RESEND_API_KEY is set.
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-interface SendApprovalEmailParams {
+interface SendShippingEmailParams {
     toIndices: string[];
     customerName: string;
     itemName: string;
     startDate: string;
     endDate: string;
-    totalDays: number;
-    totalPrice: number;
     reservationId: string;
-    invoicePdfBuffer: Buffer;
-    invoiceId: string; // Used for filename
+    evidenceLinks: string[];
     companyName?: string;
 }
 
-export async function sendApprovalEmail({
+export async function sendShippingEmail({
     toIndices,
     customerName,
     itemName,
     startDate,
     endDate,
-    totalDays,
-    totalPrice,
     reservationId,
-    invoicePdfBuffer,
-    invoiceId,
+    evidenceLinks,
     companyName,
-}: SendApprovalEmailParams) {
+}: SendShippingEmailParams) {
     try {
+        const fromName = companyName ? `${companyName}` : 'Ivy Rental';
+
         const { data, error } = await resend.emails.send({
-            from: companyName ? `${companyName} <invoice@shipbyx.com>` : 'Ivy Rental <invoice@shipbyx.com>',
+            from: `${fromName} <invoice@shipbyx.com>`,
             to: toIndices,
-            subject: `Reservation Approved: ${itemName}`,
-            react: <EmailTemplate
+            subject: `Order Dispatched: ${itemName}`,
+            react: <ShippingEmailTemplate
                 customerName={customerName}
                 itemName={itemName}
                 startDate={startDate}
                 endDate={endDate}
-                totalDays={totalDays}
-                totalPrice={totalPrice}
                 reservationId={reservationId}
+                evidenceLinks={evidenceLinks}
+                companyName={companyName}
             />,
-            attachments: [
-                {
-                    filename: `Invoice-${invoiceId}.pdf`,
-                    content: invoicePdfBuffer,
-                },
-            ],
         });
 
         if (error) {

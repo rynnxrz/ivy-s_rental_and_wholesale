@@ -64,6 +64,7 @@ const styles = StyleSheet.create({
     },
 });
 
+
 interface InvoiceProps {
     invoiceId: string;
     date: string;
@@ -76,6 +77,13 @@ interface InvoiceProps {
     days: number;
     startDate: string;
     endDate: string;
+
+    // Dynamic Settings
+    companyName?: string;
+    companyAddress?: string; // Not in DB yet, but maybe hardcoded or future
+    companyEmail?: string;
+    bankInfo?: string; // New
+    footerText?: string; // New
 }
 
 export const InvoicePdf = ({
@@ -90,6 +98,10 @@ export const InvoicePdf = ({
     days,
     startDate,
     endDate,
+    companyName = "Ivy's Rental & Wholesale", // Fallback
+    companyEmail = "contact@ivysrental.com",
+    bankInfo,
+    footerText = "Thank you for your business!",
 }: InvoiceProps) => {
     const total = rentalPrice * days;
 
@@ -100,9 +112,9 @@ export const InvoicePdf = ({
                 <View style={styles.header}>
                     <View>
                         <Text style={styles.title}>INVOICE</Text>
-                        <Text style={styles.companyInfo}>Ivy's Rental & Wholesale</Text>
+                        <Text style={styles.companyInfo}>{companyName}</Text>
                         <Text style={styles.companyInfo}>123 Fashion Ave, New York, NY</Text>
-                        <Text style={styles.companyInfo}>contact@ivysrental.com</Text>
+                        <Text style={styles.companyInfo}>{companyEmail}</Text>
                     </View>
                     <View style={styles.invoiceInfo}>
                         <Text>Invoice #: {invoiceId}</Text>
@@ -150,18 +162,23 @@ export const InvoicePdf = ({
                     <Text style={styles.sectionTitle}>Payment Instructions</Text>
                     <Text style={{ fontSize: 10, lineHeight: 1.5 }}>
                         Please make payment via bank transfer to:{'\n'}
-                        Bank: Chase Bank{'\n'}
-                        Account Name: Ivy's Rental{'\n'}
-                        Account Number: 1234567890{'\n'}
-                        Routing Number: 098765432{'\n'}
-                        Please include Invoice #{invoiceId} in the memo.
+                        {bankInfo ? bankInfo : (
+                            <>
+                                Bank: Chase Bank{'\n'}
+                                Account Name: Ivy's Rental{'\n'}
+                                Account Number: 1234567890{'\n'}
+                                Routing Number: 098765432
+                            </>
+                        )}
+                        {'\n'}Please include Invoice #{invoiceId} in the memo.
                     </Text>
                 </View>
 
                 <View style={styles.footer}>
-                    <Text>Thank you for your business!</Text>
+                    <Text>{footerText}</Text>
                 </View>
             </Page>
         </Document>
     );
 };
+

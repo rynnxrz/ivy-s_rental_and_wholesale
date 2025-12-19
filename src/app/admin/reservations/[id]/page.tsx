@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import EvidenceUploader from './EvidenceUploader'
 import { finalizeReturn } from '../../actions'
 import { ApproveButton } from '../ApproveButton'
-import { MarkAsPaidButton } from '../MarkAsPaidButton'
+import { DispatchButton } from '../DispatchButton'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -56,7 +56,7 @@ export default async function RequestDetailPage(props: Props) {
         <div className="max-w-5xl mx-auto py-10 px-4">
             <div className="mb-6 flex items-center justify-between">
                 <div>
-                    <Link href="/admin/requests" className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1 mb-2">
+                    <Link href="/admin/reservations" className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1 mb-2">
                         ← Back to Requests
                     </Link>
                     <h1 className="text-2xl font-bold text-gray-900">Request #{reservation.id.slice(0, 8).toUpperCase()}</h1>
@@ -71,7 +71,7 @@ export default async function RequestDetailPage(props: Props) {
                         </span>
 
                         {status === 'pending' && <ApproveButton reservationId={reservation.id} />}
-                        {status === 'confirmed' && <MarkAsPaidButton reservationId={reservation.id} />}
+                        {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}
 
                         <span className="text-gray-400 text-sm">Created {format(new Date(reservation.created_at), 'PPP')}</span>
                     </div>
