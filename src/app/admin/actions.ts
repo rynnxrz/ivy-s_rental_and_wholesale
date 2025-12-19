@@ -38,8 +38,9 @@ export async function updateSettings(formData: FormData) {
     const contact_email = formData.get('contact_email') as string
     const bank_account_info = formData.get('bank_account_info') as string
     const invoice_footer_text = formData.get('invoice_footer_text') as string
+    const turnaround_buffer = parseInt(formData.get('turnaround_buffer') as string)
 
-    if (!company_name || !contact_email || !bank_account_info) {
+    if (!company_name || !contact_email || !bank_account_info || isNaN(turnaround_buffer)) {
         return { error: 'Please fill in all required fields' }
     }
 
@@ -51,7 +52,8 @@ export async function updateSettings(formData: FormData) {
             company_name,
             contact_email,
             bank_account_info,
-            invoice_footer_text
+            invoice_footer_text,
+            turnaround_buffer
         })
 
     if (error) {

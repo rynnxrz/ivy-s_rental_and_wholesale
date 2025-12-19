@@ -20,6 +20,7 @@ interface SettingsFormProps {
         bank_account_info: string
         invoice_footer_text: string
         contact_email: string
+        turnaround_buffer: number
     }
 }
 
@@ -67,6 +68,22 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
                             placeholder="Ivy's Rental"
                             required
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="turnaround_buffer">Turnaround Buffer (Days)</Label>
+                        <Input
+                            id="turnaround_buffer"
+                            name="turnaround_buffer"
+                            type="number"
+                            min="0"
+                            defaultValue={initialSettings.turnaround_buffer}
+                            placeholder="1"
+                            required
+                        />
+                        <p className="text-xs text-gray-500">
+                            Days to block after a reservation for cleaning/restocking.
+                        </p>
                     </div>
 
                     <div className="space-y-2">

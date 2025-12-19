@@ -4,10 +4,11 @@ The goal is a "Single-man MVP": prioritize simplicity, stability, and maintainab
 **Critical Constraint:** Inventory availability must be strictly accurate. We use Postgres Exclusion Constraints, not just application logic.
 
 # Tech Stack
-- **Framework:** Next.js 14+ (App Router).
+- **Framework:** Next.js 16 (App Router).
 - **Language:** TypeScript (Strict).
+- **Core:** React 19.
 - **Database & Auth:** Supabase (Postgres).
-- **Styling:** Tailwind CSS + Shadcn UI.
+- **Styling:** Tailwind CSS v4 + Shadcn UI.
 - **State/Forms:** React Hook Form + Zod.
 
 # Coding Guidelines
