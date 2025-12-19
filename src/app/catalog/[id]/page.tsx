@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { BookingForm } from './BookingForm'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -97,15 +98,9 @@ export default async function ItemDetailPage({ params }: Props) {
                             </dl>
                         </div>
 
-                        {/* Action Area (Future) */}
-                        <div className="mt-12 p-6 border border-gray-200 rounded-sm text-center">
-                            <p className="text-gray-500 mb-4">Interested in renting this piece?</p>
-                            <button
-                                className="w-full bg-black text-white py-4 px-8 uppercase tracking-widest hover:bg-gray-800 transition-colors"
-                                disabled
-                            >
-                                Check Availability (In Milestone 2)
-                            </button>
+                        {/* Action Area */}
+                        <div className="mt-12 bg-white rounded-sm">
+                            <BookingForm item={item} />
                         </div>
 
                     </div>
