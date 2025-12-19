@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { format } from 'date-fns'
+import Link from 'next/link'
 import { ApproveButton } from './ApproveButton'
 import { MarkAsPaidButton } from './MarkAsPaidButton'
 
@@ -125,7 +126,9 @@ function RequestsTable({ requests, type }: { requests: any[], type: 'pending' | 
                             </td>
                             <td className="px-6 py-4">
                                 <div className="font-medium text-gray-900 line-clamp-1 w-48" title={req.items?.name}>
-                                    {req.items?.name || 'Unknown Item'}
+                                    <Link href={`/admin/requests/${req.id}`} className="hover:text-blue-600 hover:underline">
+                                        {req.items?.name || 'Unknown Item'}
+                                    </Link>
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1">
                                     SKU: {req.items?.sku}

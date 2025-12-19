@@ -93,6 +93,10 @@ export interface Database {
           notes: string | null
           created_at: string
           updated_at: string
+          dispatch_image_paths: string[] | null
+          dispatch_notes: string | null
+          return_image_paths: string[] | null
+          return_notes: string | null
         }
         Insert: {
           id?: string
@@ -105,6 +109,10 @@ export interface Database {
           notes?: string | null
           created_at?: string
           updated_at?: string
+          dispatch_image_paths?: string[] | null
+          dispatch_notes?: string | null
+          return_image_paths?: string[] | null
+          return_notes?: string | null
         }
         Update: {
           id?: string
@@ -117,6 +125,10 @@ export interface Database {
           notes?: string | null
           created_at?: string
           updated_at?: string
+          dispatch_image_paths?: string[] | null
+          dispatch_notes?: string | null
+          return_image_paths?: string[] | null
+          return_notes?: string | null
         }
         Relationships: []
       }

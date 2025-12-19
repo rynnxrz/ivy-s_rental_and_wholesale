@@ -166,3 +166,80 @@ export async function markAsPaid(reservationId: string) {
     revalidatePath('/admin/requests')
     return { success: true }
 }
+
+export async function saveEvidence(
+    reservationId: string,
+    type: 'dispatch' | 'return',
+    imagePaths: string[],
+    notes?: string
+) {
+    const supabase = await createClient()
+
+    // 1. Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // 2. Prepare Update Data
+    const updateData: any = {}
+    if (type === 'dispatch') {
+        if (imagePaths.length > 0) updateData.dispatch_image_paths = imagePaths
+        if (notes !== undefined) updateData.dispatch_notes = notes
+    } else {
+        if (imagePaths.length > 0) updateData.return_image_paths = imagePaths
+        if (notes !== undefined) updateData.return_notes = notes
+    }
+
+    // 3. Update DB
+    const { error } = await supabase
+        .from('reservations')
+        .update(updateData)
+        .eq('id', reservationId)
+
+    if (error) {
+        console.error('Failed to save evidence:', error)
+        return { error: 'Failed to update reservation evidence' }
+    }
+
+    revalidatePath('/admin/requests')
+    revalidatePath(`/admin/requests/${reservationId}`) // For details page
+    return { success: true }
+}
+
+export async function finalizeReturn(reservationId: string) {
+    const supabase = await createClient()
+
+    // 1. Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // 2. Update Status
+    const { error } = await supabase
+        .from('reservations')
+        .update({ status: 'returned' })
+        .eq('id', reservationId)
+
+    if (error) {
+        console.error('Failed to mark as returned:', JSON.stringify(error, null, 2))
+        return { error: error.message || 'Failed to update status to returned' }
+    }
+
+    revalidatePath('/admin/requests')
+    revalidatePath(`/admin/requests/${reservationId}`)
+    return { success: true }
+}

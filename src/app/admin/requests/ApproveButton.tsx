@@ -14,7 +14,11 @@ export function ApproveButton({ reservationId }: { reservationId: string }) {
         setLoading(false)
 
         if (result.error) {
-            alert(`Error: ${result.error}`)
+            if (result.error.includes('23P01') || result.error.includes('conflicting key')) {
+                alert('Date Conflict: This item is already booked (Confirmed/Active) for the selected dates. You cannot approve an overlapping reservation.')
+            } else {
+                alert(`Error: ${result.error}`)
+            }
         } else if (result.warning) {
             alert(`Success with warning: ${result.warning}`)
         }
