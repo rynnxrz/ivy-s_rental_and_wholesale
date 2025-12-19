@@ -32,7 +32,8 @@ export function BookingForm({ item }: BookingFormProps) {
 
     const supabase = createClient()
 
-    const [disabledDates, setDisabledDates] = React.useState<{ from: Date; to: Date }[]>([])
+    const [reservedDates, setReservedDates] = React.useState<{ from: Date; to: Date }[]>([])
+    const [bufferDates, setBufferDates] = React.useState<{ from: Date; to: Date }[]>([])
 
     // Fetch unavailable dates and buffer on mount or when item changes
     React.useEffect(() => {
@@ -61,11 +62,21 @@ export function BookingForm({ item }: BookingFormProps) {
             }
 
             if (data) {
-                const ranges = data.map((r: any) => ({
+                const booked = data.map((r: any) => ({
                     from: new Date(r.start_date),
-                    to: addDays(new Date(r.end_date), buffer) // Extend by buffer
+                    to: new Date(r.end_date)
                 }))
-                setDisabledDates(ranges)
+
+                const buffers = data.map((r: any) => {
+                    const endDate = new Date(r.end_date)
+                    return {
+                        from: addDays(endDate, 1),
+                        to: addDays(endDate, buffer)
+                    }
+                })
+
+                setReservedDates(booked)
+                setBufferDates(buffers)
             }
         }
         fetchData()
@@ -82,8 +93,9 @@ export function BookingForm({ item }: BookingFormProps) {
             }
 
             // Client-side quick check against fetched disabled dates
-            // If the selected range intersects any disabled range, bail early
-            const isBlockedData = disabledDates.some(disabled => {
+            // If the selected range intersects any reserved OR buffer range, bail early
+            const allDisabled = [...reservedDates, ...bufferDates]
+            const isBlockedData = allDisabled.some(disabled => {
                 if (!date.from || !date.to) return false
                 // Check intersection: (StartA <= EndB) and (EndA >= StartB)
                 return (date.from <= disabled.to) && (date.to >= disabled.from)
@@ -125,7 +137,7 @@ export function BookingForm({ item }: BookingFormProps) {
         }, 500) // Debounce
 
         return () => clearTimeout(timeoutId)
-    }, [date, item.id, supabase, disabledDates])
+    }, [date, item.id, supabase, reservedDates, bufferDates])
 
     const handleRequestBooking = async () => {
         if (!date?.from || !date?.to || !isAvailable) return
@@ -211,15 +223,27 @@ export function BookingForm({ item }: BookingFormProps) {
                                 onSelect={setDate}
                                 numberOfMonths={2}
                                 disabled={[
-                                    ...disabledDates,
+                                    ...reservedDates,
+                                    ...bufferDates,
                                     { before: new Date(new Date().setHours(0, 0, 0, 0)) }
                                 ]}
                                 modifiers={{
-                                    booked: disabledDates
+                                    booked: reservedDates,
+                                    buffer: bufferDates
                                 }}
                                 modifiersStyles={{
-                                    booked: { textDecoration: 'line-through', color: '#ccc' }
+                                    booked: { textDecoration: 'line-through', color: '#888', opacity: 0.8 },
+                                    buffer: { backgroundColor: '#f3f4f6', color: '#9ca3af', textDecoration: 'none', cursor: 'not-allowed' }
                                 }}
+                                modifiersClassNames={{
+                                    buffer: 'cursor-not-allowed group relative' // We might try CSS tooltips if we can inject global styles, but simple style is safer
+                                }}
+                                footer={
+                                    <div className="flex gap-4 mt-2 text-xs text-gray-500 justify-center">
+                                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-200 line-through text-gray-400 text-[10px] flex items-center justify-center">12</div> Booked</div>
+                                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-100 text-gray-400 text-[10px] flex items-center justify-center">13</div> Buffer</div>
+                                    </div>
+                                }
                             />
                         </PopoverContent>
                     </Popover>
