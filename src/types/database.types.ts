@@ -85,9 +85,10 @@ export interface Database {
         Row: {
           id: string
           item_id: string
-          customer_id: string
-          start_at: string
-          end_at: string
+          customer_id: string | null
+          renter_id: string | null
+          start_date: string
+          end_date: string
           status: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
           notes: string | null
           created_at: string
@@ -96,9 +97,10 @@ export interface Database {
         Insert: {
           id?: string
           item_id: string
-          customer_id: string
-          start_at: string
-          end_at: string
+          customer_id?: string | null
+          renter_id?: string | null
+          start_date: string
+          end_date: string
           status?: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
           notes?: string | null
           created_at?: string
@@ -107,9 +109,10 @@ export interface Database {
         Update: {
           id?: string
           item_id?: string
-          customer_id?: string
-          start_at?: string
-          end_at?: string
+          customer_id?: string | null
+          renter_id?: string | null
+          start_date?: string
+          end_date?: string
           status?: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
           notes?: string | null
           created_at?: string
