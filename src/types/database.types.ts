@@ -86,13 +86,58 @@ export type Database = {
         }
         Relationships: []
       }
+      categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
+      collections: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       items: {
         Row: {
           category: string | null
+          category_id: string | null
+          collection_id: string | null
           created_at: string | null
           description: string | null
           id: string
           image_paths: string[] | null
+          material: string | null
           name: string
           owner_id: string | null
           rental_price: number
@@ -100,13 +145,17 @@ export type Database = {
           sku: string | null
           specs: Json | null
           status: string | null
+          weight: string | null
         }
         Insert: {
           category?: string | null
+          category_id?: string | null
+          collection_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           image_paths?: string[] | null
+          material?: string | null
           name: string
           owner_id?: string | null
           rental_price: number
@@ -114,13 +163,17 @@ export type Database = {
           sku?: string | null
           specs?: Json | null
           status?: string | null
+          weight?: string | null
         }
         Update: {
           category?: string | null
+          category_id?: string | null
+          collection_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           image_paths?: string[] | null
+          material?: string | null
           name?: string
           owner_id?: string | null
           rental_price?: number
@@ -128,8 +181,23 @@ export type Database = {
           sku?: string | null
           specs?: Json | null
           status?: string | null
+          weight?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "items_owner_id_fkey"
             columns: ["owner_id"]
@@ -290,10 +358,13 @@ export type Database = {
         Args: { p_end_date: string; p_start_date: string }
         Returns: {
           category: string | null
+          category_id: string | null
+          collection_id: string | null
           created_at: string | null
           description: string | null
           id: string
           image_paths: string[] | null
+          material: string | null
           name: string
           owner_id: string | null
           rental_price: number
@@ -301,6 +372,7 @@ export type Database = {
           sku: string | null
           specs: Json | null
           status: string | null
+          weight: string | null
         }[]
         SetofOptions: {
           from: "*"

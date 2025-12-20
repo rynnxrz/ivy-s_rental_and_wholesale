@@ -18,14 +18,17 @@ interface Item {
     image_paths: string[] | null
     sku: string | null
     status: string
+    material?: string | null
+    weight?: string | null
 }
 
 interface ItemDetailClientProps {
     item: Item
     context?: string
+    relatedItems?: Item[]
 }
 
-export function ItemDetailClient({ item, context }: ItemDetailClientProps) {
+export function ItemDetailClient({ item, context, relatedItems = [] }: ItemDetailClientProps) {
     const isArchiveMode = context === 'archive'
 
     const getImageUrl = (images: string[] | null) => {
@@ -113,6 +116,20 @@ export function ItemDetailClient({ item, context }: ItemDetailClientProps) {
                                     </div>
                                 )}
 
+                                {item.material && (
+                                    <div className="border-b border-gray-200 pb-2">
+                                        <dt className="text-xs text-gray-500 uppercase">Material</dt>
+                                        <dd className="text-sm text-gray-900 mt-1">{item.material}</dd>
+                                    </div>
+                                )}
+
+                                {item.weight && (
+                                    <div className="border-b border-gray-200 pb-2">
+                                        <dt className="text-xs text-gray-500 uppercase">Weight</dt>
+                                        <dd className="text-sm text-gray-900 mt-1">{item.weight}</dd>
+                                    </div>
+                                )}
+
                                 {Object.entries(specs).map(([key, value]) => (
                                     <div key={key} className="border-b border-gray-200 pb-2">
                                         <dt className="text-xs text-gray-500 uppercase">{key}</dt>
@@ -131,6 +148,40 @@ export function ItemDetailClient({ item, context }: ItemDetailClientProps) {
 
                     </div>
                 </div>
+
+                {/* Related Items Section */}
+                {relatedItems.length > 0 && (
+                    <section className="mt-24 pt-12 border-t border-gray-100">
+                        <h2 className="text-xl font-light tracking-wide uppercase text-center mb-12">More from this Collection</h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {relatedItems.map((related) => (
+                                <Link
+                                    key={related.id}
+                                    href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
+                                    className="group block"
+                                >
+                                    <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
+                                        <Image
+                                            src={getImageUrl(related.image_paths)}
+                                            alt={related.name}
+                                            fill
+                                            className="object-cover group-hover:scale-105 transition-transform duration-500"
+                                            sizes="(max-width: 640px) 100vw, 25vw"
+                                        />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
+                                            {related.name}
+                                        </h3>
+                                        {!isArchiveMode && (
+                                            <p className="text-sm text-gray-500 mt-1">${related.rental_price}</p>
+                                        )}
+                                    </div>
+                                </Link>
+                            ))}
+                        </div>
+                    </section>
+                )}
             </main>
         </div>
     )

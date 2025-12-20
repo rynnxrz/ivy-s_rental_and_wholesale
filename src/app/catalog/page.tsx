@@ -8,14 +8,24 @@ export const dynamic = 'force-dynamic'
 export default async function CatalogPage() {
     const supabase = await createClient()
 
-    const { data: items, error } = await supabase
-        .from('items')
-        .select('id, name, category, rental_price, image_paths, status')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
+    // Parallel filters fetch
+    const [
+        { data: items, error: itemsError },
+        { data: categories, error: catsError },
+        { data: collections, error: colsError }
+    ] = await Promise.all([
+        supabase
+            .from('items')
+            .select('*')
+            .eq('status', 'active')
+            .order('priority', { ascending: false })
+            .order('created_at', { ascending: false }),
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('collections').select('*').order('name')
+    ])
 
-    if (error) {
-        console.error('Error fetching items:', error)
+    if (itemsError) {
+        console.error('Error fetching items:', itemsError)
         return <div className="p-8 text-center text-red-500">Failed to load items. Please try again later.</div>
     }
 
@@ -25,7 +35,11 @@ export default async function CatalogPage() {
                 <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
             </div>
         }>
-            <CatalogClient initialItems={items || []} />
+            <CatalogClient
+                initialItems={items || []}
+                categories={categories || []}
+                collections={collections || []}
+            />
         </Suspense>
     )
 }

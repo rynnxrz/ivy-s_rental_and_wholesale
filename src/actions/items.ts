@@ -1,8 +1,18 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ItemInsert, ItemUpdate } from '@/types'
+
+const slugify = (value: string, prefix: string) => {
+    const base = value
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '')
+
+    return base || `${prefix}-${Date.now()}`
+}
 
 export async function getItems() {
     const supabase = await createClient()
@@ -112,4 +122,41 @@ export async function uploadItemImage(formData: FormData) {
         .getPublicUrl(filePath)
 
     return { success: true, error: null, url: publicUrl }
+}
+
+export async function createCategory(name: string) {
+    const supabase = createServiceClient()
+    const slug = slugify(name, 'category')
+
+    const { data, error } = await supabase
+        .from('categories')
+        .insert({ name, slug })
+        .select()
+        .single()
+
+    if (error) {
+        return { success: false, error: error.message, data: null }
+    }
+
+    // Revalidate paths where categories are used if necessary, but mainly for the form we use client state update or re-fetch
+    revalidatePath('/admin/items/new')
+    return { success: true, error: null, data }
+}
+
+export async function createCollection(name: string) {
+    const supabase = createServiceClient()
+    const slug = slugify(name, 'collection')
+
+    const { data, error } = await supabase
+        .from('collections')
+        .insert({ name, slug })
+        .select()
+        .single()
+
+    if (error) {
+        return { success: false, error: error.message, data: null }
+    }
+
+    revalidatePath('/admin/items/new')
+    return { success: true, error: null, data }
 }

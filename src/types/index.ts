@@ -5,6 +5,12 @@ export * from './database.types'
 // Table Row types
 export type Item = Omit<Database['public']['Tables']['items']['Row'], 'status'> & {
     status: 'active' | 'maintenance' | 'retired'
+    category_id: string | null
+    collection_id: string | null
+    material: string | null
+    weight: string | null
+    color: string | null
+    priority: number
 }
 export type ItemInsert = Database['public']['Tables']['items']['Insert']
 export type ItemUpdate = Database['public']['Tables']['items']['Update']

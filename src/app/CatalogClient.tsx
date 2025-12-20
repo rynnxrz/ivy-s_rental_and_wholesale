@@ -27,15 +27,33 @@ interface Item {
     rental_price: number
     image_paths: string[] | null
     status: string
+    category_id?: string | null
+    collection_id?: string | null
+}
+
+interface Category {
+    id: string
+    name: string
+}
+
+interface Collection {
+    id: string
+    name: string
 }
 
 interface CatalogClientProps {
     initialItems: Item[]
+    categories: Category[]
+    collections: Collection[]
 }
 
-export function CatalogClient({ initialItems }: CatalogClientProps) {
+export function CatalogClient({ initialItems, categories, collections }: CatalogClientProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
+
+    // Filter State
+    const [selectedCategoryId, setSelectedCategoryId] = React.useState<string | null>(null)
+    const [selectedCollectionId, setSelectedCollectionId] = React.useState<string | null>(null)
 
     // Initialize date from URL params
     const [date, setDate] = React.useState<DateRange | undefined>(() => {
@@ -183,6 +201,15 @@ export function CatalogClient({ initialItems }: CatalogClientProps) {
         ? Math.ceil((date.to!.getTime() - date.from!.getTime()) / (1000 * 60 * 60 * 24))
         : 0
 
+    // Filter Logic
+    const filteredItems = React.useMemo(() => {
+        return items.filter(item => {
+            if (selectedCategoryId && item.category_id !== selectedCategoryId) return false
+            if (selectedCollectionId && item.collection_id !== selectedCollectionId) return false
+            return true
+        })
+    }, [items, selectedCategoryId, selectedCollectionId])
+
     return (
         <div className="min-h-screen bg-white">
             {/* Hero Section with Date Picker */}
@@ -263,7 +290,7 @@ export function CatalogClient({ initialItems }: CatalogClientProps) {
                             <>
                                 <span className="inline-flex items-center gap-2 text-sm text-green-700 bg-green-100 px-3 py-1 rounded-full">
                                     <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                    {items.length} available item{items.length !== 1 ? 's' : ''} for {rentalDays} day{rentalDays !== 1 ? 's' : ''}
+                                    {filteredItems.length} available item{filteredItems.length !== 1 ? 's' : ''} for {rentalDays} day{rentalDays !== 1 ? 's' : ''}
                                 </span>
                                 <p className="text-xs text-gray-400">
                                     {format(date.from!, "MMM d")} - {format(date.to!, "MMM d, yyyy")}
@@ -274,134 +301,190 @@ export function CatalogClient({ initialItems }: CatalogClientProps) {
                 </div>
             </section>
 
-            {/* Grid Section */}
-            <section className="max-w-[1600px] mx-auto px-4 sm:px-8 py-12">
-                {isLoading ? (
-                    <div className="text-center py-20">
-                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
-                        <p className="mt-4 text-gray-500">Loading available items...</p>
-                    </div>
-                ) : items.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-12">
-                        {items.map((item, index) => (
-                            <div key={item.id} className="group block">
-                                <Link href={hasDateSelected
-                                    ? `/catalog/${item.id}?start=${format(date!.from!, 'yyyy-MM-dd')}&end=${format(date!.to!, 'yyyy-MM-dd')}`
-                                    : `/catalog/${item.id}`
-                                }>
-                                    <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
-                                        <Image
-                                            src={getImageUrl(item.image_paths)}
-                                            alt={item.name}
-                                            fill
-                                            className="object-cover group-hover:scale-105 transition-transform duration-500"
-                                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                                            priority={index === 0}
-                                        />
-                                        {hasDateSelected && (
-                                            <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                                                Available
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h3 className="text-lg font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
-                                                {item.name}
-                                            </h3>
-                                            <p className="text-sm text-gray-500 capitalize">{item.category}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-lg font-light text-gray-900">
-                                                ${item.rental_price}
-                                            </p>
-                                            <p className="text-xs text-gray-400">/day</p>
-                                        </div>
-                                    </div>
-                                </Link>
+            {/* Layout Container */}
+            <div className="max-w-[1700px] mx-auto px-4 sm:px-8 py-12 flex flex-col md:flex-row gap-12">
 
-                                {/* Action button: Add to Request */}
-                                <div className="mt-4">
-                                    {hasDateSelected ? (
-                                        isMounted && hasItem(item.id) ? (
-                                            <Button className="w-full gap-2 bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
-                                                <ShoppingBag className="h-4 w-4" />
-                                                Added to Request
-                                            </Button>
+                {/* Sidebar Filters */}
+                <aside className="w-full md:w-64 space-y-12 flex-shrink-0">
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6 pb-2 border-b border-gray-100 cursor-pointer" onClick={() => setSelectedCategoryId(null)}>
+                            Categories {selectedCategoryId && <span className="ml-2 text-xs text-gray-400 font-normal">(Clear)</span>}
+                        </h3>
+                        <ul className="space-y-3">
+                            {categories.length === 0 && <li className="text-sm text-gray-400">No categories found</li>}
+                            {categories.map(cat => (
+                                <li key={cat.id}>
+                                    <button
+                                        onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
+                                        className={cn(
+                                            "text-sm font-light hover:text-black transition-colors text-left w-full",
+                                            selectedCategoryId === cat.id ? "text-black font-medium underline underline-offset-4" : "text-gray-500"
+                                        )}
+                                    >
+                                        {cat.name}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6 pb-2 border-b border-gray-100 cursor-pointer" onClick={() => setSelectedCollectionId(null)}>
+                            Collections {selectedCollectionId && <span className="ml-2 text-xs text-gray-400 font-normal">(Clear)</span>}
+                        </h3>
+                        <ul className="space-y-3">
+                            {collections.length === 0 && <li className="text-sm text-gray-400">No collections found</li>}
+                            {collections.map(col => (
+                                <li key={col.id}>
+                                    <button
+                                        onClick={() => setSelectedCollectionId(selectedCollectionId === col.id ? null : col.id)}
+                                        className={cn(
+                                            "text-sm font-light hover:text-black transition-colors text-left w-full",
+                                            selectedCollectionId === col.id ? "text-black font-medium underline underline-offset-4" : "text-gray-500"
+                                        )}
+                                    >
+                                        {col.name}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </aside>
+
+                {/* Grid Section */}
+                <section className="flex-1">
+                    {isLoading ? (
+                        <div className="text-center py-20">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
+                            <p className="mt-4 text-gray-500">Loading available items...</p>
+                        </div>
+                    ) : filteredItems.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-x-8 gap-y-12">
+                            {filteredItems.map((item, index) => (
+                                <div key={item.id} className="group block">
+                                    <Link href={hasDateSelected
+                                        ? `/catalog/${item.id}?start=${format(date!.from!, 'yyyy-MM-dd')}&end=${format(date!.to!, 'yyyy-MM-dd')}`
+                                        : `/catalog/${item.id}`
+                                    }>
+                                        <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
+                                            <Image
+                                                src={getImageUrl(item.image_paths)}
+                                                alt={item.name}
+                                                fill
+                                                className="object-cover group-hover:scale-105 transition-transform duration-500"
+                                                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                                                priority={index === 0}
+                                            />
+                                            {hasDateSelected && (
+                                                <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                                                    Available
+                                                </div>
+                                            )}
+                                            {item.collection_id && (
+                                                <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm text-gray-900 text-[10px] px-2 py-1 rounded-sm uppercase tracking-wider border border-gray-100 shadow-sm">
+                                                    {collections.find(c => c.id === item.collection_id)?.name}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h3 className="text-lg font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
+                                                    {item.name}
+                                                </h3>
+                                                <p className="text-sm text-gray-500 capitalize">{item.category}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-lg font-light text-gray-900">
+                                                    ${item.rental_price}
+                                                </p>
+                                                <p className="text-xs text-gray-400">/day</p>
+                                            </div>
+                                        </div>
+                                    </Link>
+
+                                    {/* Action button: Add to Request */}
+                                    <div className="mt-4">
+                                        {hasDateSelected ? (
+                                            isMounted && hasItem(item.id) ? (
+                                                <Button className="w-full gap-2 bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
+                                                    <ShoppingBag className="h-4 w-4" />
+                                                    Added to Request
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    className="w-full gap-2"
+                                                    onClick={(e) => {
+                                                        e.preventDefault()
+                                                        addItem({
+                                                            id: item.id,
+                                                            name: item.name,
+                                                            category: item.category,
+                                                            rental_price: item.rental_price,
+                                                            image_paths: item.image_paths,
+                                                            status: item.status
+                                                        })
+                                                        toast.success("Item added to request list")
+                                                    }}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                    Add to Request
+                                                </Button>
+                                            )
                                         ) : (
                                             <Button
-                                                className="w-full gap-2"
-                                                onClick={(e) => {
-                                                    e.preventDefault()
-                                                    addItem({
-                                                        id: item.id,
-                                                        name: item.name,
-                                                        category: item.category,
-                                                        rental_price: item.rental_price,
-                                                        image_paths: item.image_paths,
-                                                        status: item.status
-                                                    })
-                                                    toast.success("Item added to request list")
-                                                }}
+                                                variant="outline"
+                                                className="w-full text-gray-400"
+                                                disabled
+                                                title="Please select rental dates first"
                                             >
-                                                <Plus className="h-4 w-4" />
-                                                Add to Request
+                                                <CalendarIcon className="h-4 w-4 mr-2" />
+                                                Select dates first
                                             </Button>
-                                        )
-                                    ) : (
-                                        <Button
-                                            variant="outline"
-                                            className="w-full text-gray-400"
-                                            disabled
-                                            title="Please select rental dates first"
-                                        >
-                                            <CalendarIcon className="h-4 w-4 mr-2" />
-                                            Select dates first
-                                        </Button>
+                                        )}
+                                    </div>
+
+                                    {/* Price estimate when dates selected */}
+                                    {hasDateSelected && (
+                                        <div className="mt-2 text-center text-sm text-gray-500">
+                                            Est. total: <span className="font-medium text-gray-900">${(item.rental_price * rentalDays).toFixed(2)}</span>
+                                        </div>
                                     )}
                                 </div>
-
-                                {/* Price estimate when dates selected */}
-                                {hasDateSelected && (
-                                    <div className="mt-2 text-center text-sm text-gray-500">
-                                        Est. total: <span className="font-medium text-gray-900">${(item.rental_price * rentalDays).toFixed(2)}</span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-32">
-                        {hasDateSelected ? (
-                            <>
-                                <h3 className="text-xl text-gray-400 font-light">
-                                    No items available for selected dates
-                                </h3>
-                                <p className="text-gray-400 mt-2">Try selecting different dates</p>
-                                <Button
-                                    variant="outline"
-                                    className="mt-4"
-                                    onClick={clearDates}
-                                >
-                                    Clear dates
-                                </Button>
-                            </>
-                        ) : (
-                            <>
-                                <h3 className="text-xl text-gray-400 font-light">
-                                    No items in the collection yet.
-                                </h3>
-                                <Link
-                                    href="/admin/items/new"
-                                    className="inline-block mt-4 text-sm text-black underline underline-offset-4 hover:text-gray-600"
-                                >
-                                    Admin: Add your first item
-                                </Link>
-                            </>
-                        )}
-                    </div>
-                )}
-            </section>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-32">
+                            {hasDateSelected ? (
+                                <>
+                                    <h3 className="text-xl text-gray-400 font-light">
+                                        No items available for selected dates or filters
+                                    </h3>
+                                    <p className="text-gray-400 mt-2">Try selecting different dates or clearing filters</p>
+                                    <Button
+                                        variant="outline"
+                                        className="mt-4"
+                                        onClick={clearDates}
+                                    >
+                                        Clear dates
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <h3 className="text-xl text-gray-400 font-light">
+                                        No items in the collection match your filter.
+                                    </h3>
+                                    <Link
+                                        href="/admin/items/new"
+                                        className="inline-block mt-4 text-sm text-black underline underline-offset-4 hover:text-gray-600"
+                                    >
+                                        Admin: Add your first item
+                                    </Link>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </section>
+            </div>
         </div>
     )
 }

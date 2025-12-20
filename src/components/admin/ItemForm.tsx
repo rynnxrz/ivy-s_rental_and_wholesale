@@ -19,14 +19,19 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Upload, X, Plus } from 'lucide-react'
-import { createItem, updateItem, uploadItemImage } from '@/actions/items'
+import { createItem, updateItem, uploadItemImage, createCategory, createCollection } from '@/actions/items'
 import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
 
 const itemSchema = z.object({
     sku: z.string().min(1, 'SKU is required'),
     name: z.string().min(1, 'Name is required'),
     description: z.string().optional(),
-    category: z.string().optional(),
+    category_id: z.string().optional(),
+    collection_id: z.string().optional(),
+    material: z.string().optional(),
+    weight: z.string().optional(),
+    color: z.string().optional(),
+    category: z.string().optional(), // Legacy, sync from category_id
     rental_price: z.preprocess(
         (val) => (val === '' ? 0 : Number(val)),
         z.number().min(0, 'Price must be positive')
@@ -40,9 +45,21 @@ const itemSchema = z.object({
 
 type ItemFormData = z.infer<typeof itemSchema>
 
+interface Category {
+    id: string
+    name: string
+}
+
+interface Collection {
+    id: string
+    name: string
+}
+
 interface ItemFormProps {
     item?: Item
     mode: 'create' | 'edit'
+    categories: Category[]
+    collections: Collection[]
 }
 
 const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
@@ -51,7 +68,7 @@ const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
     { value: 'retired', label: 'Retired' },
 ]
 
-export const ItemForm = ({ item, mode }: ItemFormProps) => {
+export const ItemForm = ({ item, mode, categories: initialCategories, collections: initialCollections }: ItemFormProps) => {
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [images, setImages] = useState<string[]>(item?.image_paths ?? [])
@@ -59,6 +76,11 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
         (item?.specs as ItemSpecs) ?? {}
     )
     const [uploadingImage, setUploadingImage] = useState(false)
+    const [isCloneAfterSave, setIsCloneAfterSave] = useState(false)
+
+    // Local state for categories/collections to support immediate UI updates after quick add
+    const [categories, setCategories] = useState(initialCategories)
+    const [collections, setCollections] = useState(initialCollections)
 
     const {
         register,
@@ -66,6 +88,7 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
         formState: { errors },
         setValue,
         watch,
+        reset,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } = useForm<ItemFormData>({
         resolver: zodResolver(itemSchema) as any,
@@ -73,12 +96,54 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
             sku: item?.sku ?? '',
             name: item?.name ?? '',
             description: item?.description ?? '',
+            category_id: item?.category_id ?? '',
+            collection_id: item?.collection_id ?? '',
+            material: item?.material ?? '',
+            weight: item?.weight ?? '',
+            color: item?.color ?? '',
             category: item?.category ?? '',
             rental_price: item?.rental_price ?? 0,
             replacement_cost: item?.replacement_cost ?? 0,
             status: item?.status ?? 'active',
         },
     })
+
+    // Watch category_id to sync category name
+    const selectedCategoryId = watch('category_id')
+
+    // Sync category name when ID changes
+    if (selectedCategoryId) {
+        const cat = categories.find(c => c.id === selectedCategoryId)
+        if (cat && watch('category') !== cat.name) {
+            setValue('category', cat.name)
+        }
+    }
+
+    const handleQuickAddCategory = async () => {
+        const name = prompt("Enter new category name:")
+        if (!name) return
+
+        const result = await createCategory(name)
+        if (result.success && result.data) {
+            setCategories([...categories, result.data])
+            setValue('category_id', result.data.id)
+        } else {
+            alert("Failed to create category")
+        }
+    }
+
+    const handleQuickAddCollection = async () => {
+        const name = prompt("Enter new collection name:")
+        if (!name) return
+
+        const result = await createCollection(name)
+        if (result.success && result.data) {
+            setCollections([...collections, result.data])
+            setValue('collection_id', result.data.id)
+        } else {
+            alert("Failed to create collection")
+        }
+    }
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -107,7 +172,7 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
     }
 
     const addSpec = () => {
-        const key = prompt('Enter spec name (e.g., size, material):')
+        const key = prompt('Enter spec name (e.g., size, karat):')
         if (key && key.trim()) {
             setSpecs({ ...specs, [key.trim()]: '' })
         }
@@ -131,18 +196,43 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
                 image_paths: images,
                 specs,
                 description: data.description || null,
-                category: data.category || null,
+                category_id: data.category_id || null,
+                collection_id: data.collection_id || null,
+                material: data.material || null,
+                weight: data.weight || null,
+                color: data.color || null,
+                // Ensure category string is synced if category_id represents a known category
+                category: data.category || (data.category_id ? categories.find(c => c.id === data.category_id)?.name : null)
             }
 
             let result
-            if (mode === 'create') {
+            // If cloning, we always create a NEW item
+            if (mode === 'create' || isCloneAfterSave) {
                 result = await createItem(itemData)
             } else {
                 result = await updateItem(item!.id, itemData)
             }
 
             if (result.success) {
-                router.push('/admin/items')
+                if (isCloneAfterSave) {
+                    // Clone Mode: Prepare form for the next variation
+
+                    // Logic: Keep existing images (user request), but prompt.
+                    // Keep everything else.
+                    // Reset SKU to avoid conflict.
+
+                    setValue('sku', `${data.sku}-VAR`)
+                    setValue('color', '') // Reset Color
+                    setImages([]) // User requested to CLEAR images for new color
+
+                    setIsCloneAfterSave(false)
+
+                    alert(`Variant [${data.color || 'New'}] saved successfully! Color and Images have been cleared for the next variant.`)
+
+                } else {
+                    router.push('/admin/items')
+                    router.refresh()
+                }
             } else {
                 console.error('Save failed:', result.error)
                 alert('Failed to save item: ' + result.error)
@@ -197,13 +287,81 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
                             />
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="category">Category</Label>
-                            <Input
-                                id="category"
-                                {...register('category')}
-                                placeholder="e.g., ring, necklace, bracelet"
-                            />
+                        {/* Collections & Categories */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="category_id">Category</Label>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={watch('category_id') || "none"}
+                                        onValueChange={(value) => setValue('category_id', value === "none" ? "" : value)}
+                                    >
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Select Category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">None</SelectItem>
+                                            {categories.map((c) => (
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCategory} title="Quick Add Category">
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="collection_id">Collection</Label>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={watch('collection_id') || "none"}
+                                        onValueChange={(value) => setValue('collection_id', value === "none" ? "" : value)}
+                                    >
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Select Collection" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">None</SelectItem>
+                                            {collections.map((c) => (
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCollection} title="Quick Add Collection">
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Color, Material & Weight */}
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="color">Color / Variant</Label>
+                                <Input
+                                    id="color"
+                                    {...register('color')}
+                                    placeholder="e.g., Red, Clear"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="material">Material</Label>
+                                <Input
+                                    id="material"
+                                    {...register('material')}
+                                    placeholder="e.g., 18K Gold"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="weight">Weight</Label>
+                                <Input
+                                    id="weight"
+                                    {...register('weight')}
+                                    placeholder="e.g., 3.5g"
+                                />
+                            </div>
                         </div>
 
                         <div className="space-y-2">
@@ -289,6 +447,7 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
                                         width={100}
                                         height={100}
                                         className="h-24 w-24 rounded-lg object-cover"
+                                        unoptimized
                                     />
                                     <button
                                         type="button"
@@ -357,7 +516,7 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
                         ))}
                         {Object.keys(specs).length === 0 && (
                             <p className="text-sm text-muted-foreground">
-                                No specifications added yet. Click &quot;Add Spec&quot; to add size, material, etc.
+                                No specifications added yet. Click &quot;Add Spec&quot; to add size, carat, etc.
                             </p>
                         )}
                     </CardContent>
@@ -373,7 +532,21 @@ export const ItemForm = ({ item, mode }: ItemFormProps) => {
                 >
                     Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+
+                {/* Save and Add Variation Button */}
+                <Button
+                    type="submit"
+                    variant="secondary"
+                    disabled={isSubmitting}
+                    onClick={() => setIsCloneAfterSave(true)}
+                    className="gap-2"
+                    title="Save current item and clone it as a new variation"
+                >
+                    <Plus className="h-4 w-4" />
+                    Save & Add Variation
+                </Button>
+
+                <Button type="submit" disabled={isSubmitting} onClick={() => setIsCloneAfterSave(false)}>
                     {isSubmitting
                         ? 'Saving...'
                         : mode === 'create'
