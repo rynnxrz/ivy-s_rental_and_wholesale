@@ -1,4 +1,4 @@
-# Project Context
+# Project Context 
 You are building a B2B Rental Management MVP for high-value items (Fine Jewelry).
 The goal is a "Single-man MVP": prioritize simplicity, stability, and maintainability.
 **Critical Constraint:** Inventory availability must be strictly accurate. We use Postgres Exclusion Constraints, not just application logic.
