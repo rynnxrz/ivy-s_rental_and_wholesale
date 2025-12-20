@@ -7,15 +7,32 @@ export const dynamic = 'force-dynamic'
 export default async function ArchivePage() {
     const supabase = await createClient()
 
-    const { data: items, error } = await supabase
-        .from('items')
-        .select('id, name, category, rental_price, image_paths, status')
-        .order('created_at', { ascending: false })
+    const [
+        { data: items, error: itemsError },
+        { data: visibleCollections, error: colsError }
+    ] = await Promise.all([
+        supabase
+            .from('items')
+            .select('id, name, category, rental_price, image_paths, status, collection_id')
+            .neq('status', 'retired')
+            .order('created_at', { ascending: false }),
+        supabase
+            .from('collections')
+            .select('id')
+            .eq('hidden_in_portal', false)
+    ])
 
-    if (error) {
-        console.error('Error fetching items:', error)
+    if (itemsError) {
+        console.error('Error fetching items:', itemsError)
         return <div className="p-8 text-center text-red-500">Failed to load archive.</div>
     }
+
+    // Filter items based on visible collections
+    const visibleCollectionIds = new Set(visibleCollections?.map(c => c.id) || [])
+    const validItems = items?.filter(item => {
+        if (!item.collection_id) return true
+        return visibleCollectionIds.has(item.collection_id)
+    }) || []
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -29,7 +46,7 @@ export default async function ArchivePage() {
                     <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
                 </div>
             }>
-                <ArchiveClient initialItems={items || []} />
+                <ArchiveClient initialItems={validItems} />
             </Suspense>
         </div>
     )

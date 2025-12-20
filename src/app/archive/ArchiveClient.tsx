@@ -37,7 +37,7 @@ export function ArchiveClient({ initialItems }: ArchiveClientProps) {
                            I'll keep the link to detail page because usually "display info" implies seeing more details.
                         */}
                         <Link href={`/catalog/${item.id}?context=archive`}>
-                            <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
+                            <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
                                 <Image
                                     src={getImageUrl(item.image_paths)}
                                     alt={item.name}
@@ -72,8 +72,10 @@ export function ArchiveClient({ initialItems }: ArchiveClientProps) {
             </div>
 
             {initialItems.length === 0 && (
-                <div className="text-center py-20 text-gray-400">
-                    No items found in the archive.
+                <div className="text-center py-32">
+                    <h3 className="text-lg text-gray-400 font-light">
+                        The collection is currently empty. Please check back later.
+                    </h3>
                 </div>
             )}
         </div>

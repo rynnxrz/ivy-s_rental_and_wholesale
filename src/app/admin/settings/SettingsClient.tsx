@@ -4,7 +4,8 @@ import { useState } from 'react'
 import SettingsForm from './SettingsForm'
 import ProfileList from './ProfileList'
 import CommunicationsTab from './CommunicationsTab'
-import type { BillingProfile } from '@/types'
+import TaxonomyManager from './components/TaxonomyManager'
+import type { BillingProfile, Category, Collection } from '@/types'
 
 interface SettingsClientProps {
     initialTab: string
@@ -22,11 +23,13 @@ interface SettingsClientProps {
         booking_password: string | null
     }
     billingProfiles: BillingProfile[]
+    categories: Category[]
+    collections: Collection[]
 }
 
-type TabType = 'billing' | 'communications' | 'system'
+type TabType = 'billing' | 'communications' | 'taxonomy' | 'system'
 
-export default function SettingsClient({ initialTab, settings, billingProfiles }: SettingsClientProps) {
+export default function SettingsClient({ initialTab, settings, billingProfiles, categories, collections }: SettingsClientProps) {
     const [activeTab, setActiveTab] = useState<TabType>(initialTab as TabType || 'billing')
 
     return (
@@ -53,6 +56,15 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                             }`}
                     >
                         Communications
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('taxonomy')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'taxonomy'
+                            ? 'border-gray-900 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                    >
+                        Categories & Collections
                     </button>
                     <button
                         onClick={() => setActiveTab('system')}
@@ -94,6 +106,10 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                 />
             )}
 
+            {activeTab === 'taxonomy' && (
+                <TaxonomyManager categories={categories} collections={collections} />
+            )}
+
             {activeTab === 'system' && (
                 <SettingsForm initialSettings={{
                     turnaround_buffer: settings.turnaround_buffer ?? 1,
@@ -104,3 +120,4 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
         </div>
     )
 }
+

@@ -62,12 +62,12 @@ export function ItemDetailClient({ item, context, relatedItems = [] }: ItemDetai
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24">
 
                     {/* Image Side */}
-                    <div className="relative aspect-[3/4] bg-gray-50 rounded-sm overflow-hidden sticky top-24">
+                    <div className="relative aspect-square bg-white rounded-sm overflow-hidden sticky top-24">
                         <Image
                             src={getImageUrl(item.image_paths)}
                             alt={item.name}
                             fill
-                            className="object-cover"
+                            className="object-cover object-center"
                             priority
                             sizes="(max-width: 1024px) 100vw, 50vw"
                         />
@@ -160,12 +160,12 @@ export function ItemDetailClient({ item, context, relatedItems = [] }: ItemDetai
                                     href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
                                     className="group block"
                                 >
-                                    <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
+                                    <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
                                         <Image
                                             src={getImageUrl(related.image_paths)}
                                             alt={related.name}
                                             fill
-                                            className="object-cover group-hover:scale-105 transition-transform duration-500"
+                                            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
                                             sizes="(max-width: 640px) 100vw, 25vw"
                                         />
                                     </div>

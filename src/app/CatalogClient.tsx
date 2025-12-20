@@ -172,7 +172,9 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                     return
                 }
 
-                setItems(data || [])
+                const visibleCollectionIds = new Set(collections.map(c => c.id))
+                const filteredData = ((data as Item[]) || []).filter(item => !item.collection_id || visibleCollectionIds.has(item.collection_id))
+                setItems(filteredData)
             } catch (err) {
                 console.error('Unexpected error:', err)
                 setItems(initialItems)
@@ -366,12 +368,12 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         ? `/catalog/${item.id}?start=${format(date!.from!, 'yyyy-MM-dd')}&end=${format(date!.to!, 'yyyy-MM-dd')}`
                                         : `/catalog/${item.id}`
                                     }>
-                                        <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden rounded-sm mb-4">
+                                        <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
                                             <Image
                                                 src={getImageUrl(item.image_paths)}
                                                 alt={item.name}
                                                 fill
-                                                className="object-cover group-hover:scale-105 transition-transform duration-500"
+                                                className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
                                                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                                                 priority={index === 0}
                                             />
@@ -456,30 +458,21 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                         <div className="text-center py-32">
                             {hasDateSelected ? (
                                 <>
-                                    <h3 className="text-xl text-gray-400 font-light">
-                                        No items available for selected dates or filters
+                                    <h3 className="text-lg text-gray-400 font-light">
+                                        Currently no stock available for the selected dates.
                                     </h3>
-                                    <p className="text-gray-400 mt-2">Try selecting different dates or clearing filters</p>
                                     <Button
-                                        variant="outline"
-                                        className="mt-4"
+                                        variant="ghost"
+                                        className="mt-4 text-gray-400 hover:text-gray-600 font-light"
                                         onClick={clearDates}
                                     >
                                         Clear dates
                                     </Button>
                                 </>
                             ) : (
-                                <>
-                                    <h3 className="text-xl text-gray-400 font-light">
-                                        No items in the collection match your filter.
-                                    </h3>
-                                    <Link
-                                        href="/admin/items/new"
-                                        className="inline-block mt-4 text-sm text-black underline underline-offset-4 hover:text-gray-600"
-                                    >
-                                        Admin: Add your first item
-                                    </Link>
-                                </>
+                                <h3 className="text-lg text-gray-400 font-light">
+                                    The collection is currently empty. Please check back later.
+                                </h3>
                             )}
                         </div>
                     )}

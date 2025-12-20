@@ -18,7 +18,8 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, X, Plus } from 'lucide-react'
+import { Upload, X, Plus, CheckCircle2 } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { createItem, updateItem, uploadItemImage, createCategory, createCollection } from '@/actions/items'
 import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
 
@@ -77,6 +78,10 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
     )
     const [uploadingImage, setUploadingImage] = useState(false)
     const [isCloneAfterSave, setIsCloneAfterSave] = useState(false)
+
+    // Workflow state
+    const [isAddingVariation, setIsAddingVariation] = useState(false)
+    const [lastSavedItemName, setLastSavedItemName] = useState<string | null>(null)
 
     // Local state for categories/collections to support immediate UI updates after quick add
     const [categories, setCategories] = useState(initialCategories)
@@ -206,10 +211,24 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
             }
 
             let result
-            // If cloning, we always create a NEW item
-            if (mode === 'create' || isCloneAfterSave) {
+
+            // Determine operation:
+            // 1. Create Mode: Always create
+            // 2. Edit Mode + isAddingVariation (Clone loop): Always create new item
+            // 3. Edit Mode (Initial Save): Update existing
+            const shouldCreateNew = mode === 'create' || isAddingVariation
+
+            // Special case for "Save & Add Variation" from Edit Mode:
+            // If we are editing (not yet in loop) and click "Save & Add", we usually want to UPDATE the current item first, 
+            // then switch to creating new ones. 
+            // BUT, if the user requested "Clone", previously we forced Create. 
+            // The standard behavior for "Save & Add" on Edit Page is: Save changes to THIS item, then start NEW One.
+
+            if (shouldCreateNew) {
                 result = await createItem(itemData)
             } else {
+                // We are in Edit Mode and NOT in the variation loop yet.
+                // Even if isCloneAfterSave is true, we update the current item first.
                 result = await updateItem(item!.id, itemData)
             }
 
@@ -226,8 +245,11 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     setImages([]) // User requested to CLEAR images for new color
 
                     setIsCloneAfterSave(false)
+                    setIsAddingVariation(true)
+                    setLastSavedItemName(itemData.name)
 
-                    alert(`Variant [${data.color || 'New'}] saved successfully! Color and Images have been cleared for the next variant.`)
+                    // Scroll to top to show banner
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
 
                 } else {
                     router.push('/admin/items')
@@ -246,6 +268,16 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            {isAddingVariation && lastSavedItemName && (
+                <Alert className="border-green-500 bg-green-50 text-green-900">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <AlertTitle>Success!</AlertTitle>
+                    <AlertDescription>
+                        Design &quot;{lastSavedItemName}&quot; saved. Now adding a new variation...
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="grid gap-6 lg:grid-cols-2">
                 {/* Basic Info */}
                 <Card>
@@ -528,7 +560,16 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                 <Button
                     type="button"
                     variant="outline"
-                    onClick={() => router.push('/admin/items')}
+                    onClick={() => {
+                        if (isAddingVariation) {
+                            // Confirm before leaving if variants were added
+                            if (confirm("Your previously saved variants are safe. Do you want to stop adding more?")) {
+                                router.push('/admin/items')
+                            }
+                        } else {
+                            router.push('/admin/items')
+                        }
+                    }}
                 >
                     Cancel
                 </Button>
@@ -543,14 +584,14 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     title="Save current item and clone it as a new variation"
                 >
                     <Plus className="h-4 w-4" />
-                    Save & Add Variation
+                    {isAddingVariation ? 'Save & Add Another Color' : 'Save & Add Variation'}
                 </Button>
 
                 <Button type="submit" disabled={isSubmitting} onClick={() => setIsCloneAfterSave(false)}>
                     {isSubmitting
                         ? 'Saving...'
-                        : mode === 'create'
-                            ? 'Create Item'
+                        : (isAddingVariation || mode === 'create')
+                            ? (isAddingVariation ? 'Save & Finish' : 'Create Product')
                             : 'Update Item'}
                 </Button>
             </div>

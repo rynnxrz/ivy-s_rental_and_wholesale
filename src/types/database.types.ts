@@ -89,18 +89,21 @@ export type Database = {
       categories: {
         Row: {
           created_at: string
+          hidden_in_portal: boolean | null
           id: string
           name: string
           slug: string
         }
         Insert: {
           created_at?: string
+          hidden_in_portal?: boolean | null
           id?: string
           name: string
           slug: string
         }
         Update: {
           created_at?: string
+          hidden_in_portal?: boolean | null
           id?: string
           name?: string
           slug?: string
@@ -110,18 +113,21 @@ export type Database = {
       collections: {
         Row: {
           created_at: string
+          hidden_in_portal: boolean | null
           id: string
           name: string
           slug: string
         }
         Insert: {
           created_at?: string
+          hidden_in_portal?: boolean | null
           id?: string
           name: string
           slug: string
         }
         Update: {
           created_at?: string
+          hidden_in_portal?: boolean | null
           id?: string
           name?: string
           slug?: string
@@ -133,6 +139,7 @@ export type Database = {
           category: string | null
           category_id: string | null
           collection_id: string | null
+          color: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -140,6 +147,7 @@ export type Database = {
           material: string | null
           name: string
           owner_id: string | null
+          priority: number | null
           rental_price: number
           replacement_cost: number
           sku: string | null
@@ -151,6 +159,7 @@ export type Database = {
           category?: string | null
           category_id?: string | null
           collection_id?: string | null
+          color?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -158,6 +167,7 @@ export type Database = {
           material?: string | null
           name: string
           owner_id?: string | null
+          priority?: number | null
           rental_price: number
           replacement_cost?: number
           sku?: string | null
@@ -169,6 +179,7 @@ export type Database = {
           category?: string | null
           category_id?: string | null
           collection_id?: string | null
+          color?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -176,6 +187,7 @@ export type Database = {
           material?: string | null
           name?: string
           owner_id?: string | null
+          priority?: number | null
           rental_price?: number
           replacement_cost?: number
           sku?: string | null
@@ -360,6 +372,7 @@ export type Database = {
           category: string | null
           category_id: string | null
           collection_id: string | null
+          color: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -367,6 +380,7 @@ export type Database = {
           material: string | null
           name: string
           owner_id: string | null
+          priority: number | null
           rental_price: number
           replacement_cost: number
           sku: string | null

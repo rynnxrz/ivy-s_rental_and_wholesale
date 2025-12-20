@@ -78,9 +78,35 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         setOpenGroups(newOpenGroups)
     }
 
-    const groupedItems = useMemo(() => {
+    const [activeTab, setActiveTab] = useState<'all' | 'active' | 'maintenance' | 'retired'>('all')
+
+    const filteredGroups = useMemo(() => {
+        // First group all items by name (already done in filteredItems/groupedItems but let's re-use that logic if possible or filter post-grouping)
+        // Actually, the grouping logic is already inside the 'groupedItems' useMemo.
+        // We probably effectively want to filter the ITEMS first, then group them?
+        // Or group them, then filter the groups? 
+        // User wants: "Tabs: All, Active, Maintenance, Retired"
+        // "Tab internal logic: keep 'folded by name' logic".
+
+        // Let's filter the GROUPS.
+        // If a group has mixed status items, how does it appear?
+        // "All: status != retired". If a group has 1 active and 1 retired, presumably we show the group with ONLY the active item?
+        // User said: "Visual consistency: ... display variants folded".
+
+        // Strategy: Filter the flattened items FIRST, then group them.
+        // This ensures if I select "Active", I only see Active variants. If a product has no active variants, the group disappears.
+
+        const filteredItems = initialItems.filter(item => {
+            if (activeTab === 'all') return item.status !== 'retired'
+            if (activeTab === 'active') return item.status === 'active'
+            if (activeTab === 'maintenance') return item.status === 'maintenance'
+            if (activeTab === 'retired') return item.status === 'retired'
+            return true
+        })
+
+        // Now Group them
         const groups: Record<string, Item[]> = {}
-        initialItems.forEach(item => {
+        filteredItems.forEach(item => {
             if (!groups[item.name]) {
                 groups[item.name] = []
             }
@@ -88,16 +114,13 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         })
 
         return Object.entries(groups).map(([name, items]) => {
-            // Sort items within group by created_at desc (newest first)
             items.sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime())
 
             const firstItem = items[0]
             const collection = collections.find(c => c.id === firstItem.collection_id)
             const category = categories.find(c => c.id === firstItem.category_id)
-
-            // Determine max priority for the group sort
             const maxPriority = Math.max(...items.map(i => i.priority || 0))
-            const maxCreatedAt = items[0].created_at || '' // Already sorted desc
+            const maxCreatedAt = items[0].created_at || ''
 
             return {
                 name,
@@ -107,30 +130,15 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                 variantCount: items.length,
                 maxPriority,
                 createdAt: maxCreatedAt,
-                firstItem // For displaying common props like description/ image if needed
+                firstItem
             }
         }).sort((a, b) => {
-            // Primary sort: Priority (desc)
-            if (b.maxPriority !== a.maxPriority) {
-                return b.maxPriority - a.maxPriority
-            }
-            // Secondary sort: Created At (desc)
+            if (b.maxPriority !== a.maxPriority) return b.maxPriority - a.maxPriority
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         })
-    }, [initialItems, categories, collections])
+    }, [initialItems, categories, collections, activeTab])
 
     const handleSync = async (groupName: string, items: Item[]) => {
-        // Find the "main" item (most recently created or updated one in the group ideally, but here we use the first one)
-        // Actually, we want to sync based on the item that was just edited. 
-        // But typically this button is on the main row. 
-        // The requirement says: "If Ivy changes Main Row Material or Collection, prompt".
-        // Since we don't have inline editing on the main row yet, we'll simulate the "Quick Sync" 
-        // by just taking the properties of the *first* item in the list (most recent) and applying to others.
-        // Wait, user asked: "Add 'Quick Sync' to Main Row. If Ivy modifies Main Row Material or Collection..."
-        // This implies the Main Row IS editable? Or maybe she modifies one item and wants to sync?
-        // "Click on 'Main Row' -> 'Quick Sync'".
-        // Let's implement a button that opens a Dialog to confirm syncing properties from the LATEST item to all others.
-
         setSyncingGroup(groupName)
         try {
             const sourceItem = items[0] // Most recent item
@@ -149,11 +157,56 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
 
 
     return (
-        <div className="space-y-4">
-            {groupedItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-slate-500">
-                    <Package className="h-12 w-12 text-slate-300" />
-                    <h3 className="mt-4 text-lg font-semibold text-slate-900">No items found</h3>
+        <div className="space-y-6">
+            {/* Tabs */}
+            <div className="flex border-b">
+                <button
+                    onClick={() => setActiveTab('all')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all'
+                        ? 'border-slate-900 text-slate-900'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    All
+                </button>
+                <button
+                    onClick={() => setActiveTab('active')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    Active
+                </button>
+                <button
+                    onClick={() => setActiveTab('maintenance')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'maintenance'
+                        ? 'border-amber-600 text-amber-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    Maintenance
+                </button>
+                <button
+                    onClick={() => setActiveTab('retired')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'retired'
+                        ? 'border-slate-400 text-slate-500'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                        }`}
+                >
+                    Retired / Deleted
+                </button>
+            </div>
+
+            {/* List */}
+            {filteredGroups.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500 bg-slate-50/50 rounded-lg border border-dashed">
+                    <Package className="h-10 w-10 text-slate-300" />
+                    <h3 className="mt-4 text-base font-medium text-slate-900">
+                        {activeTab === 'maintenance' ? 'No items currently in maintenance.' :
+                            activeTab === 'retired' ? 'No retired items.' :
+                                'No items found.'}
+                    </h3>
                 </div>
             ) : (
                 <div className="rounded-md border">
@@ -169,7 +222,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {groupedItems.map((group) => (
+                            {filteredGroups.map((group) => (
                                 <Fragment key={group.name}>
                                     <TableRow key={group.name} className="hover:bg-slate-50/50">
                                         <TableCell>
@@ -188,30 +241,41 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                         </TableCell>
                                         <TableCell className="font-medium">
                                             <div className="flex items-center gap-2">
-                                                {group.name}
-                                                {isAdmin && !group.collectionName && (
+                                                <span className={activeTab === 'retired' ? 'text-slate-500' : ''}>{group.name}</span>
+
+                                                {/* Only show warnings if NOT in retired tab */}
+                                                {activeTab !== 'retired' && isAdmin && !group.collectionName && (
                                                     <Badge variant="destructive" className="h-5 px-1 text-[10px]">
                                                         No Collection
                                                     </Badge>
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell>{group.categoryName || '-'}</TableCell>
                                         <TableCell>
-                                            {group.collectionName || (
-                                                <span className="flex items-center text-xs text-amber-600 font-medium">
-                                                    <AlertCircle className="mr-1 h-3 w-3" />
-                                                    Missing
-                                                </span>
+                                            <span className={activeTab === 'retired' ? 'text-slate-500' : ''}>
+                                                {group.categoryName || '-'}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            {group.collectionName ? (
+                                                <span className={activeTab === 'retired' ? 'text-slate-500' : ''}>{group.collectionName}</span>
+                                            ) : (
+                                                activeTab !== 'retired' ? (
+                                                    <span className="flex items-center text-xs text-amber-600 font-medium">
+                                                        <AlertCircle className="mr-1 h-3 w-3" />
+                                                        Missing
+                                                    </span>
+                                                ) : <span className="text-slate-400">-</span>
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant="secondary" className="font-normal">
+                                            <Badge variant="secondary" className={`font-normal ${activeTab === 'retired' ? 'text-slate-500 bg-slate-100' : ''}`}>
                                                 {group.variantCount} Variants
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            {isAdmin && group.items.length > 1 && (
+                                            {/* Sync button mainly for active items */}
+                                            {isAdmin && group.items.length > 1 && activeTab !== 'retired' && (
                                                 <Dialog>
                                                     <DialogTrigger asChild>
                                                         <Button variant="outline" size="sm" className="h-7 text-xs">
@@ -269,7 +333,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                                     alt={item.name}
                                                                                     width={32}
                                                                                     height={32}
-                                                                                    className="rounded bg-white object-cover shadow-sm"
+                                                                                    className={`rounded object-cover shadow-sm ${item.status === 'retired' ? 'bg-slate-200 grayscale' : 'bg-white'}`}
                                                                                 />
                                                                             ) : (
                                                                                 <div className="flex h-8 w-8 items-center justify-center rounded bg-slate-100">
@@ -297,11 +361,13 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                         <TableCell className="py-2 text-right">
                                                                             {isAdmin && (
                                                                                 <div className="flex justify-end gap-1">
-                                                                                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                                                                                        <Link href={`/admin/items/${item.id}/edit`}>
-                                                                                            <Edit className="h-3.5 w-3.5" />
-                                                                                        </Link>
-                                                                                    </Button>
+                                                                                    {activeTab !== 'retired' && (
+                                                                                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                                                                                            <Link href={`/admin/items/${item.id}/edit`}>
+                                                                                                <Edit className="h-3.5 w-3.5" />
+                                                                                            </Link>
+                                                                                        </Button>
+                                                                                    )}
                                                                                     <DeleteItemButton itemId={item.id} itemName={item.name} />
                                                                                 </div>
                                                                             )}

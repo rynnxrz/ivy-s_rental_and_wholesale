@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import SettingsClient from './SettingsClient'
-import type { BillingProfile } from '@/types'
+import type { BillingProfile, Category, Collection } from '@/types'
+import { getCategories, getCollections } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +53,10 @@ export default async function SettingsPage() {
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
 
+    // 4. Fetch Categories & Collections
+    const categories = await getCategories()
+    const collections = await getCollections()
+
     return (
         <SettingsClient
             initialTab="billing"
@@ -69,6 +74,8 @@ export default async function SettingsPage() {
                 booking_password: settings.booking_password,
             }}
             billingProfiles={(billingProfiles || []) as BillingProfile[]}
+            categories={(categories || []) as Category[]}
+            collections={(collections || []) as Collection[]}
         />
     )
 }

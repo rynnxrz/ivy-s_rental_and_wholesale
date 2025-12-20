@@ -90,6 +90,25 @@ export async function deleteItem(id: string) {
         .eq('id', id)
 
     if (error) {
+        if (error.code === '23503') {
+            return { success: false, error: 'DEPENDENCY_ERROR' }
+        }
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null }
+}
+
+export async function archiveItem(id: string) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('items')
+        .update({ status: 'retired' }) // Using 'retired' as the archived status based on enum usually
+        .eq('id', id)
+
+    if (error) {
         return { success: false, error: error.message }
     }
 

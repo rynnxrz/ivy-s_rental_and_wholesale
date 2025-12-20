@@ -27,6 +27,22 @@ export type BillingProfile = Database['public']['Tables']['billing_profiles']['R
 export type BillingProfileInsert = Database['public']['Tables']['billing_profiles']['Insert']
 export type BillingProfileUpdate = Database['public']['Tables']['billing_profiles']['Update']
 
+export type Category = {
+    id: string
+    name: string
+    slug: string
+    created_at: string
+    hidden_in_portal: boolean
+}
+
+export type Collection = {
+    id: string
+    name: string
+    slug: string
+    created_at: string
+    hidden_in_portal: boolean
+}
+
 // Generic Row helper (usage: Row<'items'>)
 export type Row<T extends keyof Database['public']['Tables']> =
     Database['public']['Tables'][T]['Row']
