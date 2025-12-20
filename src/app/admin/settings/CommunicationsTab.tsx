@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, RefObject } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -35,6 +35,7 @@ interface CommunicationsTabProps {
         company_header: string
         bank_info: string
     }>
+    onSwitchToBilling?: () => void
 }
 
 // Sample data for previews (English)
@@ -116,22 +117,22 @@ Ivy's Rental & Wholesale`,
 
 type SubTab = 'approval' | 'shipping' | 'invoice'
 
-export default function CommunicationsTab({ initialSettings, billingProfiles }: CommunicationsTabProps) {
+export default function CommunicationsTab({ initialSettings, billingProfiles, onSwitchToBilling }: CommunicationsTabProps) {
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('approval')
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
     // Approval Email state
-    const [approvalBody, setApprovalBody] = useState(initialSettings.email_approval_body || '')
-    const [approvalFooter, setApprovalFooter] = useState(initialSettings.email_footer || '')
+    const [approvalBody, setApprovalBody] = useState(initialSettings.email_approval_body || DEFAULTS.approvalBody)
+    const [approvalFooter, setApprovalFooter] = useState(initialSettings.email_footer || DEFAULTS.approvalFooter)
 
     // Shipping Email state
-    const [shippingSubject, setShippingSubject] = useState(initialSettings.email_shipping_subject || '')
-    const [shippingBody, setShippingBody] = useState(initialSettings.email_shipping_body || '')
-    const [shippingFooter, setShippingFooter] = useState(initialSettings.email_shipping_footer || '')
+    const [shippingSubject, setShippingSubject] = useState(initialSettings.email_shipping_subject || DEFAULTS.shippingSubject)
+    const [shippingBody, setShippingBody] = useState(initialSettings.email_shipping_body || DEFAULTS.shippingBody)
+    const [shippingFooter, setShippingFooter] = useState(initialSettings.email_shipping_footer || DEFAULTS.shippingFooter)
 
     // Invoice PDF state
-    const [invoiceFooter, setInvoiceFooter] = useState(initialSettings.invoice_footer_text || '')
+    const [invoiceFooter, setInvoiceFooter] = useState(initialSettings.invoice_footer_text || DEFAULTS.invoiceFooter)
     const [invoiceNotes, setInvoiceNotes] = useState(initialSettings.invoice_notes_default || '')
 
     // Test email dialog
@@ -140,9 +141,29 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
     const [testEmailAddress, setTestEmailAddress] = useState('')
     const [sendingTest, setSendingTest] = useState(false)
 
-    // Refs for textarea cursor positioning
+    // Refs for form fields - used for click-to-focus from preview
     const approvalBodyRef = useRef<HTMLTextAreaElement>(null)
+    const approvalFooterRef = useRef<HTMLTextAreaElement>(null)
+    const shippingSubjectRef = useRef<HTMLInputElement>(null)
     const shippingBodyRef = useRef<HTMLTextAreaElement>(null)
+    const shippingFooterRef = useRef<HTMLTextAreaElement>(null)
+    const invoiceFooterRef = useRef<HTMLInputElement>(null)
+    const invoiceNotesRef = useRef<HTMLTextAreaElement>(null)
+
+    // Focus with visual flash effect for click-to-focus feature
+    // Includes blue ring + yellow background flash for maximum visibility
+    function focusWithFlash(ref: RefObject<HTMLElement | null>) {
+        if (!ref.current) return
+        ref.current.focus()
+        // Blue ring
+        ref.current.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2')
+        // Yellow background flash
+        ref.current.style.backgroundColor = '#fef9c3' // bg-yellow-100
+        setTimeout(() => {
+            ref.current?.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2')
+            if (ref.current) ref.current.style.backgroundColor = ''
+        }, 1000)
+    }
 
     async function handleSave() {
         setLoading(true)
@@ -292,6 +313,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                                     <Textarea
                                         id="approval-footer"
                                         name="approval-footer"
+                                        ref={approvalFooterRef}
                                         value={approvalFooter}
                                         onChange={(e) => setApprovalFooter(e.target.value)}
                                         placeholder={DEFAULTS.approvalFooter}
@@ -309,6 +331,8 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                             type="approval"
                             body={approvalBody || DEFAULTS.approvalBody}
                             footer={approvalFooter || DEFAULTS.approvalFooter}
+                            onClickBody={() => focusWithFlash(approvalBodyRef)}
+                            onClickFooter={() => focusWithFlash(approvalFooterRef)}
                         />
                         <div className="mt-4">
                             <Button
@@ -367,6 +391,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                                     <Input
                                         id="shipping-subject"
                                         name="shipping-subject"
+                                        ref={shippingSubjectRef}
                                         value={shippingSubject}
                                         onChange={(e) => setShippingSubject(e.target.value)}
                                         placeholder={DEFAULTS.shippingSubject}
@@ -395,6 +420,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                                     <Textarea
                                         id="shipping-footer"
                                         name="shipping-footer"
+                                        ref={shippingFooterRef}
                                         value={shippingFooter}
                                         onChange={(e) => setShippingFooter(e.target.value)}
                                         placeholder={DEFAULTS.shippingFooter}
@@ -413,6 +439,9 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                             subject={shippingSubject || DEFAULTS.shippingSubject}
                             body={shippingBody || DEFAULTS.shippingBody}
                             footer={shippingFooter || DEFAULTS.shippingFooter}
+                            onClickSubject={() => focusWithFlash(shippingSubjectRef)}
+                            onClickBody={() => focusWithFlash(shippingBodyRef)}
+                            onClickFooter={() => focusWithFlash(shippingFooterRef)}
                         />
                         <div className="mt-4">
                             <Button
@@ -470,6 +499,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                                     <Textarea
                                         id="invoice-notes"
                                         name="invoice-notes"
+                                        ref={invoiceNotesRef}
                                         value={invoiceNotes}
                                         onChange={(e) => setInvoiceNotes(e.target.value)}
                                         placeholder="Optional notes to include on every invoice..."
@@ -487,6 +517,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                                     <Input
                                         id="invoice-footer"
                                         name="invoice-footer"
+                                        ref={invoiceFooterRef}
                                         value={invoiceFooter}
                                         onChange={(e) => setInvoiceFooter(e.target.value)}
                                         placeholder={DEFAULTS.invoiceFooter}
@@ -503,6 +534,9 @@ export default function CommunicationsTab({ initialSettings, billingProfiles }: 
                             billingProfile={billingProfiles[0]}
                             footerText={invoiceFooter || DEFAULTS.invoiceFooter}
                             notes={invoiceNotes}
+                            onClickNotes={() => focusWithFlash(invoiceNotesRef)}
+                            onClickFooter={() => focusWithFlash(invoiceFooterRef)}
+                            onSwitchToBilling={onSwitchToBilling}
                         />
                     </div>
                 </div>
@@ -566,13 +600,17 @@ interface EmailPreviewProps {
     subject?: string
     body: string
     footer: string
+    onClickSubject?: () => void
+    onClickBody?: () => void
+    onClickFooter?: () => void
 }
 
-function EmailPreview({ type, subject, body, footer }: EmailPreviewProps) {
+function EmailPreview({ type, subject, body, footer, onClickSubject, onClickBody, onClickFooter }: EmailPreviewProps) {
     return (
         <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-4">
                 <CardTitle className="text-lg font-light">Live Preview</CardTitle>
+                <CardDescription className="text-xs text-blue-600">Click any field to edit</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden max-w-md mx-auto font-[-apple-system,BlinkMacSystemFont,Segoe_UI,Roboto,Helvetica_Neue,Arial,sans-serif]">
@@ -584,14 +622,23 @@ function EmailPreview({ type, subject, body, footer }: EmailPreviewProps) {
                         <div>
                             <div className="text-sm font-medium text-gray-900">Ivy's Rental</div>
                             {subject && (
-                                <div className="text-xs text-gray-500">{replaceWithPreviewData(subject)}</div>
+                                <div
+                                    onClick={onClickSubject}
+                                    className={onClickSubject ? "text-xs text-gray-500 cursor-pointer hover:bg-blue-50 hover:outline hover:outline-2 hover:outline-blue-200 rounded px-1 -mx-1 transition-all" : "text-xs text-gray-500"}
+                                >
+                                    {replaceWithPreviewData(subject)}
+                                </div>
                             )}
                         </div>
                     </div>
 
                     {/* Email Body */}
                     <div className="px-6 py-6 space-y-4 text-sm text-gray-600 leading-relaxed font-[-apple-system,BlinkMacSystemFont,Segoe_UI,Roboto,Helvetica_Neue,Arial,sans-serif]">
-                        <div className="whitespace-pre-wrap" style={{ lineHeight: '1.6' }}>
+                        <div
+                            onClick={onClickBody}
+                            className={onClickBody ? "whitespace-pre-wrap cursor-pointer hover:bg-blue-50 hover:outline hover:outline-2 hover:outline-blue-200 rounded p-2 -m-2 transition-all" : "whitespace-pre-wrap"}
+                            style={{ lineHeight: '1.6' }}
+                        >
                             {replaceWithPreviewData(body)}
                         </div>
 
@@ -632,7 +679,10 @@ function EmailPreview({ type, subject, body, footer }: EmailPreviewProps) {
                     </div>
 
                     {/* Email Footer */}
-                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                    <div
+                        onClick={onClickFooter}
+                        className={onClickFooter ? "px-6 py-4 bg-gray-50 border-t border-gray-100 cursor-pointer hover:bg-blue-50 transition-all" : "px-6 py-4 bg-gray-50 border-t border-gray-100"}
+                    >
                         <div className="whitespace-pre-wrap text-xs text-gray-500">
                             {replaceWithPreviewData(footer)}
                         </div>
@@ -651,16 +701,26 @@ interface InvoicePdfPreviewProps {
     }
     footerText: string
     notes: string
+    onClickNotes?: () => void
+    onClickFooter?: () => void
+    onSwitchToBilling?: () => void
 }
 
-function InvoicePdfPreview({ billingProfile, footerText, notes }: InvoicePdfPreviewProps) {
+function InvoicePdfPreview({ billingProfile, footerText, notes, onClickNotes, onClickFooter, onSwitchToBilling }: InvoicePdfPreviewProps) {
+    // Determine content with fallbacks
+    const hasCompanyHeader = !!billingProfile?.company_header
     const companyHeader = billingProfile?.company_header || "Ivy's Rental & Wholesale\n123 Fashion Ave, New York, NY"
+
+    const hasBankInfo = !!billingProfile?.bank_info
     const bankInfo = billingProfile?.bank_info || "Chase Bank\nAccount: 1234567890\nRouting: 098765432"
 
     return (
         <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-4">
                 <CardTitle className="text-lg font-light">Invoice Preview</CardTitle>
+                <CardDescription className="text-xs text-blue-600">
+                    Click blue fields to edit here, dashed fields to edit in Billing
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 {/* PDF-like container */}
@@ -670,13 +730,30 @@ function InvoicePdfPreview({ billingProfile, footerText, notes }: InvoicePdfPrev
                         <div className="flex justify-between items-start mb-6 pb-4 border-b border-gray-200">
                             <div>
                                 <h1 className="text-lg font-bold text-gray-900 mb-2">INVOICE</h1>
-                                <div className="text-gray-500 whitespace-pre-line text-[10px]">
+                                <div
+                                    className="text-gray-500 whitespace-pre-line text-[10px] cursor-pointer hover:border-dashed hover:border-gray-400 border border-transparent p-1 -m-1 rounded transition-all group relative"
+                                    onClick={onSwitchToBilling}
+                                    title="Click to edit in Billing Profiles"
+                                >
                                     {companyHeader}
+                                    <div className="absolute top-0 right-0 hidden group-hover:block bg-gray-800 text-white text-[9px] px-1 rounded shadow-sm whitespace-nowrap z-10 pointer-events-none">
+                                        Edit in Billing Profiles →
+                                    </div>
                                 </div>
                             </div>
                             <div className="text-right text-gray-600">
-                                <div>Invoice #: {PREVIEW_DATA.invoiceId}</div>
-                                <div>Date: Dec 20, 2024</div>
+                                <div className="group relative cursor-help">
+                                    Invoice #: {PREVIEW_DATA.invoiceId}
+                                    <div className="hidden group-hover:block absolute right-0 bg-gray-800 text-white text-[9px] p-2 rounded shadow-lg z-10 w-40 text-left pointer-events-none">
+                                        Invoice numbers are generated automatically based on reservation ID.
+                                    </div>
+                                </div>
+                                <div className="group relative cursor-help mt-1">
+                                    Date: Dec 20, 2024
+                                    <div className="hidden group-hover:block absolute right-0 bg-gray-800 text-white text-[9px] p-2 rounded shadow-lg z-10 w-40 text-left pointer-events-none">
+                                        Date is generated automatically when invoice is created.
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -720,22 +797,33 @@ function InvoicePdfPreview({ billingProfile, footerText, notes }: InvoicePdfPrev
                         {/* Payment Info */}
                         <div className="mb-4">
                             <h2 className="text-[10px] font-semibold text-gray-700 mb-1 uppercase tracking-wider">Payment Instructions</h2>
-                            <div className="text-gray-500 text-[10px] whitespace-pre-line">
+                            <div
+                                className="text-gray-500 text-[10px] whitespace-pre-line cursor-pointer hover:border-dashed hover:border-gray-400 border border-transparent p-1 -m-1 rounded transition-all group relative"
+                                onClick={onSwitchToBilling}
+                                title="Click to edit in Billing Profiles"
+                            >
                                 {bankInfo}
+                                <div className="absolute top-0 right-0 hidden group-hover:block bg-gray-800 text-white text-[9px] px-1 rounded shadow-sm whitespace-nowrap z-10 pointer-events-none">
+                                    Edit in Billing Profiles →
+                                </div>
                             </div>
                         </div>
 
                         {/* Notes */}
-                        {notes && (
-                            <div className="mb-4">
-                                <h2 className="text-[10px] font-semibold text-gray-700 mb-1 uppercase tracking-wider">Notes</h2>
-                                <div className="text-gray-500 text-[10px]">{notes}</div>
-                            </div>
-                        )}
+                        <div
+                            onClick={onClickNotes}
+                            className={onClickNotes ? "mb-4 cursor-pointer hover:bg-blue-50 hover:outline hover:outline-2 hover:outline-blue-200 rounded p-1 -m-1 transition-all" : "mb-4"}
+                        >
+                            <h2 className="text-[10px] font-semibold text-gray-700 mb-1 uppercase tracking-wider">Notes</h2>
+                            <div className="text-gray-500 text-[10px]">{notes || '(click to add notes)'}</div>
+                        </div>
 
                         {/* Footer */}
-                        <div className="mt-auto pt-4 text-center text-gray-400 text-[10px]">
-                            {footerText}
+                        <div
+                            onClick={onClickFooter}
+                            className={onClickFooter ? "mt-auto pt-4 text-center text-gray-400 text-[10px] cursor-pointer hover:bg-blue-50 hover:outline hover:outline-2 hover:outline-blue-300 rounded p-1 transition-all border border-transparent" : "mt-auto pt-4 text-center text-gray-400 text-[10px]"}
+                        >
+                            {footerText || <span className="text-gray-300 italic">(click to add footer text)</span>}
                         </div>
                     </div>
                 </div>

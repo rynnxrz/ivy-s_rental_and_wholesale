@@ -39,8 +39,8 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                     <button
                         onClick={() => setActiveTab('billing')}
                         className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'billing'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-gray-900 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Billing Profiles
@@ -48,8 +48,8 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                     <button
                         onClick={() => setActiveTab('communications')}
                         className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'communications'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-gray-900 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Communications
@@ -57,8 +57,8 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                     <button
                         onClick={() => setActiveTab('system')}
                         className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'system'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-gray-900 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         System
@@ -90,6 +90,7 @@ export default function SettingsClient({ initialTab, settings, billingProfiles }
                         company_header: p.company_header,
                         bank_info: p.bank_info,
                     }))}
+                    onSwitchToBilling={() => setActiveTab('billing')}
                 />
             )}
 
