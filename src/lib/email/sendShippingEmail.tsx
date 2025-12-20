@@ -18,6 +18,22 @@ interface SendShippingEmailParams {
     attachments: EmailAttachment[];
     companyName?: string;
     replyTo?: string;
+    customSubject?: string | null;
+    customBody?: string | null;
+    customFooter?: string | null;
+}
+
+// Replace placeholders in subject line
+function replaceSubjectPlaceholders(
+    template: string,
+    values: Record<string, string>
+): string {
+    let result = template;
+    for (const [key, value] of Object.entries(values)) {
+        const placeholder = `{{${key}}}`;
+        result = result.replaceAll(placeholder, value);
+    }
+    return result;
 }
 
 export async function sendShippingEmail({
@@ -30,15 +46,23 @@ export async function sendShippingEmail({
     attachments,
     companyName,
     replyTo,
+    customSubject,
+    customBody,
+    customFooter,
 }: SendShippingEmailParams) {
     try {
         const fromName = companyName ? `${companyName}` : 'Ivy Rental';
+
+        // Process subject line with placeholders
+        const subject = customSubject
+            ? replaceSubjectPlaceholders(customSubject, { customerName, itemName, reservationId, startDate, endDate })
+            : `Order Dispatched: ${itemName}`;
 
         const { data, error } = await resend.emails.send({
             from: `${fromName} <invoice@shipbyx.com>`,
             to: toIndices,
             replyTo: replyTo || undefined,
-            subject: `Order Dispatched: ${itemName}`,
+            subject,
             react: <ShippingEmailTemplate
                 customerName={customerName}
                 itemName={itemName}
@@ -47,6 +71,8 @@ export async function sendShippingEmail({
                 reservationId={reservationId}
                 companyName={companyName}
                 attachmentCount={attachments.length}
+                customBody={customBody}
+                customFooter={customFooter}
             />,
             attachments: attachments.map(att => ({
                 filename: att.filename,

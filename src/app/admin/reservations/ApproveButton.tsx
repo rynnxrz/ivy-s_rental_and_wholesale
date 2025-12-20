@@ -33,6 +33,7 @@ interface ApproveButtonProps {
     customerEmail?: string
     customerCompany?: string
     billingProfiles: BillingProfile[]
+    itemImageUrl?: string
 }
 
 export function ApproveButton({
@@ -43,7 +44,8 @@ export function ApproveButton({
     customerName = 'Guest',
     customerEmail = 'N/A',
     customerCompany,
-    billingProfiles
+    billingProfiles,
+    itemImageUrl
 }: ApproveButtonProps) {
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -178,13 +180,27 @@ export function ApproveButton({
                         {/* Line Items */}
                         <div className="mb-8">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Reservation Details</h3>
-                            <div className="flex justify-between py-2 border-b border-gray-50">
-                                <div>
-                                    <span className="font-medium text-gray-900">{itemName}</span>
-                                    <div className="text-xs text-gray-500">Rental Period ({days} days)</div>
-                                </div>
-                                <div className="text-right">
-                                    <span>${rentalPrice.toFixed(2)}/day</span>
+                            <div className="flex gap-3 py-2 border-b border-gray-50">
+                                {/* Item Thumbnail */}
+                                {itemImageUrl ? (
+                                    <img
+                                        src={itemImageUrl}
+                                        alt={itemName}
+                                        className="w-12 h-12 object-cover rounded border border-gray-200"
+                                    />
+                                ) : (
+                                    <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                                        No img
+                                    </div>
+                                )}
+                                <div className="flex-1 flex justify-between">
+                                    <div>
+                                        <span className="font-medium text-gray-900">{itemName}</span>
+                                        <div className="text-xs text-gray-500">Rental Period ({days} days)</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span>${rentalPrice.toFixed(2)}/day</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

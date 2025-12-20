@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import SettingsForm from './SettingsForm'
-import ProfileList from './ProfileList'
+import SettingsClient from './SettingsClient'
 import type { BillingProfile } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +20,7 @@ export default async function SettingsPage() {
 
     if (profile?.role !== 'admin') redirect('/')
 
-    // 2. Fetch App Settings (for system config like turnaround_buffer)
+    // 2. Fetch App Settings
     let { data: settings } = await supabase
         .from('app_settings')
         .select('*')
@@ -38,6 +37,11 @@ export default async function SettingsPage() {
             booking_password: '',
             email_approval_body: '',
             email_footer: '',
+            email_shipping_subject: '',
+            email_shipping_body: '',
+            email_shipping_footer: '',
+            invoice_company_header: '',
+            invoice_notes_default: '',
         }
     }
 
@@ -49,14 +53,22 @@ export default async function SettingsPage() {
         .order('created_at', { ascending: true })
 
     return (
-        <div className="max-w-4xl mx-auto py-8 space-y-8">
-            <h1 className="text-3xl font-light text-gray-900">Settings</h1>
-
-            {/* Section 1: Billing Profiles */}
-            <ProfileList profiles={(billingProfiles || []) as BillingProfile[]} />
-
-            {/* Section 2: System Settings */}
-            <SettingsForm initialSettings={settings} />
-        </div>
+        <SettingsClient
+            initialTab="billing"
+            settings={{
+                contact_email: settings.contact_email,
+                email_approval_body: settings.email_approval_body,
+                email_footer: settings.email_footer,
+                email_shipping_subject: settings.email_shipping_subject,
+                email_shipping_body: settings.email_shipping_body,
+                email_shipping_footer: settings.email_shipping_footer,
+                invoice_company_header: settings.invoice_company_header,
+                invoice_footer_text: settings.invoice_footer_text,
+                invoice_notes_default: settings.invoice_notes_default,
+                turnaround_buffer: settings.turnaround_buffer ?? 1,
+                booking_password: settings.booking_password,
+            }}
+            billingProfiles={(billingProfiles || []) as BillingProfile[]}
+        />
     )
 }

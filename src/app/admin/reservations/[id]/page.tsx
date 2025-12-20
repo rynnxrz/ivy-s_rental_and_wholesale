@@ -86,6 +86,7 @@ export default async function RequestDetailPage(props: Props) {
                                 customerEmail={customer?.email}
                                 customerCompany={customer?.company_name}
                                 billingProfiles={billingProfiles || []}
+                                itemImageUrl={item?.image_paths?.[0]}
                             />
                         )}
                         {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}

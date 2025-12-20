@@ -1,7 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { generateInvoicePdf } from '@/lib/pdf/generateInvoice'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
 import { sendApprovalEmail } from '@/lib/email/sendApprovalEmail'
 import { sendShippingEmail } from '@/lib/email/sendShippingEmail'
 import { revalidatePath } from 'next/cache'
@@ -224,8 +224,6 @@ export async function updateSettings(formData: FormData) {
     const turnaround_buffer = parseInt(formData.get('turnaround_buffer') as string)
     const contact_email = formData.get('contact_email') as string || null
     const booking_password = formData.get('booking_password') as string || null
-    const email_approval_body = formData.get('email_approval_body') as string || null
-    const email_footer = formData.get('email_footer') as string || null
 
     if (isNaN(turnaround_buffer) || turnaround_buffer < 0) {
         return { error: 'Please enter a valid turnaround buffer' }
@@ -236,7 +234,7 @@ export async function updateSettings(formData: FormData) {
         return { error: 'Please enter a valid email address for Reply-To' }
     }
 
-    // 3. Update DB
+    // 3. Update DB (only system settings)
     const { error } = await supabase
         .from('app_settings')
         .upsert({
@@ -244,8 +242,6 @@ export async function updateSettings(formData: FormData) {
             turnaround_buffer,
             contact_email,
             booking_password,
-            email_approval_body,
-            email_footer
         })
 
     if (error) {
@@ -273,8 +269,6 @@ export async function approveReservation(reservationId: string, profileId: strin
     if (profile?.role !== 'admin') return { error: 'Forbidden' }
 
     // 2. Fetch Reservation
-    // (Using logic from previous steps to handle company_name gracefully if needed)
-    // For brevity, assuming standard fetch now
     const { data: reservation, error: fetchError } = await supabase
         .from('reservations')
         .select(`
@@ -316,30 +310,46 @@ export async function approveReservation(reservationId: string, profileId: strin
     // Fetch settings for Reply-To and email templates
     const settings = await getAppSettings(supabase)
 
-    // Get item's first image URL for PDF thumbnail
-    const itemImageUrl = item?.image_paths?.[0] || undefined
+    // 5. Fetch item image from Supabase storage and convert to Base64
+    // Use service role client for guaranteed access to storage
+    let imageBase64: string | undefined
+    if (item?.image_paths?.[0]) {
+        try {
+            const serviceClient = createServiceClient()
+            imageBase64 = await fetchImageAsBase64(serviceClient, 'rental_items', item.image_paths[0])
+        } catch (e) {
+            console.warn('Could not fetch item image for PDF:', e)
+        }
+    }
+
+    // 6. Build items array (currently single item, but structured for future batch support)
+    const invoiceItems: InvoiceItem[] = [{
+        name: item?.name ?? 'Unknown Item',
+        sku: item?.sku ?? 'N/A',
+        rentalPrice: item?.rental_price ?? 0,
+        days,
+        startDate: format(start, 'MMM dd, yyyy'),
+        endDate: format(end, 'MMM dd, yyyy'),
+        imageBase64,
+    }]
 
     try {
         const pdfBuffer = await generateInvoicePdf({
             invoiceId,
             date: format(new Date(), 'MMM dd, yyyy'),
-            customerName: customer?.full_name,
-            customerEmail: customer?.email,
+            customerName: customer?.full_name ?? 'Customer',
+            customerEmail: customer?.email ?? '',
             customerCompany: customer?.company_name,
-            itemName: item?.name,
-            sku: item?.sku,
-            rentalPrice: item?.rental_price,
-            days,
-            startDate: format(start, 'MMM dd, yyyy'),
-            endDate: format(end, 'MMM dd, yyyy'),
-            // Use billing profile data instead of app_settings
+            items: invoiceItems,
             companyName: billingProfile.company_header,
             companyEmail: billingProfile.contact_email,
             bankInfo: billingProfile.bank_info,
             footerText: 'Thank you for your business!',
             notes,
-            itemImageUrl,
         })
+
+        // Calculate total for email
+        const totalPrice = invoiceItems.reduce((sum, i) => sum + (i.rentalPrice * i.days), 0)
 
         await sendApprovalEmail({
             toIndices: [customer?.email],
@@ -348,7 +358,7 @@ export async function approveReservation(reservationId: string, profileId: strin
             startDate: format(start, 'MMM dd, yyyy'),
             endDate: format(end, 'MMM dd, yyyy'),
             totalDays: days,
-            totalPrice: item?.rental_price * days,
+            totalPrice,
             reservationId: reservation.id,
             invoicePdfBuffer: pdfBuffer,
             invoiceId,
@@ -455,7 +465,10 @@ export async function markAsShipped(reservationId: string) {
             reservationId: reservation.id,
             attachments,
             companyName: settings?.company_name,
-            replyTo: settings?.contact_email || undefined
+            replyTo: settings?.contact_email || undefined,
+            customSubject: settings?.email_shipping_subject || undefined,
+            customBody: settings?.email_shipping_body || undefined,
+            customFooter: settings?.email_shipping_footer || undefined,
         })
     } catch (e) {
         console.error('Shipping email failed:', e)

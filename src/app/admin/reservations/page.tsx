@@ -37,7 +37,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         .from('reservations')
         .select(`
             *,
-            items (name, sku, rental_price),
+            items (name, sku, rental_price, image_paths),
             profiles:renter_id (full_name, email, company_name)
         `)
         .order('created_at', { ascending: false })
@@ -228,6 +228,7 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
                                                 customerEmail={r.profiles?.email}
                                                 customerCompany={r.profiles?.company_name}
                                                 billingProfiles={billingProfiles}
+                                                itemImageUrl={r.items?.image_paths?.[0]}
                                             />
                                             <ArchiveButton reservationId={r.id} />
                                         </>
