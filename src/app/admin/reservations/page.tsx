@@ -6,6 +6,7 @@ import { ApproveButton } from './ApproveButton'
 import { DispatchButton } from './DispatchButton'
 import { ArchiveButton } from './ArchiveButton'
 import { RestoreButton } from './RestoreButton'
+import { FileCheck } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,9 +37,25 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         .select(`
             *,
             items (name, sku, rental_price),
-            profiles:customer_id (full_name, email, company_name)
+            profiles:renter_id (full_name, email, company_name)
         `)
         .order('created_at', { ascending: false })
+
+    // Fetch app settings for invoice preview
+    let { data: settings } = await supabase
+        .from('app_settings')
+        .select('*')
+        .single()
+
+    // Default settings fallback
+    if (!settings) {
+        settings = {
+            company_name: "Ivy's Rental",
+            bank_account_info: '',
+            invoice_footer_text: '',
+            contact_email: '',
+        }
+    }
 
     if (filter === 'action_required') {
         query = query.in('status', ['pending', 'confirmed', 'active'])
@@ -84,7 +101,9 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
             </div>
 
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <ReservationsTable reservations={reservations || []} />
+                <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <ReservationsTable reservations={reservations || []} settings={settings} />
+                </div>
             </div>
         </div>
     )
@@ -107,7 +126,7 @@ function FilterTab({ label, active, href }: { label: string, active: boolean, hr
     )
 }
 
-function ReservationsTable({ reservations }: { reservations: any[] }) {
+function ReservationsTable({ reservations, settings }: { reservations: any[], settings: any }) {
     if (reservations.length === 0) {
         return (
             <div className="p-12 text-center text-gray-400">
@@ -190,7 +209,16 @@ function ReservationsTable({ reservations }: { reservations: any[] }) {
                                 <div className="flex flex-col gap-2 items-end opacity-80 group-hover:opacity-100 transition-opacity">
                                     {status === 'pending' && (
                                         <>
-                                            <ApproveButton reservationId={r.id} />
+                                            <ApproveButton
+                                                reservationId={r.id}
+                                                itemName={r.items?.name}
+                                                rentalPrice={r.items?.rental_price}
+                                                days={days}
+                                                customerName={r.profiles?.full_name}
+                                                customerEmail={r.profiles?.email}
+                                                customerCompany={r.profiles?.company_name}
+                                                settings={settings}
+                                            />
                                             <ArchiveButton reservationId={r.id} />
                                         </>
                                     )}
@@ -242,8 +270,16 @@ function StatusBadge({ status }: { status: string }) {
     const label = labels[status] || status
 
     return (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}>
-            {label}
-        </span>
+        <div className="flex flex-col gap-1">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}>
+                {label}
+            </span>
+            {status === 'confirmed' && (
+                <span className="inline-flex items-center gap-1 text-xs text-blue-600" title="Invoice Sent">
+                    <FileCheck className="h-3 w-3" />
+                    Invoice Sent
+                </span>
+            )}
+        </div>
     )
 }

@@ -40,6 +40,23 @@ The goal is a "Single-man MVP": prioritize simplicity, stability, and maintainab
 - **Feedback:** Use `sonner` or `toast` for user feedback.
 - **Loading:** Use `Suspense` boundaries and Skeleton loaders.
 
+# 5. User Roles & Testing Credentials
+
+## Roles & Permissions
+- **Admin**: 
+  - **Account**: `rynnxrz@gmail.com` / `6-xfu5P$cw+5/TN`
+  - **Responsibilities**: Inventory management, reservation approval/archiving, and testing "Voice Management" features.
+  - **UI Expectation**: Should see "Admin Dashboard", "Inventory Upload", and "Archive" actions.
+- **Customer**: 
+  - **Account**: `shipbyx@gmail.com` / `admin`
+  - **Responsibilities**: Browsing jewelry, checking availability, and sending "Rental Requests".
+  - **UI Expectation**: Clean catalog view, "Request to Rent" flow. No access to inventory editing.
+
+## Testing Guidelines
+- When writing Server Actions or RLS policies, always verify against these two roles.
+- **Admin Logic**: Use `is_admin()` helper (or check if email is `rynnxrz@gmail.com`) to gate sensitive operations.
+- **Voice Management**: This is an Admin-only experimental feature for managing inventory via voice commands.
+
 # "Single-man MVP" Mindset
 - **No Over-engineering:** Do not suggest Microservices, complex state management (Redux), or Stripe integration.
 - **Bank Transfer Only:** The flow is Invoice -> Bank Transfer -> Manual "Mark as Paid".

@@ -65,7 +65,7 @@ export async function updateSettings(formData: FormData) {
     return { success: true }
 }
 
-export async function approveReservation(reservationId: string) {
+export async function approveReservation(reservationId: string, notes?: string) {
     const supabase = await createClient()
 
     // 1. Auth Check
@@ -134,6 +134,7 @@ export async function approveReservation(reservationId: string) {
             companyEmail: settings?.contact_email,
             bankInfo: settings?.bank_account_info,
             footerText: settings?.invoice_footer_text,
+            notes,
         })
 
         await sendApprovalEmail({

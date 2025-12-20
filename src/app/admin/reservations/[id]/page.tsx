@@ -70,7 +70,15 @@ export default async function RequestDetailPage(props: Props) {
                             {status}
                         </span>
 
-                        {status === 'pending' && <ApproveButton reservationId={reservation.id} />}
+                        {status === 'pending' && (
+                            <ApproveButton
+                                reservationId={reservation.id}
+                                itemName={item?.name}
+                                rentalPrice={item?.rental_price}
+                                days={Math.round((new Date(reservation.end_date).getTime() - new Date(reservation.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1}
+                                customerEmail={customer?.email}
+                            />
+                        )}
                         {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}
 
                         <span className="text-gray-400 text-sm">Created {format(new Date(reservation.created_at), 'PPP')}</span>

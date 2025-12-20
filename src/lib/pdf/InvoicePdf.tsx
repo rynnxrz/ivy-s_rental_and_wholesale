@@ -82,8 +82,9 @@ interface InvoiceProps {
     companyName?: string;
     companyAddress?: string; // Not in DB yet, but maybe hardcoded or future
     companyEmail?: string;
-    bankInfo?: string; // New
-    footerText?: string; // New
+    bankInfo?: string;
+    footerText?: string;
+    notes?: string; // Admin notes to display on invoice
 }
 
 export const InvoicePdf = ({
@@ -102,6 +103,7 @@ export const InvoicePdf = ({
     companyEmail = "contact@ivysrental.com",
     bankInfo,
     footerText = "Thank you for your business!",
+    notes,
 }: InvoiceProps) => {
     const total = rentalPrice * days;
 
@@ -173,6 +175,16 @@ export const InvoicePdf = ({
                         {'\n'}Please include Invoice #{invoiceId} in the memo.
                     </Text>
                 </View>
+
+                {/* Notes Section */}
+                {notes && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Notes</Text>
+                        <Text style={{ fontSize: 10, lineHeight: 1.5, color: '#555' }}>
+                            {notes}
+                        </Text>
+                    </View>
+                )}
 
                 <View style={styles.footer}>
                     <Text>{footerText}</Text>
