@@ -20,7 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Upload, X, Plus } from 'lucide-react'
 import { createItem, updateItem, uploadItemImage } from '@/actions/items'
-import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types/database.types'
+import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
 
 const itemSchema = z.object({
     sku: z.string().min(1, 'SKU is required'),

@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { createBillingProfile, updateBillingProfile, deleteBillingProfile, setDefaultProfile } from '@/app/admin/actions'
 import { Loader2, Star, Pencil, Trash2, Plus } from 'lucide-react'
-import type { BillingProfile } from '@/types/database.types'
+import type { BillingProfile } from '@/types'
 
 interface ProfileListProps {
     profiles: BillingProfile[]

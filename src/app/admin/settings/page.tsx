@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import SettingsForm from './SettingsForm'
 import ProfileList from './ProfileList'
-import type { BillingProfile } from '@/types/database.types'
+import type { BillingProfile } from '@/types'
 
 export const dynamic = 'force-dynamic'
 

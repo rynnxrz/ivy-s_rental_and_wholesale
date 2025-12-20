@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ItemInsert, ItemUpdate } from '@/types/database.types'
+import type { ItemInsert, ItemUpdate } from '@/types'
 
 export async function getItems() {
     const supabase = await createClient()

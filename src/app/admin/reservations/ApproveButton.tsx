@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Loader2, FileText, Star } from 'lucide-react'
-import type { BillingProfile } from '@/types/database.types'
+import type { BillingProfile } from '@/types'
 
 interface ApproveButtonProps {
     reservationId: string

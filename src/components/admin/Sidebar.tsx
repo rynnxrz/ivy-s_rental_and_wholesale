@@ -12,8 +12,8 @@ import {
     Settings,
     LogOut,
     Gem,
-    ChevronLeft,
-    ChevronRight
+    PanelLeftClose,
+    PanelLeftOpen
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -59,20 +59,6 @@ export const Sidebar = () => {
                 isCollapsed ? 'w-16' : 'w-64'
             )}
         >
-            {/* Toggle Button */}
-            <Button
-                variant="ghost"
-                size="icon"
-                className="absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border bg-white shadow-sm hover:bg-slate-100"
-                onClick={toggleCollapse}
-            >
-                {isCollapsed ? (
-                    <ChevronRight className="h-3 w-3" />
-                ) : (
-                    <ChevronLeft className="h-3 w-3" />
-                )}
-            </Button>
-
             {/* Logo */}
             <div className={cn(
                 'flex h-16 items-center gap-2 overflow-hidden',
@@ -140,6 +126,26 @@ export const Sidebar = () => {
                 >
                     <LogOut className="h-4 w-4 flex-shrink-0" />
                     {!isCollapsed && <span>Sign Out</span>}
+                </Button>
+
+                <Separator className="my-2" />
+
+                {/* Sidebar Toggle */}
+                <Button
+                    variant="ghost"
+                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                    className={cn(
+                        'w-full py-2 text-sm font-medium text-slate-400 hover:bg-slate-100 hover:text-slate-900',
+                        isCollapsed ? 'justify-center px-2' : 'justify-start gap-3 px-3'
+                    )}
+                    onClick={toggleCollapse}
+                >
+                    {isCollapsed ? (
+                        <PanelLeftOpen className="h-4 w-4 flex-shrink-0" />
+                    ) : (
+                        <PanelLeftClose className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    {!isCollapsed && <span>Collapse Sidebar</span>}
                 </Button>
             </div>
         </aside>

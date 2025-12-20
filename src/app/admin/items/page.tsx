@@ -19,7 +19,7 @@ import {
     TableRow,
 } from '@/components/ui/table'
 import { Plus, Edit, Package } from 'lucide-react'
-import type { Item } from '@/types/database.types'
+import type { Item } from '@/types'
 import { DeleteItemButton } from './DeleteItemButton'
 
 const statusVariant = (status: Item['status']) => {

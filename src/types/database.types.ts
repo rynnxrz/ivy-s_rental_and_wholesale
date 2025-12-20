@@ -1,198 +1,264 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
   public: {
     Tables: {
-      billing_profiles: {
+      app_settings: {
         Row: {
-          id: string
-          profile_name: string
-          company_header: string
-          bank_info: string
+          bank_info: string | null
+          company_name: string | null
           contact_email: string | null
-          is_default: boolean
-          created_at: string
-          updated_at: string
+          footer_text: string | null
+          id: number
+          turnaround_buffer: number | null
+          updated_at: string | null
         }
         Insert: {
-          id?: string
-          profile_name: string
-          company_header: string
-          bank_info: string
+          bank_info?: string | null
+          company_name?: string | null
           contact_email?: string | null
-          is_default?: boolean
-          created_at?: string
-          updated_at?: string
+          footer_text?: string | null
+          id?: number
+          turnaround_buffer?: number | null
+          updated_at?: string | null
         }
         Update: {
-          id?: string
-          profile_name?: string
-          company_header?: string
-          bank_info?: string
+          bank_info?: string | null
+          company_name?: string | null
           contact_email?: string | null
-          is_default?: boolean
-          created_at?: string
-          updated_at?: string
+          footer_text?: string | null
+          id?: number
+          turnaround_buffer?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      billing_profiles: {
+        Row: {
+          bank_info: string
+          company_header: string
+          contact_email: string | null
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          profile_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          bank_info: string
+          company_header: string
+          contact_email?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          profile_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          bank_info?: string
+          company_header?: string
+          contact_email?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          profile_name?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
       items: {
         Row: {
-          id: string
-          sku: string
-          name: string
-          description: string | null
           category: string | null
-          specs: Json
+          created_at: string | null
+          description: string | null
+          id: string
+          image_paths: string[] | null
+          name: string
+          owner_id: string | null
           rental_price: number
           replacement_cost: number
-          image_paths: string[]
-          status: 'active' | 'maintenance' | 'retired'
-          created_at: string
-          updated_at: string
+          sku: string | null
+          specs: Json | null
+          status: string | null
         }
         Insert: {
-          id?: string
-          sku: string
-          name: string
-          description?: string | null
           category?: string | null
-          specs?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_paths?: string[] | null
+          name: string
+          owner_id?: string | null
           rental_price: number
-          replacement_cost: number
-          image_paths?: string[]
-          status?: 'active' | 'maintenance' | 'retired'
-          created_at?: string
-          updated_at?: string
+          replacement_cost?: number
+          sku?: string | null
+          specs?: Json | null
+          status?: string | null
         }
         Update: {
-          id?: string
-          sku?: string
-          name?: string
-          description?: string | null
           category?: string | null
-          specs?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_paths?: string[] | null
+          name?: string
+          owner_id?: string | null
           rental_price?: number
           replacement_cost?: number
-          image_paths?: string[]
-          status?: 'active' | 'maintenance' | 'retired'
-          created_at?: string
-          updated_at?: string
+          sku?: string | null
+          specs?: Json | null
+          status?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "items_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
-          id: string
-          email: string
-          full_name: string | null
-          phone: string | null
+          avatar_url: string | null
           company_name: string | null
-          role: 'admin' | 'customer'
-          created_at: string
-          updated_at: string
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          role: string | null
         }
         Insert: {
-          id: string
-          email: string
-          full_name?: string | null
-          phone?: string | null
+          avatar_url?: string | null
           company_name?: string | null
-          role?: 'admin' | 'customer'
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          role?: string | null
         }
         Update: {
-          id?: string
-          email?: string
-          full_name?: string | null
-          phone?: string | null
+          avatar_url?: string | null
           company_name?: string | null
-          role?: 'admin' | 'customer'
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          role?: string | null
         }
         Relationships: []
       }
       reservations: {
         Row: {
-          id: string
-          item_id: string
+          created_at: string | null
           customer_id: string | null
-          renter_id: string | null
-          start_date: string
-          end_date: string
-          status: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
-          notes: string | null
-          created_at: string
-          updated_at: string
           dispatch_image_paths: string[] | null
           dispatch_notes: string | null
+          end_date: string
+          id: string
+          item_id: string
+          renter_id: string
           return_image_paths: string[] | null
           return_notes: string | null
+          start_date: string
+          status: Database["public"]["Enums"]["reservation_status"] | null
         }
         Insert: {
+          created_at?: string | null
+          customer_id?: string | null
+          dispatch_image_paths?: string[] | null
+          dispatch_notes?: string | null
+          end_date: string
           id?: string
           item_id: string
-          customer_id?: string | null
-          renter_id?: string | null
-          start_date: string
-          end_date: string
-          status?: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
-          dispatch_image_paths?: string[] | null
-          dispatch_notes?: string | null
+          renter_id: string
           return_image_paths?: string[] | null
           return_notes?: string | null
+          start_date: string
+          status?: Database["public"]["Enums"]["reservation_status"] | null
         }
         Update: {
-          id?: string
-          item_id?: string
+          created_at?: string | null
           customer_id?: string | null
-          renter_id?: string | null
-          start_date?: string
-          end_date?: string
-          status?: 'pending' | 'confirmed' | 'active' | 'returned' | 'cancelled'
-          notes?: string | null
-          created_at?: string
-          updated_at?: string
           dispatch_image_paths?: string[] | null
           dispatch_notes?: string | null
+          end_date?: string
+          id?: string
+          item_id?: string
+          renter_id?: string
           return_image_paths?: string[] | null
           return_notes?: string | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["reservation_status"] | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "reservations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservations_renter_id_fkey"
+            columns: ["renter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      is_admin: {
-        Args: Record<string, never>
-        Returns: boolean
-      }
-      is_item_available: {
+      check_item_availability: {
         Args: {
+          p_end_date: string
+          p_exclude_reservation_id?: string
           p_item_id: string
-          p_start_at: string
-          p_end_at: string
-          p_exclude_reservation_id?: string | null
+          p_start_date: string
         }
         Returns: boolean
       }
-      get_available_items: {
-        Args: {
-          p_start_at: string
-          p_end_at: string
-        }
-        Returns: Database['public']['Tables']['items']['Row'][]
+      get_unavailable_date_ranges: {
+        Args: { p_item_id: string }
+        Returns: {
+          end_date: string
+          start_date: string
+        }[]
       }
+      is_admin: { Args: never; Returns: boolean }
+      restore_reservation: { Args: { p_reservation_id: string }; Returns: Json }
     }
     Enums: {
-      [_ in never]: never
+      reservation_status:
+        | "pending"
+        | "confirmed"
+        | "cancelled"
+        | "active"
+        | "returned"
+        | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -200,63 +266,134 @@ export interface Database {
   }
 }
 
-// ============================================================
-// Convenience Type Aliases
-// ============================================================
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-// Table Row types
-export type Item = Database['public']['Tables']['items']['Row']
-export type ItemInsert = Database['public']['Tables']['items']['Insert']
-export type ItemUpdate = Database['public']['Tables']['items']['Update']
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export type Profile = Database['public']['Tables']['profiles']['Row']
-export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
-export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
-
-export type Reservation = Database['public']['Tables']['reservations']['Row']
-export type ReservationInsert = Database['public']['Tables']['reservations']['Insert']
-export type ReservationUpdate = Database['public']['Tables']['reservations']['Update']
-
-export type BillingProfile = Database['public']['Tables']['billing_profiles']['Row']
-export type BillingProfileInsert = Database['public']['Tables']['billing_profiles']['Insert']
-export type BillingProfileUpdate = Database['public']['Tables']['billing_profiles']['Update']
-
-// Generic Row helper (usage: Row<'items'>)
-export type Row<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Row']
-
-// Generic Insert helper
-export type InsertRow<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Insert']
-
-// Generic Update helper
-export type UpdateRow<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Update']
-
-// ============================================================
-// Domain Types
-// ============================================================
-
-// Item specs type (for JSONB field)
-export interface ItemSpecs {
-  size?: string
-  material?: string
-  stone?: string
-  weight?: string
-  [key: string]: string | undefined
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-// Status options for forms
-export const ITEM_STATUS_OPTIONS = [
-  { value: 'active', label: 'Active' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'retired', label: 'Retired' },
-] as const
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-export const RESERVATION_STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'active', label: 'Active' },
-  { value: 'returned', label: 'Returned' },
-  { value: 'cancelled', label: 'Cancelled' },
-] as const
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      reservation_status: [
+        "pending",
+        "confirmed",
+        "cancelled",
+        "active",
+        "returned",
+        "archived",
+      ],
+    },
+  },
+} as const
