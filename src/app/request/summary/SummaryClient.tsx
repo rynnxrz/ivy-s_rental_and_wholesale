@@ -9,6 +9,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { COUNTRIES } from "@/lib/constants/countries"
 import { Loader2, ArrowLeft, Calendar } from "lucide-react"
 import { submitBulkRequest } from "@/actions/bulkRequest"
 import { toast } from "sonner"
@@ -25,6 +41,14 @@ export function SummaryClient() {
     const [companyName, setCompanyName] = React.useState('')
     const [notes, setNotes] = React.useState('')
     const [accessPassword, setAccessPassword] = React.useState('')
+
+    // Address State
+    const [country, setCountry] = React.useState('')
+    const [cityRegion, setCityRegion] = React.useState('')
+    const [addressLine1, setAddressLine1] = React.useState('')
+    const [addressLine2, setAddressLine2] = React.useState('')
+    const [postcode, setPostcode] = React.useState('')
+    const [openCountry, setOpenCountry] = React.useState(false)
 
     React.useEffect(() => {
         setIsMounted(true)
@@ -56,6 +80,11 @@ export function SummaryClient() {
             return
         }
 
+        if (!country || !cityRegion || !addressLine1 || !postcode) {
+            toast.error("Please fill in all required location and address fields.")
+            return
+        }
+
         setIsSubmitting(true)
         try {
             const result = await submitBulkRequest({
@@ -66,7 +95,12 @@ export function SummaryClient() {
                 notes,
                 start_date: dateRange.from!,
                 end_date: dateRange.to!,
-                access_password: accessPassword
+                access_password: accessPassword,
+                country,
+                city_region: cityRegion,
+                address_line1: addressLine1,
+                address_line2: addressLine2,
+                postcode
             })
 
             if (result.error) {
@@ -138,6 +172,7 @@ export function SummaryClient() {
                                                 alt={item.name}
                                                 fill
                                                 className="object-cover"
+                                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                                             />
                                         </div>
                                         <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
@@ -203,14 +238,107 @@ export function SummaryClient() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="notes">Notes (Optional)</Label>
-                                    <Textarea
-                                        id="notes"
-                                        value={notes}
-                                        onChange={e => setNotes(e.target.value)}
-                                        placeholder="Any special requests or instructions..."
-                                        className="resize-none h-24"
-                                    />
+                                    <div className="pt-6 border-t border-gray-100">
+                                        <h3 className="text-lg font-light text-gray-900 mb-4">Address Details</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 space-y-0">
+                                            <div className="space-y-2">
+                                                <Label>Country/Region</Label>
+                                                <Popover open={openCountry} onOpenChange={setOpenCountry}>
+                                                    <PopoverTrigger asChild>
+                                                        <Button
+                                                            variant="outline"
+                                                            role="combobox"
+                                                            aria-expanded={openCountry}
+                                                            className="w-full justify-between font-normal text-left h-10 px-3 py-2 border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            {country
+                                                                ? COUNTRIES.find((c) => c === country)
+                                                                : "Select country..."}
+                                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[300px] p-0" align="start">
+                                                        <Command>
+                                                            <CommandInput placeholder="Search country..." />
+                                                            <CommandList>
+                                                                <CommandEmpty>No country found.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {COUNTRIES.map((c) => (
+                                                                        <CommandItem
+                                                                            key={c}
+                                                                            value={c}
+                                                                            onSelect={(currentValue: string) => {
+                                                                                setCountry(currentValue === country ? "" : currentValue)
+                                                                                setOpenCountry(false)
+                                                                            }}
+                                                                        >
+                                                                            <Check
+                                                                                className={cn(
+                                                                                    "mr-2 h-4 w-4",
+                                                                                    country === c ? "opacity-100" : "opacity-0"
+                                                                                )}
+                                                                            />
+                                                                            {c}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="cityRegion">City / Town</Label>
+                                                <Input
+                                                    id="cityRegion"
+                                                    value={cityRegion}
+                                                    onChange={e => setCityRegion(e.target.value)}
+                                                    required
+                                                    placeholder="City"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2 space-y-2">
+                                                <Label htmlFor="addressLine1">Street Address</Label>
+                                                <Input
+                                                    id="addressLine1"
+                                                    value={addressLine1}
+                                                    onChange={e => setAddressLine1(e.target.value)}
+                                                    required
+                                                    placeholder="Street address, P.O. box, company name, c/o"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2 space-y-2">
+                                                <Label htmlFor="addressLine2">Apt, Suite, etc. (Optional)</Label>
+                                                <Input
+                                                    id="addressLine2"
+                                                    value={addressLine2}
+                                                    onChange={e => setAddressLine2(e.target.value)}
+                                                    placeholder="Apartment, suite, unit, building, floor, etc."
+                                                />
+                                            </div>
+                                            <div className="md:col-span-1 space-y-2">
+                                                <Label htmlFor="postcode">Postcode / ZIP</Label>
+                                                <Input
+                                                    id="postcode"
+                                                    value={postcode}
+                                                    onChange={e => setPostcode(e.target.value)}
+                                                    required
+                                                    placeholder="ZIP code"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 mt-6">
+                                        <Label htmlFor="notes">Notes (Optional)</Label>
+                                        <Textarea
+                                            id="notes"
+                                            value={notes}
+                                            onChange={e => setNotes(e.target.value)}
+                                            placeholder="Any special requests or instructions..."
+                                            className="resize-none h-24"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="pt-4 border-t border-gray-100">

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server' // Admin page
 import { redirect } from 'next/navigation'
 import { format } from 'date-fns'
 import Link from 'next/link'
@@ -152,6 +152,7 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
                     <th className="px-6 py-4 w-32">Status</th>
                     <th className="px-6 py-4">Item</th>
                     <th className="px-6 py-4">Customer</th>
+                    <th className="px-6 py-4">Location</th>
                     <th className="px-6 py-4">Dates</th>
                     <th className="px-6 py-4 text-right">Amount</th>
                     <th className="px-6 py-4 text-right">Actions</th>
@@ -194,6 +195,15 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
                                 )}
                                 <div className="text-xs text-gray-400 mt-1">
                                     {r.profiles?.email}
+                                </div>
+                            </td>
+                            <td className="px-6 py-4 align-top">
+                                <div className="text-gray-900 text-sm">
+                                    {r.city_region && r.country ? (
+                                        <span>{r.city_region}, {r.country}</span>
+                                    ) : (
+                                        <span className="text-gray-400 italic">No Location</span>
+                                    )}
                                 </div>
                             </td>
                             <td className="px-6 py-4 align-top">
@@ -254,7 +264,7 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
                     )
                 })}
             </tbody>
-        </table>
+        </table >
     )
 }
 

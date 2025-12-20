@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { Toaster } from "@/components/ui/sonner"
 import { RequestFloatingButton } from "@/components/RequestFloatingButton"
+import { Header } from "@/components/Header"
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+
 
         {/* Microsoft Clarity - production only */}
         {process.env.NODE_ENV === "production" && (
@@ -48,6 +49,8 @@ export default function RootLayout({
           </Script>
         )}
         <Toaster />
+        <Header />
+        {children}
         <RequestFloatingButton />
       </body>
     </html>

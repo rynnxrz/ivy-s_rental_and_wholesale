@@ -85,6 +85,12 @@ export default async function RequestDetailPage(props: Props) {
                                 customerName={customer?.full_name}
                                 customerEmail={customer?.email}
                                 customerCompany={customer?.company_name}
+                                customerAddress={[
+                                    reservation.address_line1,
+                                    reservation.address_line2,
+                                    [reservation.city_region, reservation.postcode].filter(Boolean).join(', '),
+                                    reservation.country
+                                ].filter(Boolean)}
                                 billingProfiles={billingProfiles || []}
                                 itemImageUrl={item?.image_paths?.[0]}
                             />
@@ -179,6 +185,20 @@ export default async function RequestDetailPage(props: Props) {
                             <div>
                                 <label className="block text-gray-500 text-xs uppercase tracking-wide">Company</label>
                                 <div className="font-medium">{customer?.company_name || 'N/A'}</div>
+                            </div>
+                            <div>
+                                <label className="block text-gray-500 text-xs uppercase tracking-wide">Address</label>
+                                <div className="font-medium text-gray-900 mt-1">
+                                    {(reservation.address_line1 || reservation.city_region) ? (
+                                        <>
+                                            <p>{reservation.address_line1}{reservation.address_line2 ? `, ${reservation.address_line2}` : ''}</p>
+                                            <p>{reservation.city_region}{reservation.postcode ? `, ${reservation.postcode}` : ''}</p>
+                                            <p>{reservation.country}</p>
+                                        </>
+                                    ) : (
+                                        <p className="text-gray-400 italic">No address provided</p>
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-gray-500 text-xs uppercase tracking-wide">Email</label>

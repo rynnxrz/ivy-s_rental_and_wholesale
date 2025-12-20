@@ -17,8 +17,11 @@ export type Database = {
       app_settings: {
         Row: {
           bank_info: string | null
+          booking_password: string | null
           company_name: string | null
           contact_email: string | null
+          email_approval_body: string | null
+          email_footer: string | null
           footer_text: string | null
           id: number
           turnaround_buffer: number | null
@@ -26,8 +29,11 @@ export type Database = {
         }
         Insert: {
           bank_info?: string | null
+          booking_password?: string | null
           company_name?: string | null
           contact_email?: string | null
+          email_approval_body?: string | null
+          email_footer?: string | null
           footer_text?: string | null
           id?: number
           turnaround_buffer?: number | null
@@ -35,8 +41,11 @@ export type Database = {
         }
         Update: {
           bank_info?: string | null
+          booking_password?: string | null
           company_name?: string | null
           contact_email?: string | null
+          email_approval_body?: string | null
+          email_footer?: string | null
           footer_text?: string | null
           id?: number
           turnaround_buffer?: number | null
@@ -132,46 +141,67 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
           avatar_url: string | null
+          city_region: string | null
           company_name: string | null
+          country: string | null
           created_at: string | null
           email: string | null
           full_name: string | null
           id: string
           organization_domain: string | null
+          postcode: string | null
           role: string | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
           avatar_url?: string | null
+          city_region?: string | null
           company_name?: string | null
+          country?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
           id: string
           organization_domain?: string | null
+          postcode?: string | null
           role?: string | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
           avatar_url?: string | null
+          city_region?: string | null
           company_name?: string | null
+          country?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
           organization_domain?: string | null
+          postcode?: string | null
           role?: string | null
         }
         Relationships: []
       }
       reservations: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city_region: string | null
+          country: string | null
           created_at: string | null
           customer_id: string | null
           dispatch_image_paths: string[] | null
           dispatch_notes: string | null
           end_date: string
+          group_id: string | null
           id: string
           item_id: string
+          postcode: string | null
           renter_id: string
           return_image_paths: string[] | null
           return_notes: string | null
@@ -179,13 +209,19 @@ export type Database = {
           status: Database["public"]["Enums"]["reservation_status"] | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city_region?: string | null
+          country?: string | null
           created_at?: string | null
           customer_id?: string | null
           dispatch_image_paths?: string[] | null
           dispatch_notes?: string | null
           end_date: string
+          group_id?: string | null
           id?: string
           item_id: string
+          postcode?: string | null
           renter_id: string
           return_image_paths?: string[] | null
           return_notes?: string | null
@@ -193,13 +229,19 @@ export type Database = {
           status?: Database["public"]["Enums"]["reservation_status"] | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city_region?: string | null
+          country?: string | null
           created_at?: string | null
           customer_id?: string | null
           dispatch_image_paths?: string[] | null
           dispatch_notes?: string | null
           end_date?: string
+          group_id?: string | null
           id?: string
           item_id?: string
+          postcode?: string | null
           renter_id?: string
           return_image_paths?: string[] | null
           return_notes?: string | null
@@ -243,6 +285,29 @@ export type Database = {
           p_start_date: string
         }
         Returns: boolean
+      }
+      get_available_items: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          image_paths: string[] | null
+          name: string
+          owner_id: string | null
+          rental_price: number
+          replacement_cost: number
+          sku: string | null
+          specs: Json | null
+          status: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_unavailable_date_ranges: {
         Args: { p_item_id: string }

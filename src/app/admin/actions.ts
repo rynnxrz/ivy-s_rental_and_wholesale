@@ -333,6 +333,13 @@ export async function approveReservation(reservationId: string, profileId: strin
         imageBase64,
     }]
 
+    const customerAddress = [
+        reservation.address_line1,
+        reservation.address_line2,
+        [reservation.city_region, reservation.postcode].filter(Boolean).join(', '),
+        reservation.country
+    ].filter(Boolean) as string[]
+
     try {
         const pdfBuffer = await generateInvoicePdf({
             invoiceId,
@@ -340,6 +347,7 @@ export async function approveReservation(reservationId: string, profileId: strin
             customerName: customer?.full_name ?? 'Customer',
             customerEmail: customer?.email ?? '',
             customerCompany: customer?.company_name,
+            customerAddress, // Pass full address
             items: invoiceItems,
             companyName: billingProfile.company_header,
             companyEmail: billingProfile.contact_email,

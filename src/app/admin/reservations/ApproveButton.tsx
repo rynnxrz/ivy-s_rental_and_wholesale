@@ -32,6 +32,7 @@ interface ApproveButtonProps {
     customerName?: string
     customerEmail?: string
     customerCompany?: string
+    customerAddress?: string[] // New Prop
     billingProfiles: BillingProfile[]
     itemImageUrl?: string
 }
@@ -44,6 +45,7 @@ export function ApproveButton({
     customerName = 'Guest',
     customerEmail = 'N/A',
     customerCompany,
+    customerAddress, // New Prop
     billingProfiles,
     itemImageUrl
 }: ApproveButtonProps) {
@@ -174,6 +176,9 @@ export function ApproveButton({
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider">Bill To</h3>
                             <p className="font-medium">{customerName}</p>
                             {customerCompany && <p className="text-indigo-600 text-xs">{customerCompany}</p>}
+                            {customerAddress && customerAddress.map((line, i) => (
+                                <p key={i} className="text-gray-600">{line}</p>
+                            ))}
                             <p className="text-gray-600">{customerEmail}</p>
                         </div>
 

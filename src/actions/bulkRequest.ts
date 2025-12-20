@@ -17,6 +17,12 @@ interface BulkRequestData {
     start_date: string
     end_date: string
     access_password?: string
+    // Address Fields
+    country: string
+    city_region: string
+    address_line1: string
+    address_line2?: string
+    postcode: string
 }
 
 function extractOrganizationDomain(email: string): string | null {
@@ -42,6 +48,9 @@ export async function submitBulkRequest(data: BulkRequestData) {
     if (!data.items || data.items.length === 0) return { error: 'No items selected.' }
     if (!isValidEmail(data.email)) return { error: 'Invalid email format.' }
     if (!data.start_date || !data.end_date) return { error: 'Invalid dates.' }
+    if (!data.country || !data.city_region || !data.address_line1 || !data.postcode) {
+        return { error: 'Missing address information.' }
+    }
 
     // 2. Access Password Check
     const { data: settings } = await supabase
@@ -70,7 +79,17 @@ export async function submitBulkRequest(data: BulkRequestData) {
 
     if (existingProfile) {
         profileId = existingProfile.id
-        // Update org domain if needed? (Keeping simple for now as per previous logic)
+        // Update profile with latest info
+        await supabase.from('profiles').update({
+            full_name: data.full_name,
+            company_name: data.company_name || null,
+            // Update address
+            country: data.country,
+            city_region: data.city_region,
+            address_line1: data.address_line1,
+            address_line2: data.address_line2 || null,
+            postcode: data.postcode
+        }).eq('id', profileId)
     } else {
         const newId = crypto.randomUUID()
         const { error: createError } = await supabase.from('profiles').insert({
@@ -79,7 +98,13 @@ export async function submitBulkRequest(data: BulkRequestData) {
             full_name: data.full_name,
             company_name: data.company_name || null,
             organization_domain: organizationDomain,
-            role: 'customer'
+            role: 'customer',
+            // Address
+            country: data.country,
+            city_region: data.city_region,
+            address_line1: data.address_line1,
+            address_line2: data.address_line2 || null,
+            postcode: data.postcode
         })
         if (createError) {
             console.error('Profile create failed:', createError)
@@ -97,7 +122,17 @@ export async function submitBulkRequest(data: BulkRequestData) {
         end_date: data.end_date,
         status: 'pending',
         group_id: groupId,
-        dispatch_notes: data.notes ? `Request Notes: ${data.notes}` : null
+        dispatch_notes: data.notes ? `Request Notes: ${data.notes}` : null,
+        // Save snapshot of address to reservation logic (if needed per earlier design)
+        // or rely on profile. 
+        // Based on user request "ensure addresses are correctly displayed in admin views",
+        // updating profile is key. If reservations table also has address columns (migration 00016),
+        // we should save them there too for historical accuracy.
+        country: data.country,
+        city_region: data.city_region,
+        address_line1: data.address_line1,
+        address_line2: data.address_line2 || null,
+        postcode: data.postcode
     }))
 
     const { error: insertError } = await supabase

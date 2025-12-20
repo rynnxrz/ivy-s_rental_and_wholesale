@@ -1,31 +1,39 @@
-import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
-import { CatalogClient } from './CatalogClient'
+import Link from 'next/link'
 
-// Force dynamic rendering to ensure we always get latest items
-export const dynamic = 'force-dynamic'
-
-export default async function Home() {
-  const supabase = await createClient()
-
-  const { data: items, error } = await supabase
-    .from('items')
-    .select('id, name, category, rental_price, image_paths, status')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('Error fetching items:', error)
-    return <div className="p-8 text-center text-red-500">Failed to load items. Please try again later.</div>
-  }
-
+export default function Home() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
-      </div>
-    }>
-      <CatalogClient initialItems={items || []} />
-    </Suspense>
+    <main className="min-h-screen bg-white flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-gray-100">
+
+      {/* RENTAL */}
+      <Link href="/catalog" className="flex-1 group relative flex items-center justify-center min-h-[33vh] md:min-h-screen hover:bg-gray-50 transition-colors duration-500">
+        <div className="text-center z-10 p-8">
+          <h2 className="text-3xl md:text-4xl font-light tracking-[0.2em] text-gray-900 mb-4 group-hover:scale-110 transition-transform duration-500">RENTAL</h2>
+          <p className="text-xs text-gray-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
+            Current Collection
+          </p>
+        </div>
+      </Link>
+
+      {/* WHOLESALE */}
+      <Link href="/wholesale" className="flex-1 group relative flex items-center justify-center min-h-[33vh] md:min-h-screen hover:bg-gray-50 transition-colors duration-500">
+        <div className="text-center z-10 p-8">
+          <h2 className="text-3xl md:text-4xl font-light tracking-[0.2em] text-gray-900 mb-4 group-hover:scale-110 transition-transform duration-500">WHOLESALE</h2>
+          <p className="text-xs text-gray-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
+            For Partners
+          </p>
+        </div>
+      </Link>
+
+      {/* ARCHIVE */}
+      <Link href="/archive" className="flex-1 group relative flex items-center justify-center min-h-[33vh] md:min-h-screen hover:bg-gray-50 transition-colors duration-500">
+        <div className="text-center z-10 p-8">
+          <h2 className="text-3xl md:text-4xl font-light tracking-[0.2em] text-gray-900 mb-4 group-hover:scale-110 transition-transform duration-500">ARCHIVE</h2>
+          <p className="text-xs text-gray-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
+            Past Collection
+          </p>
+        </div>
+      </Link>
+
+    </main>
   )
 }

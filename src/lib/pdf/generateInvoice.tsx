@@ -12,6 +12,7 @@ interface GenerateInvoiceParams {
     customerName: string;
     customerCompany?: string;
     customerEmail: string;
+    customerAddress?: string[]; // New field
     items: InvoiceItem[];
     companyName?: string;
     companyEmail?: string;
@@ -129,6 +130,7 @@ interface LegacyGenerateInvoiceParams {
     customerName: string;
     customerCompany?: string;
     customerEmail: string;
+    customerAddress?: string[];
     itemName: string;
     sku: string;
     rentalPrice: number;
@@ -164,6 +166,7 @@ export async function generateInvoicePdfLegacy(params: LegacyGenerateInvoicePara
         customerName: params.customerName,
         customerCompany: params.customerCompany,
         customerEmail: params.customerEmail,
+        customerAddress: params.customerAddress,
         items: [item],
         companyName: params.companyName,
         companyEmail: params.companyEmail,

@@ -220,6 +220,7 @@ export interface InvoiceProps {
     customerName: string;
     customerCompany?: string;
     customerEmail: string;
+    customerAddress?: string[]; // Array of strings for multi-line address
     items: InvoiceItem[];
     companyName?: string;
     companyEmail?: string;
@@ -234,6 +235,7 @@ export const InvoicePdf = ({
     customerName,
     customerCompany,
     customerEmail,
+    customerAddress,
     items,
     companyName = "Ivy's Rental & Wholesale",
     companyEmail = "contact@ivysrental.com",
@@ -268,7 +270,10 @@ export const InvoicePdf = ({
                     <View style={styles.billToContent}>
                         <Text style={styles.customerName}>{customerName}</Text>
                         {customerCompany && <Text>{customerCompany}</Text>}
-                        <Text style={{ color: '#666' }}>{customerEmail}</Text>
+                        {customerAddress && customerAddress.map((line, i) => (
+                            <Text key={i}>{line}</Text>
+                        ))}
+                        <Text style={{ color: '#666', marginTop: 2 }}>{customerEmail}</Text>
                     </View>
                 </View>
 
