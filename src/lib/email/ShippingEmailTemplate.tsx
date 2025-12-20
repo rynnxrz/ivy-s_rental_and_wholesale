@@ -6,7 +6,7 @@ interface ShippingEmailTemplateProps {
     startDate: string;
     endDate: string;
     reservationId: string;
-    evidenceLinks: string[];
+    attachmentCount: number;
     companyName?: string;
 }
 
@@ -16,7 +16,7 @@ export const ShippingEmailTemplate: React.FC<Readonly<ShippingEmailTemplateProps
     startDate,
     endDate,
     reservationId,
-    evidenceLinks,
+    attachmentCount,
     companyName = "Ivy's Rental & Wholesale",
 }) => (
     <div style={{ fontFamily: 'sans-serif', lineHeight: '1.5', color: '#333' }}>
@@ -33,31 +33,12 @@ export const ShippingEmailTemplate: React.FC<Readonly<ShippingEmailTemplateProps
             </ul>
         </div>
 
-        {evidenceLinks.length > 0 && (
-            <div style={{ margin: '20px 0' }}>
-                <p><strong>Pre-Shipment Confirmation:</strong></p>
-                <p>We have uploaded photos of the item condition before shipping. Please review them here:</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                    {evidenceLinks.map((link, index) => (
-                        <a
-                            key={index}
-                            href={link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                                display: 'inline-block',
-                                padding: '8px 16px',
-                                backgroundColor: '#0070f3',
-                                color: '#fff',
-                                textDecoration: 'none',
-                                borderRadius: '4px',
-                                fontSize: '14px'
-                            }}
-                        >
-                            View Evidence Photo {index + 1}
-                        </a>
-                    ))}
-                </div>
+        {attachmentCount > 0 && (
+            <div style={{ margin: '20px 0', padding: '15px', backgroundColor: '#e8f4fd', borderRadius: '4px', borderLeft: '4px solid #0070f3' }}>
+                <p style={{ margin: 0 }}>
+                    <strong>📎 Pre-Shipment Documentation:</strong><br />
+                    Please see the <strong>{attachmentCount} attached photo{attachmentCount > 1 ? 's' : ''}</strong> showing the item condition at the time of dispatch.
+                </p>
             </div>
         )}
 

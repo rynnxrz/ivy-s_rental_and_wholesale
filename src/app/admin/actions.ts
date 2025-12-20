@@ -372,12 +372,42 @@ export async function markAsShipped(reservationId: string) {
 
     if (fetchError || !reservation) return { error: 'Reservation not found' }
 
-    const evidence = reservation.dispatch_image_paths
+    const evidence: string[] = reservation.dispatch_image_paths
     if (!evidence || evidence.length === 0) {
         return { error: 'Cannot dispatch: No evidence photos uploaded.' }
     }
 
-    // 3. Update Status to Active
+    // 3. Download images from storage as attachments
+    const attachments: { filename: string; content: Buffer }[] = []
+    for (let i = 0; i < evidence.length; i++) {
+        const path = evidence[i]
+        const { data: blob, error: downloadError } = await supabase
+            .storage
+            .from('evidence')
+            .download(path)
+
+        if (downloadError || !blob) {
+            console.error(`Failed to download evidence ${path}:`, downloadError)
+            continue // Skip failed downloads but continue with others
+        }
+
+        // Convert Blob to Buffer
+        const arrayBuffer = await blob.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+
+        // Extract file extension from path
+        const ext = path.split('.').pop() || 'jpg'
+        attachments.push({
+            filename: `dispatch-photo-${i + 1}.${ext}`,
+            content: buffer
+        })
+    }
+
+    if (attachments.length === 0) {
+        return { error: 'Failed to download any evidence photos' }
+    }
+
+    // 4. Update Status to Active
     const { error: updateError } = await supabase
         .from('reservations')
         .update({ status: 'active' })
@@ -385,7 +415,7 @@ export async function markAsShipped(reservationId: string) {
 
     if (updateError) return { error: 'Failed to update status' }
 
-    // 4. Send Email
+    // 5. Send Email with attachments
     const settings = await getAppSettings(supabase)
     // @ts-ignore
     const customer = Array.isArray(reservation.profiles) ? reservation.profiles[0] : reservation.profiles
@@ -400,7 +430,7 @@ export async function markAsShipped(reservationId: string) {
             startDate: format(new Date(reservation.start_date), 'MMM dd, yyyy'),
             endDate: format(new Date(reservation.end_date), 'MMM dd, yyyy'),
             reservationId: reservation.id,
-            evidenceLinks: evidence,
+            attachments,
             companyName: settings?.company_name
         })
     } catch (e) {

@@ -3,6 +3,11 @@ import { ShippingEmailTemplate } from './ShippingEmailTemplate';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+interface EmailAttachment {
+    filename: string;
+    content: Buffer;
+}
+
 interface SendShippingEmailParams {
     toIndices: string[];
     customerName: string;
@@ -10,7 +15,7 @@ interface SendShippingEmailParams {
     startDate: string;
     endDate: string;
     reservationId: string;
-    evidenceLinks: string[];
+    attachments: EmailAttachment[];
     companyName?: string;
 }
 
@@ -21,7 +26,7 @@ export async function sendShippingEmail({
     startDate,
     endDate,
     reservationId,
-    evidenceLinks,
+    attachments,
     companyName,
 }: SendShippingEmailParams) {
     try {
@@ -37,9 +42,13 @@ export async function sendShippingEmail({
                 startDate={startDate}
                 endDate={endDate}
                 reservationId={reservationId}
-                evidenceLinks={evidenceLinks}
                 companyName={companyName}
+                attachmentCount={attachments.length}
             />,
+            attachments: attachments.map(att => ({
+                filename: att.filename,
+                content: att.content,
+            })),
         });
 
         if (error) {
