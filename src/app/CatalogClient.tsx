@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { format, parse } from "date-fns"
-import { Calendar as CalendarIcon, X, ShoppingBag } from "lucide-react"
+import { Calendar as CalendarIcon, X, ShoppingBag, Plus } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
@@ -17,6 +17,8 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
+import { useRequestStore } from "@/store/request"
+import { toast } from "sonner"
 
 interface Item {
     id: string
@@ -51,6 +53,37 @@ export function CatalogClient({ initialItems }: CatalogClientProps) {
         }
         return undefined
     })
+
+    const { dateRange: globalDateRange, setDateRange: setGlobalDateRange, addItem, hasItem } = useRequestStore()
+    const [isMounted, setIsMounted] = React.useState(false)
+
+    React.useEffect(() => {
+        setIsMounted(true)
+    }, [])
+
+    // Sync from Global Store on mount if URL is empty but Store is not
+    React.useEffect(() => {
+        const from = searchParams.get('from')
+        const to = searchParams.get('to')
+        if (!from && !to && globalDateRange.from && globalDateRange.to) {
+            setDate({
+                from: parse(globalDateRange.from, 'yyyy-MM-dd', new Date()),
+                to: parse(globalDateRange.to, 'yyyy-MM-dd', new Date())
+            })
+        }
+    }, []) // Run once on mount
+
+    // Sync to Global Store when date changes
+    React.useEffect(() => {
+        if (date?.from && date?.to) {
+            setGlobalDateRange({
+                from: format(date.from, 'yyyy-MM-dd'),
+                to: format(date.to, 'yyyy-MM-dd')
+            })
+        } else if (!date) {
+            setGlobalDateRange({ from: null, to: null })
+        }
+    }, [date, setGlobalDateRange])
 
     const [items, setItems] = React.useState<Item[]>(initialItems)
     const [isLoading, setIsLoading] = React.useState(false)
@@ -290,15 +323,31 @@ export function CatalogClient({ initialItems }: CatalogClientProps) {
                                 {/* Action button: Add to Request */}
                                 <div className="mt-4">
                                     {hasDateSelected ? (
-                                        <Link
-                                            href={`/catalog/${item.id}?start=${format(date!.from!, 'yyyy-MM-dd')}&end=${format(date!.to!, 'yyyy-MM-dd')}`}
-                                            className="block"
-                                        >
-                                            <Button className="w-full gap-2">
+                                        isMounted && hasItem(item.id) ? (
+                                            <Button className="w-full gap-2 bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
                                                 <ShoppingBag className="h-4 w-4" />
+                                                Added to Request
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                className="w-full gap-2"
+                                                onClick={(e) => {
+                                                    e.preventDefault()
+                                                    addItem({
+                                                        id: item.id,
+                                                        name: item.name,
+                                                        category: item.category,
+                                                        rental_price: item.rental_price,
+                                                        image_paths: item.image_paths,
+                                                        status: item.status
+                                                    })
+                                                    toast.success("Item added to request list")
+                                                }}
+                                            >
+                                                <Plus className="h-4 w-4" />
                                                 Add to Request
                                             </Button>
-                                        </Link>
+                                        )
                                     ) : (
                                         <Button
                                             variant="outline"

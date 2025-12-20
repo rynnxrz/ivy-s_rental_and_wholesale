@@ -17,12 +17,18 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
+import { useRequestStore } from "@/store/request"
+import { toast } from "sonner"
+import { parse } from "date-fns"
 
 interface BookingFormProps {
     item: {
         id: string
         name: string
+        category: string
         rental_price: number
+        image_paths: string[] | null
+        status: string
     }
 }
 
@@ -43,6 +49,31 @@ export function BookingForm({ item }: BookingFormProps) {
 
     const [reservedDates, setReservedDates] = React.useState<{ from: Date; to: Date }[]>([])
     const [bufferDates, setBufferDates] = React.useState<{ from: Date; to: Date }[]>([])
+
+    const { dateRange: globalDateRange, addItem, hasItem } = useRequestStore()
+    const isGlobalDateMode = !!(globalDateRange.from && globalDateRange.to)
+    const [isMounted, setIsMounted] = React.useState(false)
+
+    React.useEffect(() => {
+        setIsMounted(true)
+    }, [])
+
+    // Initial date set from global store (only once)
+    React.useEffect(() => {
+        if (globalDateRange.from && globalDateRange.to && !date) {
+            setDate({
+                from: parse(globalDateRange.from, 'yyyy-MM-dd', new Date()),
+                to: parse(globalDateRange.to, 'yyyy-MM-dd', new Date())
+            })
+        }
+    }, [globalDateRange, date])
+
+    const handleAddToRequest = () => {
+        if (!isAvailable) return
+
+        addItem(item)
+        toast.success("Item added to request list")
+    }
 
     // Fetch unavailable dates and buffer on mount or when item changes
     React.useEffect(() => {
@@ -141,6 +172,10 @@ export function BookingForm({ item }: BookingFormProps) {
 
     const handleRequestBooking = async () => {
         if (!date?.from || !date?.to || !isAvailable) return
+
+        // If in global date mode, this button acts as "Add to List" (though UI changes, logic double check)
+        // actually we will render different buttons.
+
         if (!email.trim() || !fullName.trim()) {
             setMessage({ type: 'error', text: 'Please fill in your email and name.' })
             return
@@ -269,7 +304,11 @@ export function BookingForm({ item }: BookingFormProps) {
             )}
 
             {/* Guest Contact Form */}
-            {isAvailable && (
+            {/* Guest Contact Form - Only show if NOT in global mode (or if we want to confirm per item? User said "Add to Request List" button. 
+                Usually multi-select means we request once at the end. 
+                So hiding the single-item contact form makes sense if we are in global mode.) 
+            */}
+            {isAvailable && !isGlobalDateMode && (
                 <div className="space-y-4 border-t pt-6">
                     <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
                         Your Contact Information
@@ -322,14 +361,24 @@ export function BookingForm({ item }: BookingFormProps) {
                 </div>
             )}
 
-            <Button
-                className="w-full h-12 uppercase tracking-widest text-sm"
-                disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
-                onClick={handleRequestBooking}
-            >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSubmitting ? 'Submitting...' : 'Request Booking'}
-            </Button>
+            {isGlobalDateMode ? (
+                <Button
+                    className="w-full h-12 uppercase tracking-widest text-sm"
+                    disabled={!isAvailable || (isMounted && hasItem(item.id))}
+                    onClick={handleAddToRequest}
+                >
+                    {isMounted && hasItem(item.id) ? "Added to List" : "Add to Request List"}
+                </Button>
+            ) : (
+                <Button
+                    className="w-full h-12 uppercase tracking-widest text-sm"
+                    disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
+                    onClick={handleRequestBooking}
+                >
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSubmitting ? 'Submitting...' : 'Request Booking'}
+                </Button>
+            )}
 
             {message && (
                 <div className={cn(
