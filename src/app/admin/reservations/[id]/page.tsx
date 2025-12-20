@@ -37,10 +37,16 @@ export default async function RequestDetailPage(props: Props) {
     if (error || !reservation) {
         console.error('Fetch error details for ID:', params.id)
         console.error(JSON.stringify(error, null, 2))
-        // also log the select string to debug
         console.error('Query used:', select)
         notFound()
     }
+
+    // Fetch billing profiles for approval modal
+    const { data: billingProfiles } = await supabase
+        .from('billing_profiles')
+        .select('*')
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
 
     // @ts-ignore
     const item = reservation.items
@@ -76,7 +82,10 @@ export default async function RequestDetailPage(props: Props) {
                                 itemName={item?.name}
                                 rentalPrice={item?.rental_price}
                                 days={Math.round((new Date(reservation.end_date).getTime() - new Date(reservation.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1}
+                                customerName={customer?.full_name}
                                 customerEmail={customer?.email}
+                                customerCompany={customer?.company_name}
+                                billingProfiles={billingProfiles || []}
                             />
                         )}
                         {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}

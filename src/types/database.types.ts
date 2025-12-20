@@ -3,6 +3,39 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export interface Database {
   public: {
     Tables: {
+      billing_profiles: {
+        Row: {
+          id: string
+          profile_name: string
+          company_header: string
+          bank_info: string
+          contact_email: string | null
+          is_default: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          profile_name: string
+          company_header: string
+          bank_info: string
+          contact_email?: string | null
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          profile_name?: string
+          company_header?: string
+          bank_info?: string
+          contact_email?: string | null
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       items: {
         Row: {
           id: string
@@ -183,6 +216,10 @@ export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 export type Reservation = Database['public']['Tables']['reservations']['Row']
 export type ReservationInsert = Database['public']['Tables']['reservations']['Insert']
 export type ReservationUpdate = Database['public']['Tables']['reservations']['Update']
+
+export type BillingProfile = Database['public']['Tables']['billing_profiles']['Row']
+export type BillingProfileInsert = Database['public']['Tables']['billing_profiles']['Insert']
+export type BillingProfileUpdate = Database['public']['Tables']['billing_profiles']['Update']
 
 // Generic Row helper (usage: Row<'items'>)
 export type Row<T extends keyof Database['public']['Tables']> =

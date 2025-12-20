@@ -11,10 +11,18 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Loader2, FileText, Mail } from 'lucide-react'
+import { Loader2, FileText, Star } from 'lucide-react'
+import type { BillingProfile } from '@/types/database.types'
 
 interface ApproveButtonProps {
     reservationId: string
@@ -24,6 +32,7 @@ interface ApproveButtonProps {
     customerName?: string
     customerEmail?: string
     customerCompany?: string
+    billingProfiles: BillingProfile[]
 }
 
 export function ApproveButton({
@@ -34,18 +43,30 @@ export function ApproveButton({
     customerName = 'Guest',
     customerEmail = 'N/A',
     customerCompany,
-    settings
-}: ApproveButtonProps & { settings: any }) {
+    billingProfiles
+}: ApproveButtonProps) {
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
     const [notes, setNotes] = useState('')
+
+    // Find the default profile or use the first one
+    const defaultProfile = billingProfiles.find(p => p.is_default) || billingProfiles[0]
+    const [selectedProfileId, setSelectedProfileId] = useState<string>(defaultProfile?.id || '')
+
+    // Get the currently selected profile for preview
+    const selectedProfile = billingProfiles.find(p => p.id === selectedProfileId)
 
     const totalAmount = rentalPrice * days
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
     const handleApprove = async () => {
+        if (!selectedProfileId) {
+            alert('Please select a billing profile')
+            return
+        }
+
         setLoading(true)
-        const result = await approveReservation(reservationId, notes || undefined)
+        const result = await approveReservation(reservationId, selectedProfileId, notes || undefined)
         setLoading(false)
 
         if (result.error) {
@@ -64,19 +85,17 @@ export function ApproveButton({
         }
     }
 
-    // Default Bank Info if empty (Matching PDF Logic somewhat, but adhering to "True-to-Life" by showing what's in DB primarily)
-    // If DB is empty, PDF generic fallback might kick in during generation, but here we should show what we have or a placeholder indicating it's using defaults.
-    // The requirement says "Payment Instructions / Bank Info (from Settings)".
-    const bankInfo = settings?.bank_account_info || "Bank: Chase Bank\nAccount Name: Ivy's Rental\nAccount Number: 1234567890\nRouting Number: 098765432"
+    // Fallback bank info for display if no profile selected
+    const bankInfo = selectedProfile?.bank_info || "No billing profile selected"
+    const companyHeader = selectedProfile?.company_header || "No billing profile selected"
+    const contactEmail = selectedProfile?.contact_email || ""
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <button
-                    className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
-                >
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                     Review & Invoice
-                </button>
+                </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -99,6 +118,37 @@ export function ApproveButton({
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
+                    {/* BILLING PROFILE SELECTOR - The key new feature */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
+                        <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Select Billing Profile
+                        </Label>
+                        {billingProfiles.length === 0 ? (
+                            <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded border border-amber-200">
+                                No billing profiles found. <a href="/admin/settings" target="_blank" className="underline">Create one in Settings</a> first.
+                            </div>
+                        ) : (
+                            <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                                <SelectTrigger className="w-full bg-white">
+                                    <SelectValue placeholder="Select a billing profile" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {billingProfiles.map((profile) => (
+                                        <SelectItem key={profile.id} value={profile.id}>
+                                            <div className="flex items-center gap-2">
+                                                {profile.is_default && <Star className="h-3 w-3 text-blue-500" />}
+                                                <span>{profile.profile_name}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        <p className="text-xs text-gray-500 mt-2">
+                            Switch profiles to see different payment info in the preview below.
+                        </p>
+                    </div>
+
                     {/* INVOICE PREVIEW CONTAINER - Designed to look like the PDF */}
                     <div className="bg-white border border-gray-200 shadow-sm p-8 text-sm text-gray-800 font-sans">
 
@@ -107,9 +157,8 @@ export function ApproveButton({
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900 mb-2">INVOICE</h1>
                                 <div className="text-gray-500 space-y-0.5">
-                                    <p className="font-medium text-gray-900">{settings?.company_name}</p>
-                                    <p>123 Fashion Ave, New York, NY</p>
-                                    <p>{settings?.contact_email}</p>
+                                    <p className="font-medium text-gray-900 whitespace-pre-wrap">{companyHeader}</p>
+                                    <p>{contactEmail}</p>
                                 </div>
                             </div>
                             <div className="text-right text-gray-500">
@@ -153,7 +202,7 @@ export function ApproveButton({
                             </div>
                         </div>
 
-                        {/* Payment Info */}
+                        {/* Payment Info - THIS NOW UPDATES BASED ON SELECTED PROFILE */}
                         <div className="mb-8 bg-gray-50 p-4 rounded text-xs text-gray-600">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase tracking-wider">Payment Instructions</h3>
                             <p className="whitespace-pre-wrap">{bankInfo}</p>
@@ -170,7 +219,7 @@ export function ApproveButton({
 
                         {/* Footer */}
                         <div className="text-center text-gray-400 text-xs mt-8 pt-4 border-t border-gray-100">
-                            {settings?.invoice_footer_text || "Thank you for your business!"}
+                            Thank you for your business!
                         </div>
                     </div>
 
@@ -194,7 +243,11 @@ export function ApproveButton({
                     <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
                         Cancel
                     </Button>
-                    <Button onClick={handleApprove} disabled={loading} className="bg-green-600 hover:bg-green-700">
+                    <Button
+                        onClick={handleApprove}
+                        disabled={loading || billingProfiles.length === 0}
+                        className="bg-green-600 hover:bg-green-700"
+                    >
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Confirm & Send Invoice
                     </Button>

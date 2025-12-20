@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { RotateCcw, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
 
 export function RestoreButton({ reservationId }: { reservationId: string }) {
     const [loading, setLoading] = useState(false)
@@ -33,10 +34,11 @@ export function RestoreButton({ reservationId }: { reservationId: string }) {
     }
 
     return (
-        <button
+        <Button
             onClick={handleRestore}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
             title="Restore Reservation"
         >
             {loading ? (
@@ -45,6 +47,6 @@ export function RestoreButton({ reservationId }: { reservationId: string }) {
                 <RotateCcw className="h-3 w-3" />
             )}
             Restore
-        </button>
+        </Button>
     )
 }

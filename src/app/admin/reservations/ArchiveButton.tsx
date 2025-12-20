@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Archive, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
 
 export function ArchiveButton({ reservationId }: { reservationId: string }) {
     const [loading, setLoading] = useState(false)
@@ -33,10 +34,11 @@ export function ArchiveButton({ reservationId }: { reservationId: string }) {
     }
 
     return (
-        <button
+        <Button
             onClick={handleArchive}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200 transition-colors disabled:opacity-50 border border-gray-200"
+            variant="outline"
+            size="sm"
             title="Archive Reservation"
         >
             {loading ? (
@@ -45,6 +47,6 @@ export function ArchiveButton({ reservationId }: { reservationId: string }) {
                 <Archive className="h-3 w-3" />
             )}
             Archive
-        </button>
+        </Button>
     )
 }

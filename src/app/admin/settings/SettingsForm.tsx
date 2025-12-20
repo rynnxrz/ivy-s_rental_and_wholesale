@@ -5,21 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { updateSettings } from '@/app/admin/actions'
 import { Loader2 } from 'lucide-react'
-// import { toast } from 'sonner'
-
-// If toast is not available, we can just use alert or a local state message.
-// I'll stick to a simple alert if toast isn't obvious, but likely they have one.
-// Looking at previous code, I didn't see explicit toast usage. I'll use simple state feedback.
 
 interface SettingsFormProps {
     initialSettings: {
-        company_name: string
-        bank_account_info: string
-        invoice_footer_text: string
-        contact_email: string
         turnaround_buffer: number
     }
 }
@@ -46,9 +36,9 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
         <form action={handleSubmit}>
             <Card>
                 <CardHeader>
-                    <CardTitle>Invoice & Company Settings</CardTitle>
+                    <CardTitle>System Settings</CardTitle>
                     <CardDescription>
-                        These details will appear on all generated PDF invoices.
+                        Configure system-wide settings for availability calculations.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -60,17 +50,6 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
                     )}
 
                     <div className="space-y-2">
-                        <Label htmlFor="company_name">Company Name</Label>
-                        <Input
-                            id="company_name"
-                            name="company_name"
-                            defaultValue={initialSettings.company_name}
-                            placeholder="Ivy's Rental"
-                            required
-                        />
-                    </div>
-
-                    <div className="space-y-2">
                         <Label htmlFor="turnaround_buffer">Turnaround Buffer (Days)</Label>
                         <Input
                             id="turnaround_buffer"
@@ -80,48 +59,11 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
                             defaultValue={initialSettings.turnaround_buffer}
                             placeholder="1"
                             required
+                            className="max-w-xs"
                         />
                         <p className="text-xs text-gray-500">
                             Days to block after a reservation for cleaning/restocking.
                         </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="contact_email">Contact Email</Label>
-                        <Input
-                            id="contact_email"
-                            name="contact_email"
-                            type="email"
-                            defaultValue={initialSettings.contact_email}
-                            placeholder="contact@example.com"
-                            required
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="bank_account_info">Bank Account Info</Label>
-                        <Textarea
-                            id="bank_account_info"
-                            name="bank_account_info"
-                            defaultValue={initialSettings.bank_account_info}
-                            placeholder="Bank Name, Account Number, Routing Number, etc."
-                            rows={4}
-                            required
-                        />
-                        <p className="text-xs text-gray-500">
-                            Use newlines to format the bank block nicely on the invoice.
-                        </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="invoice_footer_text">Invoice Footer Text</Label>
-                        <Textarea
-                            id="invoice_footer_text"
-                            name="invoice_footer_text"
-                            defaultValue={initialSettings.invoice_footer_text}
-                            placeholder="Thank you for your business! Terms & Conditions..."
-                            rows={2}
-                        />
                     </div>
 
                     <div className="pt-4 flex justify-end">

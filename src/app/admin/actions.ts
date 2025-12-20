@@ -18,6 +18,193 @@ async function getAppSettings(supabase: any) {
     return settings
 }
 
+// Helper to get a specific billing profile
+async function getBillingProfile(supabase: any, profileId: string) {
+    const { data: profile } = await supabase
+        .from('billing_profiles')
+        .select('*')
+        .eq('id', profileId)
+        .single()
+    return profile
+}
+
+// ============================================================
+// Billing Profile CRUD Actions
+// ============================================================
+
+export async function createBillingProfile(formData: FormData) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Extract form data
+    const profile_name = formData.get('profile_name') as string
+    const company_header = formData.get('company_header') as string
+    const bank_info = formData.get('bank_info') as string
+    const contact_email = formData.get('contact_email') as string
+    const is_default = formData.get('is_default') === 'true'
+
+    if (!profile_name || !company_header || !bank_info) {
+        return { error: 'Profile name, company header, and bank info are required' }
+    }
+
+    // If setting as default, unset other defaults first
+    if (is_default) {
+        await supabase
+            .from('billing_profiles')
+            .update({ is_default: false })
+            .eq('is_default', true)
+    }
+
+    const { error } = await supabase
+        .from('billing_profiles')
+        .insert({
+            profile_name,
+            company_header,
+            bank_info,
+            contact_email: contact_email || null,
+            is_default
+        })
+
+    if (error) {
+        console.error('Create billing profile failed:', error)
+        return { error: 'Failed to create billing profile' }
+    }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}
+
+export async function updateBillingProfile(profileId: string, formData: FormData) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Extract form data
+    const profile_name = formData.get('profile_name') as string
+    const company_header = formData.get('company_header') as string
+    const bank_info = formData.get('bank_info') as string
+    const contact_email = formData.get('contact_email') as string
+
+    if (!profile_name || !company_header || !bank_info) {
+        return { error: 'Profile name, company header, and bank info are required' }
+    }
+
+    const { error } = await supabase
+        .from('billing_profiles')
+        .update({
+            profile_name,
+            company_header,
+            bank_info,
+            contact_email: contact_email || null
+        })
+        .eq('id', profileId)
+
+    if (error) {
+        console.error('Update billing profile failed:', error)
+        return { error: 'Failed to update billing profile' }
+    }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}
+
+export async function deleteBillingProfile(profileId: string) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Check if it's the default profile
+    const { data: targetProfile } = await supabase
+        .from('billing_profiles')
+        .select('is_default')
+        .eq('id', profileId)
+        .single()
+
+    if (targetProfile?.is_default) {
+        return { error: 'Cannot delete the default profile. Set another profile as default first.' }
+    }
+
+    const { error } = await supabase
+        .from('billing_profiles')
+        .delete()
+        .eq('id', profileId)
+
+    if (error) {
+        console.error('Delete billing profile failed:', error)
+        return { error: 'Failed to delete billing profile' }
+    }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}
+
+export async function setDefaultProfile(profileId: string) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Unset all defaults first
+    await supabase
+        .from('billing_profiles')
+        .update({ is_default: false })
+        .eq('is_default', true)
+
+    // Set the new default
+    const { error } = await supabase
+        .from('billing_profiles')
+        .update({ is_default: true })
+        .eq('id', profileId)
+
+    if (error) {
+        console.error('Set default profile failed:', error)
+        return { error: 'Failed to set default profile' }
+    }
+
+    revalidatePath('/admin/settings')
+    return { success: true }
+}
+
 export async function updateSettings(formData: FormData) {
     const supabase = await createClient()
 
@@ -33,15 +220,11 @@ export async function updateSettings(formData: FormData) {
 
     if (profile?.role !== 'admin') return { error: 'Forbidden' }
 
-    // 2. Validate Data
-    const company_name = formData.get('company_name') as string
-    const contact_email = formData.get('contact_email') as string
-    const bank_account_info = formData.get('bank_account_info') as string
-    const invoice_footer_text = formData.get('invoice_footer_text') as string
+    // 2. Validate Data - only turnaround_buffer now (billing moved to profiles)
     const turnaround_buffer = parseInt(formData.get('turnaround_buffer') as string)
 
-    if (!company_name || !contact_email || !bank_account_info || isNaN(turnaround_buffer)) {
-        return { error: 'Please fill in all required fields' }
+    if (isNaN(turnaround_buffer) || turnaround_buffer < 0) {
+        return { error: 'Please enter a valid turnaround buffer' }
     }
 
     // 3. Update DB
@@ -49,10 +232,6 @@ export async function updateSettings(formData: FormData) {
         .from('app_settings')
         .upsert({
             id: true,
-            company_name,
-            contact_email,
-            bank_account_info,
-            invoice_footer_text,
             turnaround_buffer
         })
 
@@ -65,7 +244,7 @@ export async function updateSettings(formData: FormData) {
     return { success: true }
 }
 
-export async function approveReservation(reservationId: string, notes?: string) {
+export async function approveReservation(reservationId: string, profileId: string, notes?: string) {
     const supabase = await createClient()
 
     // 1. Auth Check
@@ -105,8 +284,12 @@ export async function approveReservation(reservationId: string, notes?: string) 
 
     if (updateError) return { error: updateError.message }
 
-    // 4. Invoice & Email
-    const settings = await getAppSettings(supabase)
+    // 4. Get billing profile for invoice generation
+    const billingProfile = await getBillingProfile(supabase, profileId)
+    if (!billingProfile) {
+        return { error: 'Billing profile not found' }
+    }
+
     // @ts-ignore
     const customer = Array.isArray(reservation.profiles) ? reservation.profiles[0] : reservation.profiles
     // @ts-ignore
@@ -130,10 +313,11 @@ export async function approveReservation(reservationId: string, notes?: string) 
             days,
             startDate: format(start, 'MMM dd, yyyy'),
             endDate: format(end, 'MMM dd, yyyy'),
-            companyName: settings?.company_name,
-            companyEmail: settings?.contact_email,
-            bankInfo: settings?.bank_account_info,
-            footerText: settings?.invoice_footer_text,
+            // Use billing profile data instead of app_settings
+            companyName: billingProfile.company_header,
+            companyEmail: billingProfile.contact_email,
+            bankInfo: billingProfile.bank_info,
+            footerText: 'Thank you for your business!',
             notes,
         })
 
@@ -148,7 +332,7 @@ export async function approveReservation(reservationId: string, notes?: string) 
             reservationId: reservation.id,
             invoicePdfBuffer: pdfBuffer,
             invoiceId,
-            companyName: settings?.company_name
+            companyName: billingProfile.company_header
         })
 
     } catch (e) {

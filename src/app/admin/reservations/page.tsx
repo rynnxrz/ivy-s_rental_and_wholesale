@@ -41,21 +41,12 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         `)
         .order('created_at', { ascending: false })
 
-    // Fetch app settings for invoice preview
-    let { data: settings } = await supabase
-        .from('app_settings')
+    // Fetch billing profiles for invoice generation
+    const { data: billingProfiles } = await supabase
+        .from('billing_profiles')
         .select('*')
-        .single()
-
-    // Default settings fallback
-    if (!settings) {
-        settings = {
-            company_name: "Ivy's Rental",
-            bank_account_info: '',
-            invoice_footer_text: '',
-            contact_email: '',
-        }
-    }
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
 
     if (filter === 'action_required') {
         query = query.in('status', ['pending', 'confirmed', 'active'])
@@ -102,7 +93,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
 
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                 <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                    <ReservationsTable reservations={reservations || []} settings={settings} />
+                    <ReservationsTable reservations={reservations || []} billingProfiles={billingProfiles || []} />
                 </div>
             </div>
         </div>
@@ -126,7 +117,7 @@ function FilterTab({ label, active, href }: { label: string, active: boolean, hr
     )
 }
 
-function ReservationsTable({ reservations, settings }: { reservations: any[], settings: any }) {
+function ReservationsTable({ reservations, billingProfiles }: { reservations: any[], billingProfiles: any[] }) {
     if (reservations.length === 0) {
         return (
             <div className="p-12 text-center text-gray-400">
@@ -217,7 +208,7 @@ function ReservationsTable({ reservations, settings }: { reservations: any[], se
                                                 customerName={r.profiles?.full_name}
                                                 customerEmail={r.profiles?.email}
                                                 customerCompany={r.profiles?.company_name}
-                                                settings={settings}
+                                                billingProfiles={billingProfiles}
                                             />
                                             <ArchiveButton reservationId={r.id} />
                                         </>
