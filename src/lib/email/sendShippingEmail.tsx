@@ -17,6 +17,7 @@ interface SendShippingEmailParams {
     reservationId: string;
     attachments: EmailAttachment[];
     companyName?: string;
+    replyTo?: string;
 }
 
 export async function sendShippingEmail({
@@ -28,6 +29,7 @@ export async function sendShippingEmail({
     reservationId,
     attachments,
     companyName,
+    replyTo,
 }: SendShippingEmailParams) {
     try {
         const fromName = companyName ? `${companyName}` : 'Ivy Rental';
@@ -35,6 +37,7 @@ export async function sendShippingEmail({
         const { data, error } = await resend.emails.send({
             from: `${fromName} <invoice@shipbyx.com>`,
             to: toIndices,
+            replyTo: replyTo || undefined,
             subject: `Order Dispatched: ${itemName}`,
             react: <ShippingEmailTemplate
                 customerName={customerName}

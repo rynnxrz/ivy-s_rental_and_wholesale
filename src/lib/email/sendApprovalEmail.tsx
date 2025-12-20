@@ -2,7 +2,6 @@ import { Resend } from 'resend';
 import { EmailTemplate } from './EmailTemplate';
 
 // Initiate Resend client
-// Note: In a real app, ensure process.env.RESEND_API_KEY is set.
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface SendApprovalEmailParams {
@@ -15,8 +14,11 @@ interface SendApprovalEmailParams {
     totalPrice: number;
     reservationId: string;
     invoicePdfBuffer: Buffer;
-    invoiceId: string; // Used for filename
+    invoiceId: string;
     companyName?: string;
+    replyTo?: string;
+    customBody?: string | null;
+    customFooter?: string | null;
 }
 
 export async function sendApprovalEmail({
@@ -31,11 +33,15 @@ export async function sendApprovalEmail({
     invoicePdfBuffer,
     invoiceId,
     companyName,
+    replyTo,
+    customBody,
+    customFooter,
 }: SendApprovalEmailParams) {
     try {
         const { data, error } = await resend.emails.send({
             from: companyName ? `${companyName} <invoice@shipbyx.com>` : 'Ivy Rental <invoice@shipbyx.com>',
             to: toIndices,
+            replyTo: replyTo || undefined,
             subject: `Reservation Approved: ${itemName}`,
             react: <EmailTemplate
                 customerName={customerName}
@@ -45,6 +51,8 @@ export async function sendApprovalEmail({
                 totalDays={totalDays}
                 totalPrice={totalPrice}
                 reservationId={reservationId}
+                customBody={customBody}
+                customFooter={customFooter}
             />,
             attachments: [
                 {

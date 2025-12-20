@@ -5,10 +5,13 @@ import { addDays, format } from "date-fns"
 import { Calendar as CalendarIcon, Loader2 } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
+import { createGuestBooking } from "@/actions/booking"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
     Popover,
     PopoverContent,
@@ -29,6 +32,12 @@ export function BookingForm({ item }: BookingFormProps) {
     const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
     const [isSubmitting, setIsSubmitting] = React.useState(false)
     const [message, setMessage] = React.useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+    // Guest form fields
+    const [email, setEmail] = React.useState('')
+    const [fullName, setFullName] = React.useState('')
+    const [companyName, setCompanyName] = React.useState('')
+    const [accessPassword, setAccessPassword] = React.useState('')
 
     const supabase = createClient()
 
@@ -79,22 +88,18 @@ export function BookingForm({ item }: BookingFormProps) {
         fetchData()
     }, [item.id, supabase])
 
-    // Check availability checking logic (existing) - we can keep this for double safety
-    // or rely on visual blocking. Usually, keeping server-side check is robust.
+    // Check availability logic
     React.useEffect(() => {
         const checkAvailability = async () => {
-            // ... existing logic ...
             if (!date?.from || !date?.to) {
                 setIsAvailable(null)
                 return
             }
 
             // Client-side quick check against fetched disabled dates
-            // If the selected range intersects any reserved OR buffer range, bail early
             const allDisabled = [...reservedDates, ...bufferDates]
             const isBlockedData = allDisabled.some(disabled => {
                 if (!date.from || !date.to) return false
-                // Check intersection: (StartA <= EndB) and (EndA >= StartB)
                 return (date.from <= disabled.to) && (date.to >= disabled.from)
             })
 
@@ -107,13 +112,11 @@ export function BookingForm({ item }: BookingFormProps) {
             setIsAvailable(null)
             setMessage(null)
 
-            // Proceed to server check (handles race conditions, etc)
             const payload = {
                 p_item_id: item.id,
                 p_start_date: format(date.from, 'yyyy-MM-dd'),
                 p_end_date: format(date.to, 'yyyy-MM-dd')
             }
-            console.log('Checking availability with:', payload)
 
             try {
                 const { data, error } = await supabase.rpc('check_item_availability', payload)
@@ -138,38 +141,35 @@ export function BookingForm({ item }: BookingFormProps) {
 
     const handleRequestBooking = async () => {
         if (!date?.from || !date?.to || !isAvailable) return
+        if (!email.trim() || !fullName.trim()) {
+            setMessage({ type: 'error', text: 'Please fill in your email and name.' })
+            return
+        }
 
         setIsSubmitting(true)
         setMessage(null)
 
         try {
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-            if (userError || !user) {
-                setMessage({ type: 'error', text: 'You must be logged in to request a booking.' })
-                return
-            }
-
-            const bookingPayload = {
+            const result = await createGuestBooking({
                 item_id: item.id,
-                renter_id: user.id,
+                email: email.trim(),
+                full_name: fullName.trim(),
+                company_name: companyName.trim() || undefined,
                 start_date: format(date.from, 'yyyy-MM-dd'),
                 end_date: format(date.to, 'yyyy-MM-dd'),
-                status: 'pending'
-            }
-            console.log('Submitting booking:', bookingPayload)
+                access_password: accessPassword.trim() || undefined
+            })
 
-            const { error } = await supabase
-                .from('reservations')
-                .insert(bookingPayload)
-
-            if (error) {
-                console.error('Booking error:', JSON.stringify(error, null, 2))
-                setMessage({ type: 'error', text: 'Failed to submit request. Please try again.' })
+            if (result.error) {
+                setMessage({ type: 'error', text: result.error })
             } else {
                 setMessage({ type: 'success', text: 'Request submitted successfully! We will contact you shortly.' })
                 setDate(undefined)
                 setIsAvailable(null)
+                setEmail('')
+                setFullName('')
+                setCompanyName('')
+                setAccessPassword('')
             }
         } catch (err) {
             console.error(err)
@@ -268,9 +268,63 @@ export function BookingForm({ item }: BookingFormProps) {
                 </div>
             )}
 
+            {/* Guest Contact Form */}
+            {isAvailable && (
+                <div className="space-y-4 border-t pt-6">
+                    <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
+                        Your Contact Information
+                    </h3>
+                    <div className="space-y-2">
+                        <Label htmlFor="email">Email *</Label>
+                        <Input
+                            id="email"
+                            type="email"
+                            placeholder="your@email.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="fullName">Full Name *</Label>
+                        <Input
+                            id="fullName"
+                            type="text"
+                            placeholder="Jane Smith"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="companyName">Company Name (optional)</Label>
+                        <Input
+                            id="companyName"
+                            type="text"
+                            placeholder="Acme Corp"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="accessPassword">Access Password (if required)</Label>
+                        <Input
+                            id="accessPassword"
+                            type="password"
+                            placeholder="Enter access password"
+                            value={accessPassword}
+                            onChange={(e) => setAccessPassword(e.target.value)}
+                        />
+                        <p className="text-xs text-gray-500">
+                            If you were given an access password, enter it here.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <Button
                 className="w-full h-12 uppercase tracking-widest text-sm"
-                disabled={!isAvailable || isSubmitting || !date?.from || !date?.to}
+                disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
                 onClick={handleRequestBooking}
             >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

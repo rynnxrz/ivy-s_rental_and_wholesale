@@ -220,19 +220,32 @@ export async function updateSettings(formData: FormData) {
 
     if (profile?.role !== 'admin') return { error: 'Forbidden' }
 
-    // 2. Validate Data - only turnaround_buffer now (billing moved to profiles)
+    // 2. Validate Data
     const turnaround_buffer = parseInt(formData.get('turnaround_buffer') as string)
+    const contact_email = formData.get('contact_email') as string || null
+    const booking_password = formData.get('booking_password') as string || null
+    const email_approval_body = formData.get('email_approval_body') as string || null
+    const email_footer = formData.get('email_footer') as string || null
 
     if (isNaN(turnaround_buffer) || turnaround_buffer < 0) {
         return { error: 'Please enter a valid turnaround buffer' }
+    }
+
+    // Validate email format if provided
+    if (contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact_email)) {
+        return { error: 'Please enter a valid email address for Reply-To' }
     }
 
     // 3. Update DB
     const { error } = await supabase
         .from('app_settings')
         .upsert({
-            id: true,
-            turnaround_buffer
+            id: 1,
+            turnaround_buffer,
+            contact_email,
+            booking_password,
+            email_approval_body,
+            email_footer
         })
 
     if (error) {
@@ -266,7 +279,7 @@ export async function approveReservation(reservationId: string, profileId: strin
         .from('reservations')
         .select(`
             *,
-            items (name, sku, rental_price),
+            items (name, sku, rental_price, image_paths),
             profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
         `)
         .eq('id', reservationId)
@@ -300,6 +313,12 @@ export async function approveReservation(reservationId: string, profileId: strin
     const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
     const invoiceId = `INV-${reservationId.slice(0, 8).toUpperCase()}`
 
+    // Fetch settings for Reply-To and email templates
+    const settings = await getAppSettings(supabase)
+
+    // Get item's first image URL for PDF thumbnail
+    const itemImageUrl = item?.image_paths?.[0] || undefined
+
     try {
         const pdfBuffer = await generateInvoicePdf({
             invoiceId,
@@ -319,6 +338,7 @@ export async function approveReservation(reservationId: string, profileId: strin
             bankInfo: billingProfile.bank_info,
             footerText: 'Thank you for your business!',
             notes,
+            itemImageUrl,
         })
 
         await sendApprovalEmail({
@@ -332,7 +352,10 @@ export async function approveReservation(reservationId: string, profileId: strin
             reservationId: reservation.id,
             invoicePdfBuffer: pdfBuffer,
             invoiceId,
-            companyName: billingProfile.company_header
+            companyName: billingProfile.company_header,
+            replyTo: settings?.contact_email || undefined,
+            customBody: settings?.email_approval_body || undefined,
+            customFooter: settings?.email_footer || undefined
         })
 
     } catch (e) {
@@ -431,7 +454,8 @@ export async function markAsShipped(reservationId: string) {
             endDate: format(new Date(reservation.end_date), 'MMM dd, yyyy'),
             reservationId: reservation.id,
             attachments,
-            companyName: settings?.company_name
+            companyName: settings?.company_name,
+            replyTo: settings?.contact_email || undefined
         })
     } catch (e) {
         console.error('Shipping email failed:', e)

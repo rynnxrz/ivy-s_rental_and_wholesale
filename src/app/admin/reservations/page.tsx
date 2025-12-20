@@ -11,12 +11,13 @@ import { FileCheck } from 'lucide-react'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams: Promise<{ filter?: string }>
+    searchParams: Promise<{ filter?: string; customer?: string }>
 }
 
 export default async function AdminReservationsPage({ searchParams }: PageProps) {
     const resolvedSearchParams = await searchParams
     const filter = resolvedSearchParams.filter || 'action_required'
+    const customerEmail = resolvedSearchParams.customer
 
     const supabase = await createClient()
 
@@ -48,13 +49,21 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
 
-    if (filter === 'action_required') {
-        query = query.in('status', ['pending', 'confirmed', 'active'])
-    } else if (filter === 'archived') {
-        query = query.eq('status', 'archived')
+    // Apply status filter (unless filtering by customer - show all for customer)
+    if (!customerEmail) {
+        if (filter === 'action_required') {
+            query = query.in('status', ['pending', 'confirmed', 'active'])
+        } else if (filter === 'archived') {
+            query = query.eq('status', 'archived')
+        }
     }
 
     const { data: reservations, error } = await query
+
+    // Filter by customer email if provided
+    const filteredReservations = customerEmail
+        ? (reservations || []).filter(r => r.profiles?.email === customerEmail)
+        : reservations
 
     if (error) {
         console.error('Error fetching reservations:', error)
@@ -68,9 +77,19 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8 font-sans">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h1 className="text-3xl font-light tracking-tight text-gray-900">
-                    Reservations
-                </h1>
+                <div>
+                    <h1 className="text-3xl font-light tracking-tight text-gray-900">
+                        Reservations
+                    </h1>
+                    {customerEmail && (
+                        <p className="text-sm text-gray-500 mt-1">
+                            Filtered by: <span className="font-medium">{customerEmail}</span>
+                            <Link href="/admin/reservations" className="ml-2 text-blue-600 hover:underline">
+                                Clear filter
+                            </Link>
+                        </p>
+                    )}
+                </div>
 
                 <div className="flex p-1 bg-gray-100 rounded-lg">
                     <FilterTab
@@ -93,7 +112,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
 
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                 <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                    <ReservationsTable reservations={reservations || []} billingProfiles={billingProfiles || []} />
+                    <ReservationsTable reservations={filteredReservations || []} billingProfiles={billingProfiles || []} />
                 </div>
             </div>
         </div>

@@ -1,6 +1,6 @@
 /* eslint-disable jsx-a11y/alt-text */
 import React from 'react';
-import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
 
 // Register fonts if needed, otherwise use built-in Helvetica
 // Font.register({ family: 'Inter', src: '...' });
@@ -62,6 +62,21 @@ const styles = StyleSheet.create({
         color: '#999',
         textAlign: 'center',
     },
+    itemRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 15,
+    },
+    itemImage: {
+        width: 80,
+        height: 80,
+        objectFit: 'cover',
+        borderRadius: 4,
+        backgroundColor: '#f5f5f5',
+    },
+    itemDetails: {
+        flex: 1,
+    },
 });
 
 
@@ -85,6 +100,7 @@ interface InvoiceProps {
     bankInfo?: string;
     footerText?: string;
     notes?: string; // Admin notes to display on invoice
+    itemImageUrl?: string; // Item thumbnail
 }
 
 export const InvoicePdf = ({
@@ -104,6 +120,7 @@ export const InvoicePdf = ({
     bankInfo,
     footerText = "Thank you for your business!",
     notes,
+    itemImageUrl,
 }: InvoiceProps) => {
     const total = rentalPrice * days;
 
@@ -132,16 +149,23 @@ export const InvoicePdf = ({
                     <Text>{customerEmail}</Text>
                 </View>
 
-                {/* Reservation Details */}
+                {/* Reservation Details with Image */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Reservation Details</Text>
-                    <View style={styles.row}>
-                        <Text>Item</Text>
-                        <Text>{itemName} (SKU: {sku})</Text>
-                    </View>
-                    <View style={styles.row}>
-                        <Text>Rental Period</Text>
-                        <Text>{startDate} - {endDate}</Text>
+                    <View style={styles.itemRow}>
+                        {itemImageUrl && (
+                            <Image src={itemImageUrl} style={styles.itemImage} />
+                        )}
+                        <View style={styles.itemDetails}>
+                            <View style={styles.row}>
+                                <Text>Item</Text>
+                                <Text>{itemName} (SKU: {sku})</Text>
+                            </View>
+                            <View style={styles.row}>
+                                <Text>Rental Period</Text>
+                                <Text>{startDate} - {endDate}</Text>
+                            </View>
+                        </View>
                     </View>
                 </View>
 

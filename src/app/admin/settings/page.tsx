@@ -35,6 +35,9 @@ export default async function SettingsPage() {
             invoice_footer_text: '',
             contact_email: '',
             turnaround_buffer: 1,
+            booking_password: '',
+            email_approval_body: '',
+            email_footer: '',
         }
     }
 

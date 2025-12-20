@@ -19,6 +19,7 @@ interface GenerateInvoiceParams {
     bankInfo?: string;
     footerText?: string;
     notes?: string;
+    itemImageUrl?: string;
 }
 
 export async function generateInvoicePdf(params: GenerateInvoiceParams): Promise<Buffer> {
