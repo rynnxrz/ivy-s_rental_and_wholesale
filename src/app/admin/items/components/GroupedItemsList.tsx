@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation' // Added useRouter
 import { ChevronDown, ChevronRight, Edit, Package, RefreshCw, AlertTriangle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 import {
     Table,
     TableBody,
@@ -146,10 +147,11 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                 collection_id: sourceItem.collection_id,
                 material: sourceItem.material
             })
+            toast.success("Synced successfully")
             router.refresh()
         } catch (error) {
             console.error("Failed to sync", error)
-            alert("Failed to sync variants")
+            toast.error("Failed to sync variants")
         } finally {
             setSyncingGroup(null)
         }

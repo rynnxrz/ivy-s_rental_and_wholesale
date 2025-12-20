@@ -1,6 +1,6 @@
 'use client'
 
-import { Trash2 } from 'lucide-react'
+import { Trash2, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     Dialog,
@@ -14,7 +14,7 @@ import {
 import { useState } from 'react'
 import { archiveItem, deleteItem } from '@/actions/items'
 import { useRouter } from 'next/navigation'
-import { AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface DeleteItemButtonProps {
     itemId: string
@@ -33,15 +33,18 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
             const result = await deleteItem(itemId)
             if (result.success) {
                 setOpen(false)
+                toast.success(`Deleted "${itemName}"`)
                 router.refresh()
             } else if (result.error === 'DEPENDENCY_ERROR') {
                 setShowArchiveOption(true)
+                toast.warning('Cannot delete: Item has existing reservations.')
             } else {
                 console.error('Failed to delete item:', result.error)
-                alert(`Failed to delete: ${result.error}`)
+                toast.error(`Failed to delete: ${result.error}`)
             }
         } catch (error) {
             console.error('Error deleting item:', error)
+            toast.error('An unexpected error occurred')
         } finally {
             setIsDeleting(false)
         }
@@ -54,12 +57,14 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
             if (result.success) {
                 setOpen(false)
                 setShowArchiveOption(false)
+                toast.success(`Retired "${itemName}"`)
                 router.refresh()
             } else {
-                alert(`Failed to archive: ${result.error}`)
+                toast.error(`Failed to retire: ${result.error}`)
             }
         } catch (error) {
             console.error('Error archiving item:', error)
+            toast.error('An unexpected error occurred')
         } finally {
             setIsDeleting(false)
         }
@@ -100,7 +105,7 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => setOpen(false)}>
+                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isDeleting}>
                         Cancel
                     </Button>
                     {showArchiveOption ? (
@@ -109,6 +114,7 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
                             disabled={isDeleting}
                             className="bg-amber-600 hover:bg-amber-700 text-white"
                         >
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isDeleting ? 'Retiring...' : 'Retire Item'}
                         </Button>
                     ) : (
@@ -117,6 +123,7 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
                             onClick={handleDelete}
                             disabled={isDeleting}
                         >
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isDeleting ? 'Deleting...' : 'Delete'}
                         </Button>
                     )}

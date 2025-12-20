@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { approveReservation } from '../actions'
 import {
     Dialog,
@@ -65,7 +66,7 @@ export function ApproveButton({
 
     const handleApprove = async () => {
         if (!selectedProfileId) {
-            alert('Please select a billing profile')
+            toast.error('Please select a billing profile')
             return
         }
 
@@ -75,15 +76,20 @@ export function ApproveButton({
 
         if (result.error) {
             if (result.error.includes('23P01') || result.error.includes('conflicting key')) {
-                alert('Date Conflict: This item is already booked (Confirmed/Active) for the selected dates. You cannot approve an overlapping reservation.')
+                toast.error('Date Conflict', {
+                    description: 'This item is already booked for the selected dates.'
+                })
             } else {
-                alert(`Error: ${result.error}`)
+                toast.error(`Error: ${result.error}`)
             }
         } else if (result.warning) {
-            alert(`Success with warning: ${result.warning}`)
+            toast.warning(`Success with warning: ${result.warning}`)
             setOpen(false)
             setNotes('')
         } else {
+            toast.success('Reservation Approved', {
+                description: 'Invoice sent to customer.'
+            })
             setOpen(false)
             setNotes('')
         }
@@ -270,7 +276,7 @@ export function ApproveButton({
                         className="bg-green-600 hover:bg-green-700"
                     >
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Confirm & Send Invoice
+                        {loading ? 'Processing...' : 'Confirm & Send Invoice'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

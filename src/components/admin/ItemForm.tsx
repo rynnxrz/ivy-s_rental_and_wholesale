@@ -18,10 +18,11 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, X, Plus, CheckCircle2 } from 'lucide-react'
+import { Upload, X, Plus, CheckCircle2, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { createItem, updateItem, uploadItemImage, createCategory, createCollection } from '@/actions/items'
 import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
+import { toast } from 'sonner'
 
 const itemSchema = z.object({
     sku: z.string().min(1, 'SKU is required'),
@@ -132,8 +133,9 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
         if (result.success && result.data) {
             setCategories([...categories, result.data])
             setValue('category_id', result.data.id)
+            toast.success(`Category "${name}" created`)
         } else {
-            alert("Failed to create category")
+            toast.error("Failed to create category")
         }
     }
 
@@ -145,8 +147,9 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
         if (result.success && result.data) {
             setCollections([...collections, result.data])
             setValue('collection_id', result.data.id)
+            toast.success(`Collection "${name}" created`)
         } else {
-            alert("Failed to create collection")
+            toast.error("Failed to create collection")
         }
     }
 
@@ -248,19 +251,25 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     setIsAddingVariation(true)
                     setLastSavedItemName(itemData.name)
 
+                    toast.success("Item saved successfully", {
+                        description: "Design saved. Now adding a new variation..."
+                    })
+
                     // Scroll to top to show banner
                     window.scrollTo({ top: 0, behavior: 'smooth' })
 
                 } else {
+                    toast.success("Item saved successfully")
                     router.push('/admin/items')
                     router.refresh()
                 }
             } else {
                 console.error('Save failed:', result.error)
-                alert('Failed to save item: ' + result.error)
+                toast.error(`Failed to save item: ${result.error}`)
             }
         } catch (error) {
             console.error('Submit error:', error)
+            toast.error("An unexpected error occurred")
         } finally {
             setIsSubmitting(false)
         }
@@ -560,6 +569,7 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                 <Button
                     type="button"
                     variant="outline"
+                    disabled={isSubmitting}
                     onClick={() => {
                         if (isAddingVariation) {
                             // Confirm before leaving if variants were added
@@ -583,13 +593,14 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     className="gap-2"
                     title="Save current item and clone it as a new variation"
                 >
-                    <Plus className="h-4 w-4" />
-                    {isAddingVariation ? 'Save & Add Another Color' : 'Save & Add Variation'}
+                    {isSubmitting && isCloneAfterSave ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {isSubmitting && isCloneAfterSave ? 'Processing...' : (isAddingVariation ? 'Save & Add Another Color' : 'Save & Add Variation')}
                 </Button>
 
                 <Button type="submit" disabled={isSubmitting} onClick={() => setIsCloneAfterSave(false)}>
-                    {isSubmitting
-                        ? 'Saving...'
+                    {isSubmitting && !isCloneAfterSave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSubmitting && !isCloneAfterSave
+                        ? 'Processing...'
                         : (isAddingVariation || mode === 'create')
                             ? (isAddingVariation ? 'Save & Finish' : 'Create Product')
                             : 'Update Item'}
