@@ -58,26 +58,26 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                 </Link>
             </div>
 
-            <main className="max-w-[1400px] mx-auto px-4 sm:px-8">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24">
+            <main className="max-w-[1400px] mx-auto px-4 sm:px-8 pb-32 md:pb-0">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-24">
 
                     {/* Image Side */}
-                    <div className="relative aspect-square bg-white rounded-sm overflow-hidden sticky top-24">
+                    <div className="relative bg-white w-full h-[45vh] lg:h-auto lg:aspect-square overflow-hidden lg:sticky lg:top-24">
                         <Image
                             src={getImageUrl(item.image_paths)}
                             alt={item.name}
                             fill
-                            className="object-cover object-center"
+                            className="object-contain object-center"
                             priority
                             sizes="(max-width: 1024px) 100vw, 50vw"
                         />
                     </div>
 
                     {/* Details Side */}
-                    <div className="pt-8 lg:pt-0">
-                        <div className="border-b border-gray-100 pb-8 mb-8">
+                    <div className="pt-4 lg:pt-0">
+                        <div className="border-b border-gray-100 pb-6 mb-6">
                             <p className="text-sm text-gray-500 uppercase tracking-widest mb-2">{item.category}</p>
-                            <h1 className="text-4xl font-light text-gray-900 mb-6">{item.name}</h1>
+                            <h1 className="text-3xl lg:text-4xl font-light text-gray-900 mb-4 lg:mb-6">{item.name}</h1>
 
                             {/* Price - Only show if NOT in archive mode */}
                             {!isArchiveMode && (
@@ -95,11 +95,11 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                         </div>
 
                         {/* Specifications */}
-                        <div className="bg-gray-50 p-6 md:p-8 rounded-sm">
+                        <div className="bg-gray-50 p-5 md:p-8 rounded-sm">
                             <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6">
                                 Specifications
                             </h3>
-                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                                 <div className="border-b border-gray-200 pb-2">
                                     <dt className="text-xs text-gray-500 uppercase">SKU</dt>
                                     <dd className="text-sm text-gray-900 mt-1">{item.sku}</dd>

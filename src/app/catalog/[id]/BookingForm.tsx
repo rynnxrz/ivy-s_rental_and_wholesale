@@ -367,22 +367,31 @@ export function BookingForm({ item }: BookingFormProps) {
             )}
 
             {isGlobalDateMode ? (
-                <Button
-                    className="w-full h-12 uppercase tracking-widest text-sm"
-                    disabled={!isAvailable || (isMounted && hasItem(item.id))}
-                    onClick={handleAddToRequest}
-                >
-                    {isMounted && hasItem(item.id) ? "Added to List" : "Add to Request List"}
-                </Button>
+                <>
+                    {/* Spacer for mobile to prevent content occlusion */}
+                    <div className="h-16 md:hidden" />
+
+                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-50 md:static md:p-0 md:bg-transparent md:border-none md:z-auto">
+                        <Button
+                            className="w-full h-12 uppercase tracking-widest text-sm shadow-lg md:shadow-none"
+                            disabled={!isAvailable || (isMounted && hasItem(item.id))}
+                            onClick={handleAddToRequest}
+                        >
+                            {isMounted && hasItem(item.id) ? "Added to List" : "Add to Request List"}
+                        </Button>
+                    </div>
+                </>
             ) : (
-                <Button
-                    className="w-full h-12 uppercase tracking-widest text-sm"
-                    disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
-                    onClick={handleRequestBooking}
-                >
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isSubmitting ? 'Submitting...' : 'Request Booking'}
-                </Button>
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-50 md:static md:p-0 md:bg-transparent md:border-none md:z-auto">
+                    <Button
+                        className="w-full h-12 uppercase tracking-widest text-sm shadow-lg md:shadow-none"
+                        disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
+                        onClick={handleRequestBooking}
+                    >
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isSubmitting ? 'Submitting...' : 'Request Booking'}
+                    </Button>
+                </div>
             )}
 
             {message && (
