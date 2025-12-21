@@ -22,8 +22,14 @@ export type Database = {
           contact_email: string | null
           email_approval_body: string | null
           email_footer: string | null
+          email_shipping_body: string | null
+          email_shipping_footer: string | null
+          email_shipping_subject: string | null
           footer_text: string | null
           id: number
+          invoice_default_notes: string | null
+          invoice_footer_text: string | null
+          invoice_notes_default: string | null
           turnaround_buffer: number | null
           updated_at: string | null
         }
@@ -34,8 +40,14 @@ export type Database = {
           contact_email?: string | null
           email_approval_body?: string | null
           email_footer?: string | null
+          email_shipping_body?: string | null
+          email_shipping_footer?: string | null
+          email_shipping_subject?: string | null
           footer_text?: string | null
           id?: number
+          invoice_default_notes?: string | null
+          invoice_footer_text?: string | null
+          invoice_notes_default?: string | null
           turnaround_buffer?: number | null
           updated_at?: string | null
         }
@@ -46,8 +58,14 @@ export type Database = {
           contact_email?: string | null
           email_approval_body?: string | null
           email_footer?: string | null
+          email_shipping_body?: string | null
+          email_shipping_footer?: string | null
+          email_shipping_subject?: string | null
           footer_text?: string | null
           id?: number
+          invoice_default_notes?: string | null
+          invoice_footer_text?: string | null
+          invoice_notes_default?: string | null
           turnaround_buffer?: number | null
           updated_at?: string | null
         }
@@ -394,6 +412,27 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_available_items_v2: {
+        Args: {
+          p_end_date: string
+          p_include_booked?: boolean
+          p_start_date: string
+        }
+        Returns: {
+          category: string
+          category_id: string
+          collection_id: string
+          color: string
+          conflict_dates: string
+          id: string
+          image_paths: string[]
+          is_booked: boolean
+          name: string
+          priority: number
+          rental_price: number
+          status: string
+        }[]
       }
       get_unavailable_date_ranges: {
         Args: { p_item_id: string }

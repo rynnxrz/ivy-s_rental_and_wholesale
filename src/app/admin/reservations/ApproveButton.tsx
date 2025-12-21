@@ -26,6 +26,13 @@ import { Loader2, FileText, Star } from 'lucide-react'
 import type { BillingProfile } from '@/types'
 import { useRouter } from 'next/navigation'
 
+interface ApproveItem {
+    name: string
+    rentalPrice: number
+    days: number
+    imageUrl?: string
+}
+
 interface ApproveButtonProps {
     reservationId: string
     itemName?: string
@@ -34,9 +41,10 @@ interface ApproveButtonProps {
     customerName?: string
     customerEmail?: string
     customerCompany?: string
-    customerAddress?: string[] // New Prop
+    customerAddress?: string[]
     billingProfiles: BillingProfile[]
     itemImageUrl?: string
+    items?: ApproveItem[] // New prop for multiple items
 }
 
 export function ApproveButton({
@@ -47,14 +55,23 @@ export function ApproveButton({
     customerName = 'Guest',
     customerEmail = 'N/A',
     customerCompany,
-    customerAddress, // New Prop
+    customerAddress,
     billingProfiles,
-    itemImageUrl
+    itemImageUrl,
+    items // Destructure new prop
 }: ApproveButtonProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
     const [notes, setNotes] = useState('')
+
+    // Normalize items: use the array if provided, otherwise fallback to single item props
+    const invoiceItems: ApproveItem[] = items && items.length > 0 ? items : [{
+        name: itemName,
+        rentalPrice: rentalPrice,
+        days: days,
+        imageUrl: itemImageUrl
+    }]
 
     // Find the default profile or use the first one
     const defaultProfile = billingProfiles.find(p => p.is_default) || billingProfiles[0]
@@ -63,8 +80,10 @@ export function ApproveButton({
     // Get the currently selected profile for preview
     const selectedProfile = billingProfiles.find(p => p.id === selectedProfileId)
 
-    const totalAmount = rentalPrice * days
+    // Calculate total from all items
+    const totalAmount = invoiceItems.reduce((sum, item) => sum + (item.rentalPrice * item.days), 0)
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    const invoiceIdDisplay = `INV-${reservationId.slice(0, 8).toUpperCase()}`
 
     const handleApprove = async () => {
         if (!selectedProfileId) {
@@ -134,7 +153,7 @@ export function ApproveButton({
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                    {/* BILLING PROFILE SELECTOR - The key new feature */}
+                    {/* BILLING PROFILE SELECTOR */}
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
                         <Label className="text-sm font-medium text-gray-700 mb-2 block">
                             Select Billing Profile
@@ -165,7 +184,7 @@ export function ApproveButton({
                         </p>
                     </div>
 
-                    {/* INVOICE PREVIEW CONTAINER - Designed to look like the PDF */}
+                    {/* INVOICE PREVIEW CONTAINER */}
                     <div className="bg-white border border-gray-200 shadow-sm p-8 text-sm text-gray-800 font-sans">
 
                         {/* Header Section */}
@@ -178,7 +197,7 @@ export function ApproveButton({
                                 </div>
                             </div>
                             <div className="text-right text-gray-500">
-                                <p>Invoice #: {reservationId.slice(0, 8).toUpperCase()}</p>
+                                <p>Invoice #: {invoiceIdDisplay}</p>
                                 <p>Date: {today}</p>
                             </div>
                         </div>
@@ -197,29 +216,32 @@ export function ApproveButton({
                         {/* Line Items */}
                         <div className="mb-8">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Reservation Details</h3>
-                            <div className="flex gap-3 py-2 border-b border-gray-50">
-                                {/* Item Thumbnail */}
-                                {itemImageUrl ? (
-                                    <img
-                                        src={itemImageUrl}
-                                        alt={itemName}
-                                        className="w-12 h-12 object-cover rounded border border-gray-200"
-                                    />
-                                ) : (
-                                    <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
-                                        No img
-                                    </div>
-                                )}
-                                <div className="flex-1 flex justify-between">
-                                    <div>
-                                        <span className="font-medium text-gray-900">{itemName}</span>
-                                        <div className="text-xs text-gray-500">Rental Period ({days} days)</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <span>${rentalPrice.toFixed(2)}/day</span>
+
+                            {invoiceItems.map((item, idx) => (
+                                <div key={idx} className="flex gap-3 py-2 border-b border-gray-50">
+                                    {/* Item Thumbnail */}
+                                    {item.imageUrl ? (
+                                        <img
+                                            src={item.imageUrl}
+                                            alt={item.name}
+                                            className="w-12 h-12 object-cover rounded border border-gray-200"
+                                        />
+                                    ) : (
+                                        <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                                            No img
+                                        </div>
+                                    )}
+                                    <div className="flex-1 flex justify-between">
+                                        <div>
+                                            <span className="font-medium text-gray-900">{item.name}</span>
+                                            <div className="text-xs text-gray-500">Rental Period ({item.days} days)</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span>${item.rentalPrice.toFixed(2)}/day</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
 
                         {/* Charges */}
@@ -235,11 +257,11 @@ export function ApproveButton({
                             </div>
                         </div>
 
-                        {/* Payment Info - THIS NOW UPDATES BASED ON SELECTED PROFILE */}
+                        {/* Payment Info */}
                         <div className="mb-8 bg-gray-50 p-4 rounded text-xs text-gray-600">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase tracking-wider">Payment Instructions</h3>
                             <p className="whitespace-pre-wrap">{bankInfo}</p>
-                            <p className="mt-2 text-gray-400 italic">Please include Invoice #{reservationId.slice(0, 8).toUpperCase()} in the memo.</p>
+                            <p className="mt-2 text-gray-400 italic">Please include Invoice #{invoiceIdDisplay} in the memo.</p>
                         </div>
 
                         {/* Notes Preview */}

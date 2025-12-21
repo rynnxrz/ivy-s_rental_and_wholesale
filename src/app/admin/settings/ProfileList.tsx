@@ -14,6 +14,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { createBillingProfile, updateBillingProfile, deleteBillingProfile, setDefaultProfile } from '@/app/admin/actions'
 import { Loader2, Star, Pencil, Trash2, Plus } from 'lucide-react'
 import type { BillingProfile } from '@/types'
@@ -29,6 +39,7 @@ export default function ProfileList({ profiles }: ProfileListProps) {
     const router = useRouter()
     const [editingProfile, setEditingProfile] = useState<BillingProfile | null>(null)
     const [isCreating, setIsCreating] = useState(false)
+    const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
 
     const handleSetDefault = async (profileId: string) => {
@@ -45,18 +56,19 @@ export default function ProfileList({ profiles }: ProfileListProps) {
         })
     }
 
-    const handleDelete = async (profileId: string) => {
-        if (!confirm('Are you sure you want to delete this billing profile?')) return
+    const handleDelete = () => {
+        if (!deletingProfileId) return
 
         startTransition(() => {
             void (async () => {
-                const result = await deleteBillingProfile(profileId)
+                const result = await deleteBillingProfile(deletingProfileId)
                 if (result.error) {
                     toast.error(result.error)
                 } else {
                     toast.success('Profile deleted')
                     router.refresh()
                 }
+                setDeletingProfileId(null)
             })()
         })
     }
@@ -127,7 +139,7 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => handleDelete(profile.id)}
+                                                onClick={() => setDeletingProfileId(profile.id)}
                                                 disabled={isPending}
                                                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                             >
@@ -157,6 +169,29 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                     mode="create"
                     isFirstProfile={profiles.length === 0}
                 />
+
+                {/* Delete Confirmation Dialog */}
+                <AlertDialog open={!!deletingProfileId} onOpenChange={(open) => !open && setDeletingProfileId(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Billing Profile?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. The profile will be permanently deleted.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={handleDelete}
+                                disabled={isPending}
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                            >
+                                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isPending ? 'Deleting...' : 'Delete'}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </CardContent>
         </Card>
     )

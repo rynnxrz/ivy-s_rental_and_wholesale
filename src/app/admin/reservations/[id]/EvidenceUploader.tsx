@@ -64,7 +64,7 @@ export default function EvidenceUploader({
 
                 if (error) {
                     console.error('Upload failed:', error)
-                    alert('Upload failed: ' + error.message)
+                    toast.error('Upload failed: ' + error.message)
                 } else {
                     // Get public URL or just store path. 
                     // Storing partial path allows later flexibility, but full URL is easier for display if bucket is public.

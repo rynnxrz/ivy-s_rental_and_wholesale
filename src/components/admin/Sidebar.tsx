@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
     LayoutDashboard,
@@ -11,14 +11,19 @@ import {
     Users,
     Settings,
     LogOut,
-    Gem,
-    PanelLeftClose,
-    PanelLeftOpen
+    Gem, // Import Gem icon
+    Menu // Import Menu icon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import {
+    Sheet,
+    SheetContent,
+    SheetTrigger,
+    SheetTitle
+} from "@/components/ui/sheet"
 
 const navItems = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -27,128 +32,217 @@ const navItems = [
     { href: '/admin/customers', label: 'Customers', icon: Users },
 ]
 
+
+/* 
+  SIDEBAR LOGIC:
+  - Mobile (< md): Hidden by default. Toggle button fixed top-right. Opens Sheet.
+  - Desktop (>= md): Fixed left, full height. 
+    - Default width: w-16 (collapsed).
+    - Hover: w-64 (expanded).
+    - Content in layout must have md:pl-16.
+*/
+
 export const Sidebar = () => {
     const pathname = usePathname()
     const router = useRouter()
     const supabase = createClient()
-    const [isCollapsed, setIsCollapsed] = useState(false)
-
-    // Persist collapsed state
-    useEffect(() => {
-        const saved = localStorage.getItem('sidebar-collapsed')
-        if (saved !== null) {
-            setIsCollapsed(saved === 'true')
-        }
-    }, [])
-
-    const toggleCollapse = () => {
-        const newState = !isCollapsed
-        setIsCollapsed(newState)
-        localStorage.setItem('sidebar-collapsed', String(newState))
-    }
+    const [isHovered, setIsHovered] = useState(false)
+    const [isMobileOpen, setIsMobileOpen] = useState(false)
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
         router.push('/login')
     }
 
+    const closeMobileMenu = () => setIsMobileOpen(false)
+
+    // Navigation Item Renderer (Reused)
+    const renderNavItems = (expanded: boolean, onClick?: () => void) => (
+        <nav className="flex-1 space-y-1 px-2 py-4">
+            {navItems.map((item) => {
+                const isActive = pathname === item.href ||
+                    (item.href !== '/admin' && pathname.startsWith(item.href))
+
+                return (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onClick}
+                        title={!expanded ? item.label : undefined}
+                        className={cn(
+                            'flex items-center rounded-lg py-2 text-sm font-medium transition-colors whitespace-nowrap',
+                            !expanded ? 'justify-center px-2' : 'gap-3 px-3',
+                            isActive
+                                ? 'bg-slate-200 text-slate-900 shadow-sm'
+                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        )}
+                    >
+                        <item.icon className="h-5 w-5 flex-shrink-0" />
+                        {expanded && (
+                            <span className="transition-opacity duration-200 animate-in fade-in slide-in-from-left-2">
+                                {item.label}
+                            </span>
+                        )}
+                    </Link>
+                )
+            })}
+        </nav>
+    )
+
     return (
-        <aside
-            className={cn(
-                'relative flex h-screen flex-col border-r bg-slate-50 transition-all duration-300',
-                isCollapsed ? 'w-16' : 'w-64'
-            )}
-        >
-            {/* Logo */}
-            <div className={cn(
-                'flex h-16 items-center gap-2 overflow-hidden',
-                isCollapsed ? 'justify-center px-2' : 'px-6'
-            )}>
-                <Gem className="h-6 w-6 flex-shrink-0 text-slate-700" />
-                {!isCollapsed && (
-                    <span className="text-lg font-semibold text-slate-900 whitespace-nowrap">
+        <>
+            {/* --- MOBILE SIDEBAR (Sheet) --- */}
+            <div className="md:hidden">
+                <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+                    <SheetTrigger asChild>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="fixed top-4 right-4 z-50 bg-white shadow-md border-slate-200"
+                        >
+                            <Menu className="h-5 w-5 text-slate-700" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-64 p-0 bg-slate-50 border-r-slate-200">
+                        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                        <div className="flex h-full flex-col">
+                            <div className="flex h-16 items-center px-6 border-b border-slate-200 bg-white">
+                                <Gem className="h-6 w-6 text-slate-700 mr-2" />
+                                <span className="text-lg font-semibold text-slate-900">Ivy&apos;s Rental</span>
+                            </div>
+
+                            {renderNavItems(true, closeMobileMenu)}
+
+                            <div className="p-4 border-t border-slate-200 bg-white space-y-1">
+                                <Link
+                                    href="/admin/settings"
+                                    onClick={closeMobileMenu}
+                                    className="flex w-full items-center rounded-lg py-2 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 mb-1 gap-3"
+                                >
+                                    <Settings className="h-5 w-5" />
+                                    <span>Settings</span>
+                                </Link>
+
+                                <Button
+                                    onClick={handleSignOut}
+                                    variant="ghost"
+                                    className="w-full justify-start gap-3 text-slate-600 hover:text-red-600 hover:bg-red-50 px-3"
+                                >
+                                    <LogOut className="h-5 w-5" />
+                                    <span>Sign Out</span>
+                                </Button>
+                            </div>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+            </div>
+
+            {/* --- DESKTOP SIDEBAR (Drawer Animation) --- */}
+            <aside
+                className={cn(
+                    'hidden md:flex fixed left-0 top-0 h-screen flex-col border-r border-slate-100 bg-slate-50/95 backdrop-blur-sm z-40 overflow-hidden',
+                    'transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                    isHovered ? 'w-60' : 'w-16'
+                )}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+            >
+                {/* Header */}
+                <div className="flex h-16 items-center" style={{ width: '240px' }}>
+                    <div className="flex items-center justify-center w-16 flex-shrink-0">
+                        <Gem className="h-6 w-6 text-slate-700" />
+                    </div>
+                    <span
+                        className={cn(
+                            "text-lg font-bold text-slate-900 whitespace-nowrap transition-opacity",
+                            isHovered ? "opacity-100 delay-200" : "opacity-0"
+                        )}
+                    >
                         Ivy&apos;s Rental
                     </span>
-                )}
-            </div>
+                </div>
 
-            <Separator />
+                <Separator className="bg-slate-200/50" />
 
-            {/* Navigation */}
-            <nav className="flex-1 space-y-1 px-2 py-4">
-                {navItems.map((item) => {
-                    const isActive = pathname === item.href ||
-                        (item.href !== '/admin' && pathname.startsWith(item.href))
+                {/* Nav */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <nav className="flex-1 space-y-1 py-4" style={{ width: '240px' }}>
+                        {navItems.map((item) => {
+                            const isActive = pathname === item.href ||
+                                (item.href !== '/admin' && pathname.startsWith(item.href))
 
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            title={isCollapsed ? item.label : undefined}
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    title={!isHovered ? item.label : undefined}
+                                    className={cn(
+                                        'flex items-center mx-2 rounded-lg py-2 text-sm font-medium transition-colors',
+                                        isActive
+                                            ? 'bg-slate-200 text-slate-900'
+                                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                    )}
+                                >
+                                    <div className="flex items-center justify-center w-12 flex-shrink-0">
+                                        <item.icon className="h-5 w-5" />
+                                    </div>
+                                    <span
+                                        className={cn(
+                                            "whitespace-nowrap transition-opacity",
+                                            isHovered ? "opacity-100 delay-200" : "opacity-0"
+                                        )}
+                                    >
+                                        {item.label}
+                                    </span>
+                                </Link>
+                            )
+                        })}
+                    </nav>
+                </div>
+
+                <Separator className="bg-slate-200/50" />
+
+                {/* Footer Controls */}
+                <div className="py-2" style={{ width: '240px' }}>
+                    <Link
+                        href="/admin/settings"
+                        title={!isHovered ? 'Settings' : undefined}
+                        className="flex items-center mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                    >
+                        <div className="flex items-center justify-center w-12 flex-shrink-0">
+                            <Settings className="h-5 w-5" />
+                        </div>
+                        <span
                             className={cn(
-                                'flex items-center rounded-lg py-2 text-sm font-medium transition-colors',
-                                isCollapsed ? 'justify-center px-2' : 'gap-3 px-3',
-                                isActive
-                                    ? 'bg-slate-200 text-slate-900'
-                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                "whitespace-nowrap transition-opacity",
+                                isHovered ? "opacity-100 delay-200" : "opacity-0"
                             )}
                         >
-                            <item.icon className="h-4 w-4 flex-shrink-0" />
-                            {!isCollapsed && <span>{item.label}</span>}
-                        </Link>
-                    )
-                })}
-            </nav>
+                            Settings
+                        </span>
+                    </Link>
 
-            <Separator />
-
-            {/* Footer */}
-            <div className="space-y-1 px-2 py-4">
-                <Link
-                    href="/admin/settings"
-                    title={isCollapsed ? 'Settings' : undefined}
-                    className={cn(
-                        'flex items-center rounded-lg py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900',
-                        isCollapsed ? 'justify-center px-2' : 'gap-3 px-3'
-                    )}
-                >
-                    <Settings className="h-4 w-4 flex-shrink-0" />
-                    {!isCollapsed && <span>Settings</span>}
-                </Link>
-                <Button
-                    variant="ghost"
-                    title={isCollapsed ? 'Sign Out' : undefined}
-                    className={cn(
-                        'w-full py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start gap-3 px-3'
-                    )}
-                    onClick={handleSignOut}
-                >
-                    <LogOut className="h-4 w-4 flex-shrink-0" />
-                    {!isCollapsed && <span>Sign Out</span>}
-                </Button>
-
-                <Separator className="my-2" />
-
-                {/* Sidebar Toggle */}
-                <Button
-                    variant="ghost"
-                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                    className={cn(
-                        'w-full py-2 text-sm font-medium text-slate-400 hover:bg-slate-100 hover:text-slate-900',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start gap-3 px-3'
-                    )}
-                    onClick={toggleCollapse}
-                >
-                    {isCollapsed ? (
-                        <PanelLeftOpen className="h-4 w-4 flex-shrink-0" />
-                    ) : (
-                        <PanelLeftClose className="h-4 w-4 flex-shrink-0" />
-                    )}
-                    {!isCollapsed && <span>Collapse Sidebar</span>}
-                </Button>
-            </div>
-        </aside>
+                    <Button
+                        variant="ghost"
+                        title={!isHovered ? 'Sign Out' : undefined}
+                        className="w-full justify-start mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50"
+                        style={{ width: 'calc(100% - 16px)' }}
+                        onClick={handleSignOut}
+                    >
+                        <div className="flex items-center justify-center w-12 flex-shrink-0">
+                            <LogOut className="h-5 w-5" />
+                        </div>
+                        <span
+                            className={cn(
+                                "whitespace-nowrap transition-opacity",
+                                isHovered ? "opacity-100 delay-200" : "opacity-0"
+                            )}
+                        >
+                            Sign Out
+                        </span>
+                    </Button>
+                </div>
+            </aside>
+        </>
     )
 }
-

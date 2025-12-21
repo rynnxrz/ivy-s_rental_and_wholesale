@@ -29,10 +29,17 @@ export default async function AdminLayout({
     }
 
     return (
-        <div className="flex h-screen overflow-hidden">
+        <div className="min-h-screen bg-slate-100">
             <Sidebar />
-            <main className="flex-1 overflow-y-auto bg-slate-100 p-8">
-                {children}
+
+            {/* 
+              Desktop: Sidebar is fixed w-16, so main needs pl-16. 
+              Mobile: Sidebar is hidden (Sheet), so main is full width.
+            */}
+            <main className="min-h-screen w-full md:pl-16 transition-[padding] duration-300">
+                <div className="p-4 md:p-8 pt-16 md:pt-8">
+                    {children}
+                </div>
             </main>
         </div>
     )

@@ -268,76 +268,99 @@ export async function approveReservation(reservationId: string, profileId: strin
 
     if (profile?.role !== 'admin') return { error: 'Forbidden' }
 
-    // 2. Fetch Reservation
-    const { data: reservation, error: fetchError } = await supabase
+    // 2. Fetch Initial Reservation to get group_id
+    const { data: initialReservation, error: fetchError } = await supabase
+        .from('reservations')
+        .select('group_id')
+        .eq('id', reservationId)
+        .single()
+
+    if (fetchError || !initialReservation) {
+        return { error: 'Reservation not found or fetch error' }
+    }
+
+    // 3. Fetch ALL reservations in the group (or just the single one if no group_id)
+    let reservationQuery = supabase
         .from('reservations')
         .select(`
             *,
             items (name, sku, rental_price, image_paths),
             profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
         `)
-        .eq('id', reservationId)
-        .single()
 
-    if (fetchError || !reservation) {
-        return { error: 'Reservation not found or fetch error' }
+    if (initialReservation.group_id) {
+        reservationQuery = reservationQuery.eq('group_id', initialReservation.group_id)
+    } else {
+        reservationQuery = reservationQuery.eq('id', reservationId)
     }
 
-    // 3. Update Status
+    const { data: groupReservations, error: groupError } = await reservationQuery
+
+    if (groupError || !groupReservations || groupReservations.length === 0) {
+        return { error: 'Failed to fetch group reservations' }
+    }
+
+    // 4. Update Status for ALL items
+    const idsToUpdate = groupReservations.map(r => r.id)
     const { error: updateError } = await supabase
         .from('reservations')
         .update({ status: 'confirmed' })
-        .eq('id', reservationId)
+        .in('id', idsToUpdate)
 
     if (updateError) return { error: updateError.message }
 
-    // 4. Get billing profile for invoice generation
+    // 5. Get billing profile
     const billingProfile = await getBillingProfile(supabase, profileId)
     if (!billingProfile) {
         return { error: 'Billing profile not found' }
     }
 
+    // Use the first reservation for customer details (assumes same customer for group)
+    const primaryRes = groupReservations[0]
     // @ts-ignore
-    const customer = Array.isArray(reservation.profiles) ? reservation.profiles[0] : reservation.profiles
-    // @ts-ignore
-    const item = reservation.items
+    const customer = Array.isArray(primaryRes.profiles) ? primaryRes.profiles[0] : primaryRes.profiles
 
-    const start = new Date(reservation.start_date)
-    const end = new Date(reservation.end_date)
-    const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    const invoiceId = `INV-${reservationId.slice(0, 8).toUpperCase()}`
+    // 6. Build Invoice Items List
+    const invoiceItems: InvoiceItem[] = []
+    const serviceClient = createServiceClient()
+    const invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
 
-    // Fetch settings for Reply-To and email templates
-    const settings = await getAppSettings(supabase)
+    for (const res of groupReservations) {
+        // @ts-ignore
+        const item = res.items
+        const start = new Date(res.start_date)
+        const end = new Date(res.end_date)
+        const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
-    // 5. Fetch item image from Supabase storage and convert to Base64
-    // Use service role client for guaranteed access to storage
-    let imageBase64: string | undefined
-    if (item?.image_paths?.[0]) {
-        try {
-            const serviceClient = createServiceClient()
-            imageBase64 = await fetchImageAsBase64(serviceClient, 'rental_items', item.image_paths[0])
-        } catch (e) {
-            console.warn('Could not fetch item image for PDF:', e)
+        let imageBase64: string | undefined
+        if (item?.image_paths?.[0]) {
+            try {
+                // Fetch image for each item
+                imageBase64 = await fetchImageAsBase64(serviceClient, 'rental_items', item.image_paths[0])
+            } catch (e) {
+                console.warn(`Could not fetch item image for ID ${res.id}:`, e)
+            }
         }
+
+        invoiceItems.push({
+            name: item?.name ?? 'Unknown Item',
+            sku: item?.sku ?? 'N/A',
+            rentalPrice: item?.rental_price ?? 0,
+            days,
+            startDate: format(start, 'MMM dd, yyyy'),
+            endDate: format(end, 'MMM dd, yyyy'),
+            imageBase64,
+        })
     }
 
-    // 6. Build items array (currently single item, but structured for future batch support)
-    const invoiceItems: InvoiceItem[] = [{
-        name: item?.name ?? 'Unknown Item',
-        sku: item?.sku ?? 'N/A',
-        rentalPrice: item?.rental_price ?? 0,
-        days,
-        startDate: format(start, 'MMM dd, yyyy'),
-        endDate: format(end, 'MMM dd, yyyy'),
-        imageBase64,
-    }]
+    // Fetch settings
+    const settings = await getAppSettings(supabase)
 
     const customerAddress = [
-        reservation.address_line1,
-        reservation.address_line2,
-        [reservation.city_region, reservation.postcode].filter(Boolean).join(', '),
-        reservation.country
+        primaryRes.address_line1,
+        primaryRes.address_line2,
+        [primaryRes.city_region, primaryRes.postcode].filter(Boolean).join(', '),
+        primaryRes.country
     ].filter(Boolean) as string[]
 
     try {
@@ -347,7 +370,7 @@ export async function approveReservation(reservationId: string, profileId: strin
             customerName: customer?.full_name ?? 'Customer',
             customerEmail: customer?.email ?? '',
             customerCompany: customer?.company_name,
-            customerAddress, // Pass full address
+            customerAddress,
             items: invoiceItems,
             companyName: billingProfile.company_header,
             companyEmail: billingProfile.contact_email,
@@ -356,18 +379,22 @@ export async function approveReservation(reservationId: string, profileId: strin
             notes,
         })
 
-        // Calculate total for email
+        // Calculate total
         const totalPrice = invoiceItems.reduce((sum, i) => sum + (i.rentalPrice * i.days), 0)
+
+        const startStr = format(new Date(primaryRes.start_date), 'MMM dd, yyyy')
+        const endStr = format(new Date(primaryRes.end_date), 'MMM dd, yyyy')
+        const totalDays = Math.round((new Date(primaryRes.end_date).getTime() - new Date(primaryRes.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
 
         await sendApprovalEmail({
             toIndices: [customer?.email],
             customerName: customer?.full_name,
-            itemName: item?.name,
-            startDate: format(start, 'MMM dd, yyyy'),
-            endDate: format(end, 'MMM dd, yyyy'),
-            totalDays: days,
+            itemName: invoiceItems.length > 1 ? `${invoiceItems.length} Items (Group Order)` : invoiceItems[0].name,
+            startDate: startStr,
+            endDate: endStr,
+            totalDays: totalDays, // Note: This might vary per item in group, but email template usually assumes single range. We use primary.
             totalPrice,
-            reservationId: reservation.id,
+            reservationId: reservationId, // Use the trigger ID or group ID? Template uses this for links.
             invoicePdfBuffer: pdfBuffer,
             invoiceId,
             companyName: billingProfile.company_header,
@@ -542,3 +569,106 @@ export async function finalizeReturn(reservationId: string) {
     revalidatePath(`/admin/reservations/${reservationId}`)
     return { success: true }
 }
+
+// ============================================================
+// Batch Archive & Restore for Grouped Orders
+// ============================================================
+
+export async function archiveReservationGroup(groupId: string) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Update all reservations in the group to 'archived'
+    const { data, error } = await supabase
+        .from('reservations')
+        .update({ status: 'archived' })
+        .eq('group_id', groupId)
+        .select('id')
+
+    if (error) {
+        console.error('Archive group error:', error)
+        return { error: 'Failed to archive reservations' }
+    }
+
+    revalidatePath('/admin/reservations')
+    return { success: true, count: data?.length || 0 }
+}
+
+export async function restoreReservationGroup(groupId: string) {
+    const supabase = await createClient()
+
+    // Auth Check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') return { error: 'Forbidden' }
+
+    // Fetch all archived reservations in this group with item names
+    const { data: reservations, error: fetchError } = await supabase
+        .from('reservations')
+        .select('id, item_id, start_date, end_date, items(name)')
+        .eq('group_id', groupId)
+        .eq('status', 'archived')
+
+    if (fetchError || !reservations || reservations.length === 0) {
+        return { error: 'No archived reservations found in this group' }
+    }
+
+    // Check availability for each item
+    const conflictingItems: string[] = []
+
+    for (const res of reservations) {
+        const { data: available } = await supabase.rpc('check_item_availability', {
+            p_item_id: res.item_id,
+            p_start_date: res.start_date,
+            p_end_date: res.end_date,
+            p_exclude_reservation_id: res.id
+        })
+
+        if (!available) {
+            // @ts-ignore - items is joined
+            const itemName = res.items?.name || 'Unknown Item'
+            conflictingItems.push(itemName)
+        }
+    }
+
+    if (conflictingItems.length > 0) {
+        return {
+            error: `Cannot restore: ${conflictingItems[0]} is already booked for these dates.`,
+            conflictingItems
+        }
+    }
+
+    // All items available - restore them
+    const { error: updateError } = await supabase
+        .from('reservations')
+        .update({ status: 'confirmed' })
+        .eq('group_id', groupId)
+        .eq('status', 'archived')
+
+    if (updateError) {
+        console.error('Restore group error:', updateError)
+        return { error: 'Failed to restore reservations' }
+    }
+
+    revalidatePath('/admin/reservations')
+    return { success: true, count: reservations.length }
+}
+

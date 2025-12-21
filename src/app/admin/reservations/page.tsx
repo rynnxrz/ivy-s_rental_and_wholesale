@@ -75,6 +75,25 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         ? (reservations || []).filter(r => r.profiles?.email === customerEmail)
         : reservations
 
+    // Grouping Logic
+    const groups: Record<string, any[]> = {}
+
+        ; (filteredReservations || []).forEach(r => {
+            // If no group_id, treat as unique group using its own ID
+            const key = r.group_id || r.id
+            if (!groups[key]) {
+                groups[key] = []
+            }
+            groups[key].push(r)
+        })
+
+    // Convert to array and sort by latest activity (created_at of any item in group)
+    const sortedGroups = Object.values(groups).sort((a, b) => {
+        const latestA = Math.max(...a.map(i => new Date(i.created_at).getTime()))
+        const latestB = Math.max(...b.map(i => new Date(i.created_at).getTime()))
+        return latestB - latestA
+    })
+
     if (error) {
         console.error('Error fetching reservations:', error)
         return (
@@ -119,7 +138,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
             </div>
 
             <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                <ReservationsTable reservations={filteredReservations || []} billingProfiles={billingProfiles || []} />
+                <ReservationsTable groups={sortedGroups} billingProfiles={billingProfiles || []} />
             </div>
         </div>
     )
@@ -142,8 +161,8 @@ function FilterTab({ label, active, href }: { label: string, active: boolean, hr
     )
 }
 
-function ReservationsTable({ reservations, billingProfiles }: { reservations: any[], billingProfiles: any[] }) {
-    if (reservations.length === 0) {
+function ReservationsTable({ groups, billingProfiles }: { groups: any[][], billingProfiles: any[] }) {
+    if (groups.length === 0) {
         return (
             <div className="p-12 text-center text-slate-400">
                 No reservations found.
@@ -156,57 +175,113 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
             <TableHeader>
                 <TableRow className="bg-slate-50">
                     <TableHead className="w-32">Status</TableHead>
-                    <TableHead>Item</TableHead>
+                    <TableHead>Items</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Dates</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
-                {reservations.map((r) => {
-                    const status = r.status || 'unknown'
-                    const start = new Date(r.start_date)
-                    const end = new Date(r.end_date)
-                    const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-                    const total = (r.items?.rental_price || 0) * days
+                {groups.map((group) => {
+                    const primary = group[0] // Use first item for common details
+                    if (!primary) return null
+
+                    const status = primary.status || 'unknown'
+                    // For status: simplified assumption that group shares status. 
+                    // Make sure to display something reasonable if mixed, though normally they should sync.
+
+                    const start = new Date(primary.start_date)
+                    const end = new Date(primary.end_date)
+
+                    // Specific calculation per item to be accurate
+                    let groupTotal = 0
+                    const approveItems = group.map(r => {
+                        const s = new Date(r.start_date)
+                        const e = new Date(r.end_date)
+                        const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                        const price = r.items?.rental_price || 0
+                        groupTotal += price * d
+                        return {
+                            name: r.items?.name || 'Unknown',
+                            rentalPrice: price,
+                            days: d,
+                            imageUrl: r.items?.image_paths?.[0]
+                        }
+                    })
+
+                    // Check if multiple items
+                    const isGroup = group.length > 1
 
                     return (
-                        <TableRow key={r.id} className="group">
+                        <TableRow key={primary.id} className="group">
                             <TableCell className="align-top">
                                 <StatusBadge status={status} />
                                 <div className="text-xs text-slate-400 mt-2 font-mono">
-                                    {format(new Date(r.created_at), 'MMM dd')}
+                                    {format(new Date(primary.created_at), 'MMM dd')}
                                 </div>
+                                {isGroup && (
+                                    <div className="mt-1">
+                                        <Badge variant="secondary" className="text-[10px] px-1 h-5">
+                                            {group.length} ITEMS
+                                        </Badge>
+                                    </div>
+                                )}
                             </TableCell>
                             <TableCell className="align-top">
-                                <div className="font-medium text-slate-900 hover:text-blue-600 transition-colors">
-                                    <Link href={`/admin/reservations/${r.id}`}>
-                                        {r.items?.name || 'Unknown Item'}
-                                    </Link>
-                                </div>
-                                <div className="text-xs text-slate-500 mt-1 font-mono tracking-wide">
-                                    {r.items?.sku}
-                                </div>
+                                <Link href={`/admin/reservations/${primary.id}`} className="block hover:bg-slate-50 -m-2 p-2 rounded transition-colors">
+                                    {isGroup ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            {group.map((item, idx) => (
+                                                <div key={item.id} className="relative group/item" title={item.items?.name}>
+                                                    {item.items?.image_paths?.[0] ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
+                                                            src={item.items.image_paths[0]}
+                                                            alt={item.items.name}
+                                                            className="w-10 h-10 object-cover rounded border border-slate-200"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-10 h-10 bg-slate-100 rounded border border-slate-200 flex items-center justify-center text-[10px] text-slate-400">
+                                                            N/A
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            <div className="w-full text-xs font-medium text-slate-700 mt-1">
+                                                {primary.items?.name} <span className="text-slate-400 font-normal">+ {group.length - 1} more</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="font-medium text-slate-900 hover:text-blue-600 transition-colors">
+                                                {primary.items?.name || 'Unknown Item'}
+                                            </div>
+                                            <div className="text-xs text-slate-500 mt-1 font-mono tracking-wide">
+                                                {primary.items?.sku}
+                                            </div>
+                                        </>
+                                    )}
+                                </Link>
                             </TableCell>
                             <TableCell className="align-top">
                                 <div className="text-slate-900 font-medium text-sm">
-                                    {r.profiles?.full_name || r.profiles?.email || 'Guest'}
+                                    {primary.profiles?.full_name || primary.profiles?.email || 'Guest'}
                                 </div>
-                                {r.profiles?.company_name && (
+                                {primary.profiles?.company_name && (
                                     <div className="text-xs text-indigo-600 mt-0.5 font-medium">
-                                        {r.profiles.company_name}
+                                        {primary.profiles.company_name}
                                     </div>
                                 )}
                                 <div className="text-xs text-slate-400 mt-1">
-                                    {r.profiles?.email}
+                                    {primary.profiles?.email}
                                 </div>
                             </TableCell>
                             <TableCell className="align-top">
                                 <div className="text-slate-900 text-sm">
-                                    {r.city_region && r.country ? (
-                                        <span>{r.city_region}, {r.country}</span>
+                                    {primary.city_region && primary.country ? (
+                                        <span>{primary.city_region}, {primary.country}</span>
                                     ) : (
                                         <span className="text-slate-400 italic">No Location</span>
                                     )}
@@ -229,40 +304,59 @@ function ReservationsTable({ reservations, billingProfiles }: { reservations: an
                                 </div>
                             </TableCell>
                             <TableCell className="align-top text-right font-medium text-slate-900 text-sm">
-                                ${total.toFixed(2)}
+                                ${groupTotal.toFixed(2)}
                             </TableCell>
                             <TableCell className="align-top text-right">
                                 <div className="flex flex-col gap-2 items-end opacity-80 group-hover:opacity-100 transition-opacity">
                                     {status === 'pending' && (
                                         <>
                                             <ApproveButton
-                                                reservationId={r.id}
-                                                itemName={r.items?.name}
-                                                rentalPrice={r.items?.rental_price}
-                                                days={days}
-                                                customerName={r.profiles?.full_name}
-                                                customerEmail={r.profiles?.email}
-                                                customerCompany={r.profiles?.company_name}
+                                                reservationId={primary.id}
+                                                // Group props
+                                                items={approveItems}
+                                                // Common customer info
+                                                customerName={primary.profiles?.full_name}
+                                                customerEmail={primary.profiles?.email}
+                                                customerCompany={primary.profiles?.company_name}
                                                 billingProfiles={billingProfiles}
-                                                itemImageUrl={r.items?.image_paths?.[0]}
                                             />
-                                            <ArchiveButton reservationId={r.id} />
+                                            <ArchiveButton
+                                                reservationId={primary.id}
+                                                groupId={primary.group_id}
+                                                itemCount={group.length}
+                                            />
                                         </>
                                     )}
                                     {status === 'confirmed' && (
                                         <>
-                                            <DispatchButton reservationId={r.id} />
-                                            <ArchiveButton reservationId={r.id} />
+                                            <DispatchButton reservationId={primary.id} />
+                                            <ArchiveButton
+                                                reservationId={primary.id}
+                                                groupId={primary.group_id}
+                                                itemCount={group.length}
+                                            />
                                         </>
                                     )}
                                     {status === 'active' && (
-                                        <ArchiveButton reservationId={r.id} />
+                                        <ArchiveButton
+                                            reservationId={primary.id}
+                                            groupId={primary.group_id}
+                                            itemCount={group.length}
+                                        />
                                     )}
                                     {status === 'returned' && (
-                                        <ArchiveButton reservationId={r.id} />
+                                        <ArchiveButton
+                                            reservationId={primary.id}
+                                            groupId={primary.group_id}
+                                            itemCount={group.length}
+                                        />
                                     )}
                                     {status === 'archived' && (
-                                        <RestoreButton reservationId={r.id} />
+                                        <RestoreButton
+                                            reservationId={primary.id}
+                                            groupId={primary.group_id}
+                                            itemCount={group.length}
+                                        />
                                     )}
                                 </div>
                             </TableCell>
@@ -310,3 +404,4 @@ function StatusBadge({ status }: { status: string }) {
         </div>
     )
 }
+

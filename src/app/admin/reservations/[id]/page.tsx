@@ -25,8 +25,6 @@ export default async function RequestDetailPage(props: Props) {
         items (name, sku, rental_price, replacement_cost, image_paths),
         profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
     `
-    // Fallback logic for missing columns not needed as we fixed schema, but good to be safe? 
-    // We assume schema is fixed based on previous steps.
 
     const { data: reservation, error } = await supabase
         .from('reservations')
@@ -36,10 +34,40 @@ export default async function RequestDetailPage(props: Props) {
 
     if (error || !reservation) {
         console.error('Fetch error details for ID:', params.id)
-        console.error(JSON.stringify(error, null, 2))
-        console.error('Query used:', select)
         notFound()
     }
+
+    // Fetch Group Siblings
+    let groupItems: any[] = []
+    if (reservation.group_id) {
+        const { data: siblings } = await supabase
+            .from('reservations')
+            .select(`
+                id,
+                status,
+                start_date,
+                end_date,
+                items (name, sku, rental_price, image_paths)
+            `)
+            .eq('group_id', reservation.group_id)
+            .neq('id', reservation.id) // Exclude current
+
+        if (siblings) groupItems = siblings
+    }
+
+    // Helper for ApproveButton items
+    // Add current item first
+    const allGroupItems = [reservation, ...groupItems].map(r => {
+        const s = new Date(r.start_date)
+        const e = new Date(r.end_date)
+        const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        return {
+            name: r.items?.name || 'Unknown',
+            rentalPrice: r.items?.rental_price || 0,
+            days: d,
+            imageUrl: r.items?.image_paths?.[0]
+        }
+    })
 
     // Fetch billing profiles for approval modal
     const { data: billingProfiles } = await supabase
@@ -56,7 +84,6 @@ export default async function RequestDetailPage(props: Props) {
 
     const isDispatchEditable = status === 'confirmed' || status === 'active'
     const isReturnEditable = status === 'active'
-    const isReturned = status === 'returned'
 
     return (
         <div className="max-w-5xl mx-auto py-10 px-4">
@@ -65,7 +92,14 @@ export default async function RequestDetailPage(props: Props) {
                     <Link href="/admin/reservations" className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1 mb-2">
                         ← Back to Requests
                     </Link>
-                    <h1 className="text-2xl font-bold text-gray-900">Request #{reservation.id.slice(0, 8).toUpperCase()}</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold text-gray-900">Request #{reservation.id.slice(0, 8).toUpperCase()}</h1>
+                        {groupItems.length > 0 && (
+                            <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full font-medium">
+                                Part of Group ({groupItems.length + 1} items)
+                            </span>
+                        )}
+                    </div>
                     <div className="flex items-center gap-4 mt-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium uppercase tracking-wide
                             ${status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
@@ -79,9 +113,7 @@ export default async function RequestDetailPage(props: Props) {
                         {status === 'pending' && (
                             <ApproveButton
                                 reservationId={reservation.id}
-                                itemName={item?.name}
-                                rentalPrice={item?.rental_price}
-                                days={Math.round((new Date(reservation.end_date).getTime() - new Date(reservation.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1}
+                                items={allGroupItems}
                                 customerName={customer?.full_name}
                                 customerEmail={customer?.email}
                                 customerCompany={customer?.company_name}
@@ -92,7 +124,6 @@ export default async function RequestDetailPage(props: Props) {
                                     reservation.country
                                 ].filter(Boolean)}
                                 billingProfiles={billingProfiles || []}
-                                itemImageUrl={item?.image_paths?.[0]}
                             />
                         )}
                         {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}
@@ -106,6 +137,43 @@ export default async function RequestDetailPage(props: Props) {
 
                 {/* Left Column: Evidence Workflow */}
                 <div className="lg:col-span-2 space-y-8">
+
+                    {/* Group Siblings List (New Section) */}
+                    {groupItems.length > 0 && (
+                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                Other Items in this Group
+                            </h2>
+                            <div className="space-y-3">
+                                {groupItems.map((sib) => (
+                                    <Link key={sib.id} href={`/admin/reservations/${sib.id}`} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 transition-all">
+                                        <div className="w-12 h-12 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            {sib.items?.image_paths?.[0] ? (
+                                                <img src={sib.items.image_paths[0]} alt={sib.items.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="font-medium text-slate-900">{sib.items?.name}</div>
+                                            <div className="text-xs text-slate-500">
+                                                {format(new Date(sib.start_date), 'MMM dd')} - {format(new Date(sib.end_date), 'MMM dd')}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className={`text-xs px-2 py-1 rounded-full ${sib.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
+                                                    sib.status === 'confirmed' ? 'bg-blue-50 text-blue-700' :
+                                                        'bg-gray-50 text-gray-600'
+                                                }`}>
+                                                {sib.status}
+                                            </div>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Dispatch Evidence Section */}
                     {(status !== 'pending' && status !== 'cancelled') && (

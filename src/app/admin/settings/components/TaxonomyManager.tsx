@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import type { Category, Collection } from '@/types'
 import { toggleCategoryVisibility, toggleCollectionVisibility, deleteCategory, deleteCollection, createCategory, createCollection } from '../actions'
-import { AlertCircle, Trash2, Plus } from 'lucide-react'
+import { AlertCircle, Trash2, Plus, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,16 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -33,6 +43,8 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
     const [isCreating, setIsCreating] = useState(false)
     const [newItemName, setNewItemName] = useState('')
     const [dialogOpen, setDialogOpen] = useState<'category' | 'collection' | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<{ type: 'category' | 'collection', id: string, name: string } | null>(null)
+    const [isDeleting, startDeleteTransition] = useTransition()
 
     const handleCreate = async (type: 'category' | 'collection') => {
         if (!newItemName.trim()) return
@@ -82,30 +94,35 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
         }
     }
 
-    const handleDeleteCategory = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete category "${name}"? This action cannot be undone.`)) return
-        try {
-            await deleteCategory(id)
-            toast.success('Category deleted')
-            router.refresh()
-        } catch (err) {
-            setError('Failed to delete category')
-            console.error(err)
-            toast.error('Failed to delete category')
-        }
+    const handleDeleteCategory = (id: string, name: string) => {
+        setDeleteTarget({ type: 'category', id, name })
     }
 
-    const handleDeleteCollection = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete collection "${name}"? This action cannot be undone.`)) return
-        try {
-            await deleteCollection(id)
-            toast.success('Collection deleted')
-            router.refresh()
-        } catch (err) {
-            setError('Failed to delete collection')
-            console.error(err)
-            toast.error('Failed to delete collection')
-        }
+    const handleDeleteCollection = (id: string, name: string) => {
+        setDeleteTarget({ type: 'collection', id, name })
+    }
+
+    const confirmDelete = () => {
+        if (!deleteTarget) return
+
+        startDeleteTransition(() => {
+            void (async () => {
+                try {
+                    if (deleteTarget.type === 'category') {
+                        await deleteCategory(deleteTarget.id)
+                        toast.success('Category deleted')
+                    } else {
+                        await deleteCollection(deleteTarget.id)
+                        toast.success('Collection deleted')
+                    }
+                    router.refresh()
+                } catch (err) {
+                    setError(`Failed to delete ${deleteTarget.type}`)
+                    toast.error(`Failed to delete ${deleteTarget.type}`)
+                }
+                setDeleteTarget(null)
+            })()
+        })
     }
 
     return (
@@ -255,6 +272,32 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            Delete {deleteTarget?.type === 'category' ? 'Category' : 'Collection'}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete &quot;{deleteTarget?.name}&quot;? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmDelete}
+                            disabled={isDeleting}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isDeleting ? 'Deleting...' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }
+
