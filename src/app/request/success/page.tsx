@@ -4,11 +4,11 @@ import { CheckCircle2 } from 'lucide-react'
 
 export default function RequestSuccessPage() {
     return (
-        <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <main className="min-h-screen bg-white flex items-center justify-center px-4" aria-label="Request submitted confirmation">
             <div className="max-w-md w-full text-center space-y-8">
                 <div className="flex justify-center">
                     <div className="h-24 w-24 bg-green-50 rounded-full flex items-center justify-center">
-                        <CheckCircle2 className="h-12 w-12 text-green-600" />
+                        <CheckCircle2 className="h-12 w-12 text-green-600" aria-hidden="true" />
                     </div>
                 </div>
 
@@ -27,6 +27,6 @@ export default function RequestSuccessPage() {
                     </Link>
                 </div>
             </div>
-        </div>
+        </main>
     )
 }

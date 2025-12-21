@@ -125,7 +125,7 @@ export function SummaryClient() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8" aria-label="Request summary">
             <div className="max-w-6xl mx-auto">
                 <Button
                     variant="ghost"
@@ -146,15 +146,15 @@ export function SummaryClient() {
 
                         {/* Date Card */}
                         <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-100 flex items-center gap-4">
-                            <div className="h-12 w-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-400">
-                                <Calendar className="h-6 w-6" />
+                            <div className="h-12 w-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-700">
+                                <Calendar className="h-6 w-6" aria-hidden="true" />
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">Requested Dates</p>
                                 {hasDates ? (
                                     <p className="text-lg text-gray-900">
                                         {format(fromDate!, 'MMM d, yyyy')} - {format(toDate!, 'MMM d, yyyy')}
-                                        <span className="text-gray-400 ml-2 text-base">({days} days)</span>
+                                        <span className="text-gray-700 ml-2 text-base font-semibold">({days} days)</span>
                                     </p>
                                 ) : (
                                     <p className="text-red-500">Dates not selected</p>
@@ -171,7 +171,7 @@ export function SummaryClient() {
                                         <div className="relative h-24 w-24 bg-gray-100 rounded-sm overflow-hidden flex-shrink-0">
                                             <Image
                                                 src={getImageUrl(item.image_paths)}
-                                                alt={item.name}
+                                                alt={`${item.name} fine jewelry piece`}
                                                 fill
                                                 className="object-cover"
                                                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -251,7 +251,9 @@ export function SummaryClient() {
                                                             variant="outline"
                                                             role="combobox"
                                                             aria-expanded={openCountry}
-                                                            className="w-full justify-between font-normal text-left h-10 px-3 py-2 border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                            aria-controls="country-list"
+                                                            aria-label="Select country or region"
+                                                            className="w-full justify-between font-normal text-left h-12 min-h-[44px] px-3 py-2 border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
                                                             {country
                                                                 ? COUNTRIES.find((c) => c === country)
@@ -259,7 +261,7 @@ export function SummaryClient() {
                                                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                         </Button>
                                                     </PopoverTrigger>
-                                                    <PopoverContent className="w-[300px] p-0" align="start">
+                                                    <PopoverContent id="country-list" className="w-[300px] p-0" align="start">
                                                         <Command>
                                                             <CommandInput placeholder="Search country..." />
                                                             <CommandList>
@@ -363,6 +365,7 @@ export function SummaryClient() {
                                     type="submit"
                                     className="w-full h-14 text-base uppercase tracking-widest mt-6"
                                     disabled={isSubmitting || items.length === 0}
+                                    aria-busy={isSubmitting}
                                 >
                                     {isSubmitting ? (
                                         <>
@@ -378,6 +381,6 @@ export function SummaryClient() {
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     )
 }

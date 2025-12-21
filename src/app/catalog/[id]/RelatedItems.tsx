@@ -31,34 +31,38 @@ export async function RelatedItems({ collectionId, currentId, isArchiveMode }: P
     }
 
     return (
-        <section className="mt-24 pt-12 border-t border-gray-100">
-            <h2 className="text-xl font-light tracking-wide uppercase text-center mb-12">More from this Collection</h2>
+        <section className="mt-24 pt-12 border-t border-gray-100" aria-label="More from this collection">
+            <h2 className="text-xl font-semibold tracking-wide uppercase text-center mb-12">More from this Collection</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                {relatedItems.map((related) => (
-                    <Link
-                        key={related.id}
-                        href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
-                        className="group block"
-                    >
-                        <div className="relative aspect-square bg-white overflow-hidden rounded-md mb-4">
-                            <Image
-                                src={getImageUrl(related.image_paths)}
-                                alt={related.name}
-                                fill
-                                className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                                sizes="(max-width: 640px) 100vw, 25vw"
-                            />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
-                                {related.color ? `${related.color} ${related.name}` : related.name}
-                            </h3>
-                            {!isArchiveMode && (
-                                <p className="text-sm text-gray-500 mt-1">${related.rental_price}</p>
-                            )}
-                        </div>
-                    </Link>
-                ))}
+                {relatedItems.map((related) => {
+                    const displayName = related.color ? `${related.color} ${related.name}` : related.name
+                    return (
+                        <Link
+                            key={related.id}
+                            href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
+                            className="group block focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none rounded-md"
+                            aria-label={`View ${displayName}`}
+                        >
+                            <div className="relative aspect-square bg-white overflow-hidden rounded-md mb-4">
+                                <Image
+                                    src={getImageUrl(related.image_paths)}
+                                    alt={`${displayName} fine jewelry piece`}
+                                    fill
+                                    className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                                    sizes="(max-width: 640px) 100vw, 25vw"
+                                />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">
+                                    {displayName}
+                                </h3>
+                                {!isArchiveMode && (
+                                    <p className="text-sm text-gray-700 mt-1">${related.rental_price}</p>
+                                )}
+                            </div>
+                        </Link>
+                    )
+                })}
             </div>
         </section>
     )

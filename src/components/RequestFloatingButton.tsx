@@ -82,16 +82,19 @@ export function RequestFloatingButton() {
                 <Button
                     variant="ghost"
                     size="icon"
+                    aria-label="Open request list"
+                    aria-expanded={open}
+                    aria-controls="request-drawer"
                     className={cn(
-                        "relative h-10 w-10 text-slate-900 hover:bg-slate-100 rounded-full transition-transform",
+                        "relative h-11 w-11 min-w-[44px] text-slate-900 hover:bg-slate-100 rounded-full transition-transform",
                         isBouncing && "scale-125"
                     )}
                 >
-                    <ShoppingBag className="h-5 w-5" />
+                    <ShoppingBag className="h-5 w-5" aria-hidden="true" />
                     <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white ring-0 animate-in fade-in zoom-in" />
                 </Button>
             </SheetTrigger>
-            <SheetContent className="flex flex-col w-full sm:max-w-lg">
+            <SheetContent className="flex flex-col w-full sm:max-w-lg" id="request-drawer" aria-label="Request list">
                 <SheetHeader className="border-b pb-4">
                     <SheetTitle>Your Request List</SheetTitle>
                     <SheetDescription>
@@ -129,15 +132,15 @@ export function RequestFloatingButton() {
                             <div className="relative h-20 w-20 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
                                 <Image
                                     src={getImageUrl(item.image_paths)}
-                                    alt={item.name}
+                                    alt={`${item.name} fine jewelry piece`}
                                     fill
                                     className="object-cover"
                                 />
                             </div>
                             <div className="flex-1 min-w-0 flex flex-col justify-between">
                                 <div>
-                                    <h4 className="font-medium text-sm text-gray-900 truncate pr-6">{item.name}</h4>
-                                    <p className="text-xs text-gray-500 capitalize">{item.category}</p>
+                                    <h4 className="font-semibold text-sm text-gray-900 truncate pr-6">{item.name}</h4>
+                                    <p className="text-xs text-gray-700 capitalize">{item.category}</p>
                                 </div>
                                 <div className="flex items-center justify-between mt-2">
                                     <p className="text-sm font-medium text-gray-900">
@@ -154,9 +157,10 @@ export function RequestFloatingButton() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeItem(item.id)}
-                                className="absolute top-2 right-2 h-6 w-6 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                aria-label={`Remove ${item.name} from request`}
+                                className="absolute top-2 right-2 h-11 w-11 min-w-[44px] text-gray-600 hover:text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none rounded-full"
                             >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </Button>
                         </div>
                     ))}
