@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { format, parse } from "date-fns"
-import { Calendar as CalendarIcon, X, ShoppingBag, Plus, Pencil, Check, Loader2 } from "lucide-react"
+import { Calendar as CalendarIcon, X, ShoppingBag, Plus, Pencil, Check, Loader2, Filter, ChevronDown } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
@@ -12,6 +12,14 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet"
 import {
     Popover,
     PopoverContent,
@@ -312,13 +320,194 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     }, [items, selectedCategoryId])
 
 
+    // Mobile Calendar State
+    const [isMobileCalendarOpen, setIsMobileCalendarOpen] = React.useState(false)
+
+    const handleMobileCalendarOpenChange = (open: boolean) => {
+        setIsMobileCalendarOpen(open)
+        if (open) setActiveDateInput('from')
+        else setActiveDateInput(null)
+    }
+
     return (
         <div className="min-h-screen bg-white">
             {/* Layout Container */}
             <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-6 flex flex-col md:flex-row gap-8">
 
+                {/* Mobile Filter Bar */}
+                <div className="md:hidden sticky top-16 z-30 bg-white/95 backdrop-blur border-b border-slate-100 -mx-4 px-4 py-3 mb-4 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    {/* Mobile Date Picker Trigger */}
+                    <Popover open={isMobileCalendarOpen} onOpenChange={handleMobileCalendarOpenChange}>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-xs font-medium border-slate-200 bg-white shadow-sm flex-shrink-0">
+                                <CalendarIcon className="h-3.5 w-3.5 mr-2 text-slate-500" />
+                                {hasCommittedDate
+                                    ? `${format(committedDate!.from!, 'MMM d')} - ${format(committedDate!.to!, 'MMM d')}`
+                                    : "Select Dates"
+                                }
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[320px] p-0" align="start" sideOffset={8}>
+                            {/* Reused Calendar Content - same as desktop but strictly mobile styled if needed. 
+                                For DRY, we are duplicating logic here for safety. Ideally refactor to component. */}
+                            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                                <div className="flex items-center gap-2 text-sm justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setActiveDateInput('from')}
+                                            className={cn("text-xs font-medium px-2 py-1 rounded bg-white border transition-colors",
+                                                activeDateInput === 'from' ? "border-slate-900 ring-1 ring-slate-900 text-slate-900" : "border-slate-200 text-slate-500",
+                                                draftDate?.from ? "text-slate-900" : "text-slate-400"
+                                            )}
+                                        >
+                                            {draftDate?.from ? format(draftDate.from, "MMM d") : 'Start'}
+                                        </button>
+                                        <span className="text-slate-300">→</span>
+                                        <button
+                                            onClick={() => setActiveDateInput('to')}
+                                            className={cn("text-xs font-medium px-2 py-1 rounded bg-white border transition-colors",
+                                                activeDateInput === 'to' ? "border-slate-900 ring-1 ring-slate-900 text-slate-900" : "border-slate-200 text-slate-500",
+                                                draftDate?.to ? "text-slate-900" : "text-slate-400"
+                                            )}
+                                        >
+                                            {draftDate?.to ? format(draftDate.to, "MMM d") : 'End'}
+                                        </button>
+                                    </div>
+                                    {(draftDate?.from || draftDate?.to) && (
+                                        <button
+                                            onClick={() => {
+                                                setDraftDate(undefined)
+                                                if (!committedDate) handleReset()
+                                            }}
+                                            className="text-[10px] text-slate-400 hover:text-red-500 uppercase tracking-wider font-medium"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                month={draftDate?.from || new Date()}
+                                selected={draftDate}
+                                onDayClick={handleDayClick}
+                                numberOfMonths={1}
+                                disabled={[
+                                    { before: new Date() },
+                                    activeDateInput === 'to' && draftDate?.from ? { before: draftDate.from } : { before: new Date() }
+                                ]}
+                                className="p-3"
+                            />
+                            <div className="p-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                <Button variant="ghost" size="sm" onClick={() => setIsMobileCalendarOpen(false)} className="h-8 text-xs">
+                                    Cancel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        handleApplySearch()
+                                        setIsMobileCalendarOpen(false)
+                                    }}
+                                    disabled={!hasDraftComplete || isLoading}
+                                    className="h-8 text-xs bg-slate-900 text-white hover:bg-slate-800"
+                                >
+                                    {isLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                                    Apply
+                                </Button>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
+                    {/* All Filters Drawer */}
+                    <Sheet>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-xs font-medium border-slate-200 bg-white shadow-sm flex-shrink-0">
+                                <Filter className="h-3.5 w-3.5 mr-2 text-slate-500" />
+                                All Filters
+                                {(selectedCategoryId || selectedCollectionId) && (
+                                    <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-900 text-[9px] text-white">
+                                        {(selectedCategoryId ? 1 : 0) + (selectedCollectionId ? 1 : 0)}
+                                    </span>
+                                )}
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="bottom" className="h-[80vh] rounded-t-xl px-0">
+                            <SheetHeader className="px-6 pb-4 border-b">
+                                <SheetTitle className="text-left">Filters</SheetTitle>
+                                <SheetDescription className="text-left">
+                                    Refine your search by category and collection.
+                                </SheetDescription>
+                            </SheetHeader>
+                            <div className="overflow-y-auto h-full px-6 py-6 space-y-8">
+                                {/* Categories */}
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between">
+                                        Categories
+                                        {selectedCategoryId && (
+                                            <button onClick={() => setSelectedCategoryId(null)} className="text-blue-600 font-normal text-xs">
+                                                Reset
+                                            </button>
+                                        )}
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {categories.map(cat => (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
+                                                className={cn(
+                                                    "px-3 py-2 text-xs rounded-md border text-left transition-all",
+                                                    selectedCategoryId === cat.id
+                                                        ? "bg-slate-900 text-white border-slate-900"
+                                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                                                )}
+                                            >
+                                                <div className="flex justify-between items-center">
+                                                    <span>{cat.name}</span>
+                                                    <span className={cn("text-[10px]", selectedCategoryId === cat.id ? "text-slate-400" : "text-slate-400")}>
+                                                        {categoryCounts[cat.id] || 0}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Collections */}
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between">
+                                        Collections
+                                        {selectedCollectionId && (
+                                            <button onClick={() => setSelectedCollectionId(null)} className="text-blue-600 font-normal text-xs">
+                                                Reset
+                                            </button>
+                                        )}
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {collections.map(col => (
+                                            <button
+                                                key={col.id}
+                                                onClick={() => setSelectedCollectionId(selectedCollectionId === col.id ? null : col.id)}
+                                                className={cn(
+                                                    "w-full px-3 py-2 text-xs rounded-md border text-left transition-all flex items-center justify-between",
+                                                    selectedCollectionId === col.id
+                                                        ? "bg-slate-50 border-slate-900 text-slate-900 font-medium"
+                                                        : "bg-white text-slate-600 border-slate-200"
+                                                )}
+                                            >
+                                                <span>{col.name}</span>
+                                                <span className="text-slate-400 text-[10px]">{collectionCounts[col.id] || 0}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+                </div>
+
                 {/* Sidebar Filters */}
-                <aside className="w-full md:w-48 lg:w-56 space-y-10 flex-shrink-0 pt-1">
+                <aside className="hidden md:block w-full md:w-48 lg:w-56 space-y-10 flex-shrink-0 pt-1">
                     {/* 1. Date Picker (Sidebar First) */}
                     <div>
                         <h3 className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4 pb-2 border-b border-slate-100">
@@ -595,21 +784,31 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                 {hasCommittedDate ? (
                                                     isMounted && hasItem(item.id) ? (
                                                         <Button
-                                                            size="icon"
-                                                            className="group/btn w-9 h-9 rounded-full bg-green-50 text-green-600 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                                            className="h-9 rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 text-xs font-medium animate-in zoom-in-95 fade-in duration-200"
                                                             onClick={(e) => {
                                                                 e.preventDefault()
                                                                 removeItem(item.id)
-                                                                toast.info("Removed from request")
+                                                                toast("Item removed", {
+                                                                    action: {
+                                                                        label: 'Undo',
+                                                                        onClick: () => addItem({
+                                                                            id: item.id,
+                                                                            name: item.name,
+                                                                            category: item.category,
+                                                                            rental_price: item.rental_price,
+                                                                            image_paths: item.image_paths,
+                                                                            status: item.status
+                                                                        })
+                                                                    }
+                                                                })
                                                             }}
-                                                            title="Remove from request"
                                                         >
-                                                            <Check className="h-4 w-4 group-hover/btn:hidden" />
-                                                            <X className="h-4 w-4 hidden group-hover/btn:block" />
+                                                            <X className="h-3.5 w-3.5 mr-1" />
+                                                            Remove
                                                         </Button>
                                                     ) : (
                                                         <Button
-                                                            className="px-4 h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium"
+                                                            className="px-4 h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium animate-in zoom-in-95 fade-in duration-200"
                                                             onClick={(e) => {
                                                                 e.preventDefault()
                                                                 addItem({
