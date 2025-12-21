@@ -137,7 +137,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
 
     // Test email dialog
     const [testEmailOpen, setTestEmailOpen] = useState(false)
-    const [testEmailType, setTestEmailType] = useState<'approval' | 'shipping'>('approval')
+    const [testEmailType, setTestEmailType] = useState<'approval' | 'shipping' | 'invoice'>('approval')
     const [testEmailAddress, setTestEmailAddress] = useState('')
     const [isSendingTest, startTestTransition] = useTransition()
 
@@ -217,6 +217,10 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                     shippingSubject: shippingSubject || DEFAULTS.shippingSubject,
                     shippingBody: shippingBody || DEFAULTS.shippingBody,
                     shippingFooter: shippingFooter || DEFAULTS.shippingFooter,
+                    // Invoice-specific params
+                    billingProfileId: billingProfiles[0]?.id,
+                    invoiceNotes: invoiceNotes || undefined,
+                    invoiceFooter: invoiceFooter || DEFAULTS.invoiceFooter,
                 })
 
                 setTestEmailOpen(false)
@@ -224,7 +228,10 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                 if (result.error) {
                     toast.error(result.error)
                 } else {
-                    toast.success(`Test email sent to ${testEmailAddress}!`)
+                    const message = (testEmailType === 'approval' || testEmailType === 'invoice')
+                        ? 'Test email with invoice PDF sent!'
+                        : `Test email sent to ${testEmailAddress}!`
+                    toast.success(message)
                 }
                 setTestEmailAddress('')
             })()
@@ -533,6 +540,20 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                             onClickFooter={() => focusWithFlash(invoiceFooterRef)}
                             onSwitchToBilling={onSwitchToBilling}
                         />
+                        <div className="mt-4">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full border-gray-200 text-gray-600 hover:bg-gray-50"
+                                onClick={() => {
+                                    setTestEmailType('invoice')
+                                    setTestEmailOpen(true)
+                                }}
+                            >
+                                <Send className="h-4 w-4 mr-2" />
+                                Send Test Email with PDF
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -555,7 +576,9 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                     <DialogHeader>
                         <DialogTitle>Send Test Email</DialogTitle>
                         <DialogDescription>
-                            Send a preview of the {testEmailType === 'approval' ? 'approval' : 'shipping'} email to your inbox.
+                            {testEmailType === 'invoice' || testEmailType === 'approval'
+                                ? 'Send a test email with a real PDF invoice (2 mock items) to verify formatting.'
+                                : 'Send a preview of the shipping email to your inbox.'}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">

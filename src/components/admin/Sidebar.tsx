@@ -11,7 +11,6 @@ import {
     Users,
     Settings,
     LogOut,
-    Gem, // Import Gem icon
     Menu // Import Menu icon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -107,7 +106,6 @@ export const Sidebar = () => {
                         <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                         <div className="flex h-full flex-col">
                             <div className="flex h-16 items-center px-6 border-b border-slate-200 bg-white">
-                                <Gem className="h-6 w-6 text-slate-700 mr-2" />
                                 <span className="text-lg font-semibold text-slate-900">Ivy&apos;s Rental</span>
                             </div>
 
@@ -148,10 +146,7 @@ export const Sidebar = () => {
                 onMouseLeave={() => setIsHovered(false)}
             >
                 {/* Header */}
-                <div className="flex h-16 items-center" style={{ width: '240px' }}>
-                    <div className="flex items-center justify-center w-16 flex-shrink-0">
-                        <Gem className="h-6 w-6 text-slate-700" />
-                    </div>
+                <div className="flex h-16 items-center px-4" style={{ width: '240px' }}>
                     <span
                         className={cn(
                             "text-lg font-bold text-slate-900 whitespace-nowrap transition-opacity",
@@ -207,7 +202,12 @@ export const Sidebar = () => {
                     <Link
                         href="/admin/settings"
                         title={!isHovered ? 'Settings' : undefined}
-                        className="flex items-center mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                        className={cn(
+                            'flex items-center mx-2 rounded-lg py-2 text-sm font-medium transition-colors',
+                            pathname === '/admin/settings'
+                                ? 'bg-slate-200 text-slate-900'
+                                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                        )}
                     >
                         <div className="flex items-center justify-center w-12 flex-shrink-0">
                             <Settings className="h-5 w-5" />
@@ -222,11 +222,9 @@ export const Sidebar = () => {
                         </span>
                     </Link>
 
-                    <Button
-                        variant="ghost"
+                    <button
                         title={!isHovered ? 'Sign Out' : undefined}
-                        className="w-full justify-start mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50"
-                        style={{ width: 'calc(100% - 16px)' }}
+                        className="flex items-center mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 transition-colors hover:text-red-600 hover:bg-red-50 w-[calc(100%-16px)]"
                         onClick={handleSignOut}
                     >
                         <div className="flex items-center justify-center w-12 flex-shrink-0">
@@ -240,7 +238,7 @@ export const Sidebar = () => {
                         >
                             Sign Out
                         </span>
-                    </Button>
+                    </button>
                 </div>
             </aside>
         </>

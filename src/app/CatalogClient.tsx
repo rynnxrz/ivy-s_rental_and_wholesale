@@ -260,34 +260,48 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     // === ANCHOR DATE SELECTION LOGIC ===
     const handleDayClick = (day: Date) => {
         if (activeDateInput === 'from') {
-            // Modifying Start Date
-            setDraftDate(prev => {
-                const currentTo = prev?.to
+            // Always clear End date if we are picking a new Start date, 
+            // unless we want to support adjusting start while keeping end.
+            // But usually for "Start -> End" flow, we want to jump to End.
+            // Let's preserve End if it's valid (after new Start), otherwise clear it.
 
-                // If new Start > current End, clear End (invalid range)
-                if (currentTo && day > currentTo) {
+            const currentTo = draftDate?.to
+            const isConflict = currentTo && day > currentTo
+
+            setDraftDate(prev => {
+                if (isConflict) {
                     return { from: day, to: undefined }
                 }
-
-                return { from: day, to: currentTo }
+                // If no conflict, keep existing End (or undefined if it was empty)
+                return { from: day, to: prev?.to }
             })
 
-            // AUTO-NEXT: If we are in an empty state (no End date) or we just invalidated the End date,
-            // automatically switch focus to the 'End' input to encourage flow.
-            if (!draftDate?.to || day > draftDate.to) {
+            // REQUEST: "When user is selecting 'Start' date, click auto switch focus to 'End' input."
+            // We do this unconditionally now to ensure fluid flow.
+            setActiveDateInput('to')
+
+        } else if (activeDateInput === 'to') {
+            // Check if user clicked a date BEFORE the current start
+            if (draftDate?.from && day < draftDate.from) {
+                // REQUEST: "When user is selecting 'End' date, if click date before 'Start', 
+                // do not error... auto update this earlier date as new 'Start'."
+
+                // Set this new date as Start, clear End (since we are technically restarting the range from this new point)
+                setDraftDate({ from: day, to: undefined })
+
+                // And ensure we are ready to pick the End date
+                setActiveDateInput('to')
+            } else {
+                // Normal End date selection
+                setDraftDate(prev => ({ from: prev?.from, to: day }))
+                // Stay on 'to' or could close? User didn't specify closing, so we stay.
                 setActiveDateInput('to')
             }
-        } else if (activeDateInput === 'to') {
-            // Modifying End Date
-            setDraftDate(prev => {
-                // If new End < current Start, theoretically invalid.
-                // For simplified "Anchor styling", we update End. 
-                // Calendar disabled prop prevents selection < From if needed, or we just set it.
-                return { from: prev?.from, to: day }
-            })
+
         } else {
-            // Fallback (shouldn't happen with anchor logic)
+            // Fallback for when no specific input is active (shouldn't happen often in this UI but good for safety)
             setDraftDate({ from: day, to: undefined })
+            setActiveDateInput('to')
         }
     }
 
@@ -437,7 +451,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                             <Calendar
                                 initialFocus
                                 mode="range"
-                                month={draftDate?.from || new Date()}
+                                defaultMonth={draftDate?.from || new Date()}
                                 selected={draftDate}
                                 onDayClick={handleDayClick}
                                 numberOfMonths={1}
@@ -591,7 +605,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                         <Popover open={isCalendarOpen} onOpenChange={handleCalendarOpenChange}>
                             <PopoverTrigger asChild>
                                 <div className="space-y-3" role="group" aria-label="Rental dates">
-                                    {/* Start Date - Frameless */}
+                                    {/* Start Date - Frameless with active text state only */}
                                     <button
                                         type="button"
                                         onClick={() => openCalendar('from')}
@@ -599,11 +613,14 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         aria-expanded={isCalendarOpen}
                                         aria-controls="desktop-date-popover"
                                         className={cn(
-                                            "w-full text-left group focus-visible:underline focus-visible:outline-none border border-transparent",
-                                            isDateShakeError && "border-slate-900 ring-2 ring-slate-900 rounded-md transition-all duration-200"
+                                            "w-full text-left group focus-visible:underline focus-visible:outline-none transition-all duration-150",
+                                            isDateShakeError && "ring-2 ring-slate-900 rounded-md"
                                         )}
                                     >
-                                        <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-bold">Start</span>
+                                        <span className={cn(
+                                            "block text-[10px] uppercase tracking-wider font-bold transition-colors",
+                                            isCalendarOpen && activeDateInput === 'from' ? "text-slate-900" : "text-slate-400"
+                                        )}>Start</span>
                                         <span className={cn(
                                             "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
                                             (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400"
@@ -614,7 +631,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         </span>
                                     </button>
 
-                                    {/* End Date - Frameless */}
+                                    {/* End Date - Frameless with active text state only */}
                                     <button
                                         type="button"
                                         onClick={() => openCalendar('to')}
@@ -622,11 +639,14 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         aria-expanded={isCalendarOpen}
                                         aria-controls="desktop-date-popover"
                                         className={cn(
-                                            "w-full text-left group focus-visible:underline focus-visible:outline-none border border-transparent",
-                                            isDateShakeError && "border-slate-900 ring-2 ring-slate-900 rounded-md transition-all duration-200"
+                                            "w-full text-left group focus-visible:underline focus-visible:outline-none transition-all duration-150",
+                                            isDateShakeError && "ring-2 ring-slate-900 rounded-md"
                                         )}
                                     >
-                                        <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-bold">End</span>
+                                        <span className={cn(
+                                            "block text-[10px] uppercase tracking-wider font-bold transition-colors",
+                                            isCalendarOpen && activeDateInput === 'to' ? "text-slate-900" : "text-slate-400"
+                                        )}>End</span>
                                         <span className={cn(
                                             "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
                                             (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400"
@@ -676,10 +696,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                 <Calendar
                                     initialFocus
                                     mode="range"
-                                    month={draftDate?.from || new Date()}
+                                    defaultMonth={draftDate?.from || new Date()}
                                     selected={draftDate}
                                     onDayClick={handleDayClick}
-                                    numberOfMonths={1}
+                                    numberOfMonths={2}
                                     disabled={[
                                         { before: new Date() },
                                         activeDateInput === 'to' && draftDate?.from ? { before: draftDate.from } : { before: new Date() }
