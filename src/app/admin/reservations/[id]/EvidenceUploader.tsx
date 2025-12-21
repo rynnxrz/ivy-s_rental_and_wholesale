@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { saveEvidence } from '../../actions'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 // Icons
 const UploadIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -36,6 +37,7 @@ export default function EvidenceUploader({
     const [images, setImages] = useState<string[]>(existingImages || [])
     const [noteText, setNoteText] = useState(notes || '')
     const [isSaved, setIsSaved] = useState(false)
+    const [isSaving, startSaveTransition] = useTransition()
     const router = useRouter()
     const supabase = createClient()
 
@@ -80,16 +82,19 @@ export default function EvidenceUploader({
     }
 
     const handleSave = async () => {
-        setUploading(true)
-        const res = await saveEvidence(reservationId, type, images, noteText)
-        setUploading(false)
-        if (res.success) {
-            setIsSaved(true)
-            router.refresh()
-            setTimeout(() => setIsSaved(false), 3000)
-        } else {
-            alert('Save failed')
-        }
+        startSaveTransition(() => {
+            void (async () => {
+                const res = await saveEvidence(reservationId, type, images, noteText)
+                if (res.success) {
+                    setIsSaved(true)
+                    toast.success('Evidence saved')
+                    router.refresh()
+                    setTimeout(() => setIsSaved(false), 3000)
+                } else {
+                    toast.error(res.error || 'Failed to save evidence')
+                }
+            })()
+        })
     }
 
     const getImageUrl = (path: string) => {
@@ -152,7 +157,7 @@ export default function EvidenceUploader({
                     <div className="flex justify-end">
                         <button
                             onClick={handleSave}
-                            disabled={uploading}
+                            disabled={uploading || isSaving}
                             className={`flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium transition-colors ${isSaved
                                 ? 'bg-green-600 hover:bg-green-700'
                                 : 'bg-gray-900 hover:bg-gray-800'

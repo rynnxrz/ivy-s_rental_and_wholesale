@@ -33,7 +33,7 @@ export function SummaryClient() {
     const { items, dateRange, clearRequest } = useRequestStore()
     const router = useRouter()
     const [isMounted, setIsMounted] = React.useState(false) // Hydration fix
-    const [isSubmitting, setIsSubmitting] = React.useState(false)
+    const [isSubmitting, startSubmitTransition] = React.useTransition()
 
     // Form state
     const [email, setEmail] = React.useState('')
@@ -85,36 +85,38 @@ export function SummaryClient() {
             return
         }
 
-        setIsSubmitting(true)
-        try {
-            const result = await submitBulkRequest({
-                items: items.map(i => i.id),
-                email,
-                full_name: fullName,
-                company_name: companyName,
-                notes,
-                start_date: dateRange.from!,
-                end_date: dateRange.to!,
-                access_password: accessPassword,
-                country,
-                city_region: cityRegion,
-                address_line1: addressLine1,
-                address_line2: addressLine2,
-                postcode
-            })
+        startSubmitTransition(() => {
+            void (async () => {
+                try {
+                    const result = await submitBulkRequest({
+                        items: items.map(i => i.id),
+                        email,
+                        full_name: fullName,
+                        company_name: companyName,
+                        notes,
+                        start_date: dateRange.from!,
+                        end_date: dateRange.to!,
+                        access_password: accessPassword,
+                        country,
+                        city_region: cityRegion,
+                        address_line1: addressLine1,
+                        address_line2: addressLine2,
+                        postcode
+                    })
 
-            if (result.error) {
-                toast.error(result.error)
-            } else {
-                clearRequest()
-                router.push('/request/success')
-            }
-        } catch (err) {
-            console.error('Submission error:', err)
-            toast.error('An unexpected error occurred.')
-        } finally {
-            setIsSubmitting(false)
-        }
+                    if (result.error) {
+                        toast.error(result.error)
+                    } else {
+                        toast.success('Request submitted successfully')
+                        clearRequest()
+                        router.push('/request/success')
+                    }
+                } catch (err) {
+                    console.error('Submission error:', err)
+                    toast.error('An unexpected error occurred.')
+                }
+            })()
+        })
     }
 
     const getImageUrl = (images: string[] | null) => {

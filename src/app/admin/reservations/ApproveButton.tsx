@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { approveReservation } from '../actions'
 import {
@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Loader2, FileText, Star } from 'lucide-react'
 import type { BillingProfile } from '@/types'
+import { useRouter } from 'next/navigation'
 
 interface ApproveButtonProps {
     reservationId: string
@@ -50,8 +51,9 @@ export function ApproveButton({
     billingProfiles,
     itemImageUrl
 }: ApproveButtonProps) {
+    const router = useRouter()
     const [open, setOpen] = useState(false)
-    const [loading, setLoading] = useState(false)
+    const [isPending, startTransition] = useTransition()
     const [notes, setNotes] = useState('')
 
     // Find the default profile or use the first one
@@ -70,29 +72,33 @@ export function ApproveButton({
             return
         }
 
-        setLoading(true)
-        const result = await approveReservation(reservationId, selectedProfileId, notes || undefined)
-        setLoading(false)
+        startTransition(() => {
+            void (async () => {
+                const result = await approveReservation(reservationId, selectedProfileId, notes || undefined)
 
-        if (result.error) {
-            if (result.error.includes('23P01') || result.error.includes('conflicting key')) {
-                toast.error('Date Conflict', {
-                    description: 'This item is already booked for the selected dates.'
-                })
-            } else {
-                toast.error(`Error: ${result.error}`)
-            }
-        } else if (result.warning) {
-            toast.warning(`Success with warning: ${result.warning}`)
-            setOpen(false)
-            setNotes('')
-        } else {
-            toast.success('Reservation Approved', {
-                description: 'Invoice sent to customer.'
-            })
-            setOpen(false)
-            setNotes('')
-        }
+                if (result.error) {
+                    if (result.error.includes('23P01') || result.error.includes('conflicting key')) {
+                        toast.error('Date Conflict', {
+                            description: 'This item is already booked for the selected dates.'
+                        })
+                    } else {
+                        toast.error(result.error)
+                    }
+                } else if (result.warning) {
+                    toast.warning(`Success with warning: ${result.warning}`)
+                    setOpen(false)
+                    setNotes('')
+                    router.refresh()
+                } else {
+                    toast.success('Reservation Approved', {
+                        description: 'Invoice sent to customer.'
+                    })
+                    setOpen(false)
+                    setNotes('')
+                    router.refresh()
+                }
+            })()
+        })
     }
 
     // Fallback bank info for display if no profile selected
@@ -267,16 +273,16 @@ export function ApproveButton({
                 </div>
 
                 <DialogFooter className="gap-2 sm:gap-0">
-                    <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
                         Cancel
                     </Button>
                     <Button
                         onClick={handleApprove}
-                        disabled={loading || billingProfiles.length === 0}
+                        disabled={isPending || billingProfiles.length === 0}
                         className="bg-green-600 hover:bg-green-700"
                     >
-                        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {loading ? 'Processing...' : 'Confirm & Send Invoice'}
+                        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isPending ? 'Processing...' : 'Confirm & Send Invoice'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

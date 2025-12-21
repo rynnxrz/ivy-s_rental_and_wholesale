@@ -11,7 +11,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { archiveItem, deleteItem } from '@/actions/items'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -23,51 +23,53 @@ interface DeleteItemButtonProps {
 
 export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) => {
     const [open, setOpen] = useState(false)
-    const [isDeleting, setIsDeleting] = useState(false)
     const [showArchiveOption, setShowArchiveOption] = useState(false)
+    const [isPending, startTransition] = useTransition()
     const router = useRouter()
 
     const handleDelete = async () => {
-        setIsDeleting(true)
-        try {
-            const result = await deleteItem(itemId)
-            if (result.success) {
-                setOpen(false)
-                toast.success(`Deleted "${itemName}"`)
-                router.refresh()
-            } else if (result.error === 'DEPENDENCY_ERROR') {
-                setShowArchiveOption(true)
-                toast.warning('Cannot delete: Item has existing reservations.')
-            } else {
-                console.error('Failed to delete item:', result.error)
-                toast.error(`Failed to delete: ${result.error}`)
-            }
-        } catch (error) {
-            console.error('Error deleting item:', error)
-            toast.error('An unexpected error occurred')
-        } finally {
-            setIsDeleting(false)
-        }
+        startTransition(() => {
+            void (async () => {
+                try {
+                    const result = await deleteItem(itemId)
+                    if (result.success) {
+                        setOpen(false)
+                        toast.success(`Deleted "${itemName}"`)
+                        router.refresh()
+                    } else if (result.error === 'DEPENDENCY_ERROR') {
+                        setShowArchiveOption(true)
+                        toast.warning('Cannot delete: Item has existing reservations.')
+                    } else {
+                        console.error('Failed to delete item:', result.error)
+                        toast.error(`Failed to delete: ${result.error}`)
+                    }
+                } catch (error) {
+                    console.error('Error deleting item:', error)
+                    toast.error('An unexpected error occurred')
+                }
+            })()
+        })
     }
 
     const handleArchive = async () => {
-        setIsDeleting(true)
-        try {
-            const result = await archiveItem(itemId)
-            if (result.success) {
-                setOpen(false)
-                setShowArchiveOption(false)
-                toast.success(`Retired "${itemName}"`)
-                router.refresh()
-            } else {
-                toast.error(`Failed to retire: ${result.error}`)
-            }
-        } catch (error) {
-            console.error('Error archiving item:', error)
-            toast.error('An unexpected error occurred')
-        } finally {
-            setIsDeleting(false)
-        }
+        startTransition(() => {
+            void (async () => {
+                try {
+                    const result = await archiveItem(itemId)
+                    if (result.success) {
+                        setOpen(false)
+                        setShowArchiveOption(false)
+                        toast.success(`Retired "${itemName}"`)
+                        router.refresh()
+                    } else {
+                        toast.error(`Failed to retire: ${result.error}`)
+                    }
+                } catch (error) {
+                    console.error('Error archiving item:', error)
+                    toast.error('An unexpected error occurred')
+                }
+            })()
+        })
     }
 
     const resetState = (isOpen: boolean) => {
@@ -105,26 +107,26 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isDeleting}>
+                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
                         Cancel
                     </Button>
                     {showArchiveOption ? (
                         <Button
                             onClick={handleArchive}
-                            disabled={isDeleting}
+                            disabled={isPending}
                             className="bg-amber-600 hover:bg-amber-700 text-white"
                         >
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDeleting ? 'Retiring...' : 'Retire Item'}
+                            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isPending ? 'Retiring...' : 'Retire Item'}
                         </Button>
                     ) : (
                         <Button
                             variant="destructive"
                             onClick={handleDelete}
-                            disabled={isDeleting}
+                            disabled={isPending}
                         >
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDeleting ? 'Deleting...' : 'Delete'}
+                            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isPending ? 'Deleting...' : 'Delete'}
                         </Button>
                     )}
                 </DialogFooter>

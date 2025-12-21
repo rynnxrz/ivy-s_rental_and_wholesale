@@ -3,9 +3,9 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import EvidenceUploader from './EvidenceUploader'
-import { finalizeReturn } from '../../actions'
 import { ApproveButton } from '../ApproveButton'
 import { DispatchButton } from '../DispatchButton'
+import { FinalizeReturnButton } from '../FinalizeReturnButton'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -131,17 +131,9 @@ export default async function RequestDetailPage(props: Props) {
 
                             {/* Finalize Action */}
                             {status === 'active' && (
-                                <form action={async () => {
-                                    'use server'
-                                    await finalizeReturn(reservation.id)
-                                }} className="flex justify-end pt-4 border-t border-gray-100">
-                                    <button
-                                        type="submit"
-                                        className="bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 shadow-sm transition-all"
-                                    >
-                                        Complete Return & Close Order
-                                    </button>
-                                </form>
+                                <div className="flex justify-end pt-4 border-t border-gray-100">
+                                    <FinalizeReturnButton reservationId={reservation.id} />
+                                </div>
                             )}
                         </div>
                     )}

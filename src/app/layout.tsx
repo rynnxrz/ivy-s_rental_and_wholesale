@@ -36,14 +36,14 @@ export default function RootLayout({
       >
         <NextTopLoader
           color="#0f172a"
-          initialPosition={0.08}
-          crawlSpeed={200}
+          initialPosition={0.1}
           height={3}
-          crawl={true}
+          crawl={false}
           showSpinner={false}
-          easing="ease"
-          speed={200}
-          shadow="0 0 10px #0f172a,0 0 5px #0f172a"
+          easing="ease-in-out"
+          speed={320}
+          shadow="none"
+          zIndex={9999}
         />
 
         {/* Microsoft Clarity - production only */}

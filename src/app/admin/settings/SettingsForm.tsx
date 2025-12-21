@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useFormStatus } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { updateSettings } from '@/app/admin/actions'
 import { Loader2, Settings } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface SettingsFormProps {
     initialSettings: {
@@ -17,21 +18,14 @@ interface SettingsFormProps {
 }
 
 export default function SettingsForm({ initialSettings }: SettingsFormProps) {
-    const [loading, setLoading] = useState(false)
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-
     async function handleSubmit(formData: FormData) {
-        setLoading(true)
-        setMessage(null)
-
         const result = await updateSettings(formData)
 
         if (result.error) {
-            setMessage({ type: 'error', text: result.error })
+            toast.error(result.error)
         } else {
-            setMessage({ type: 'success', text: 'Settings saved successfully!' })
+            toast.success('Settings saved successfully')
         }
-        setLoading(false)
     }
 
     return (
@@ -47,12 +41,6 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {message && (
-                        <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-gray-50 text-gray-900 border border-gray-200' : 'bg-red-50 text-red-900 border border-red-200'}`}>
-                            {message.text}
-                        </div>
-                    )}
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Turnaround Buffer */}
                         <div className="space-y-2">
@@ -114,17 +102,25 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
                     </div>
 
                     <div className="pt-4 border-t border-gray-200">
-                        <Button
-                            type="submit"
-                            disabled={loading}
-                            className="bg-gray-900 hover:bg-gray-800 text-white font-normal"
-                        >
-                            {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-                            Save Changes
-                        </Button>
+                        <SaveButton />
                     </div>
                 </CardContent>
             </Card>
         </form>
+    )
+}
+
+function SaveButton() {
+    const { pending } = useFormStatus()
+
+    return (
+        <Button
+            type="submit"
+            disabled={pending}
+            className="bg-gray-900 hover:bg-gray-800 text-white font-normal"
+        >
+            {pending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+            Save Changes
+        </Button>
     )
 }

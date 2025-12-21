@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useTransition } from 'react'
 import { RotateCcw, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 export function RestoreButton({ reservationId }: { reservationId: string }) {
-    const [loading, setLoading] = useState(false)
+    const [isPending, startTransition] = useTransition()
     const router = useRouter()
     const supabase = createClient()
 
@@ -16,32 +17,34 @@ export function RestoreButton({ reservationId }: { reservationId: string }) {
             return
         }
 
-        setLoading(true)
+        startTransition(() => {
+            void (async () => {
+                const { data, error } = await supabase
+                    .rpc('restore_reservation', { p_reservation_id: reservationId })
 
-        const { data, error } = await supabase
-            .rpc('restore_reservation', { p_reservation_id: reservationId })
-
-        if (error) {
-            console.error('Restore error:', error)
-            alert(error.message || 'Failed to restore reservation')
-        } else if (data && !data.success) {
-            alert(data.error || 'Cannot restore: dates are occupied')
-        } else {
-            router.refresh()
-        }
-
-        setLoading(false)
+                if (error) {
+                    const message = error.message || 'Failed to restore reservation'
+                    console.error('Restore error:', error)
+                    toast.error(message)
+                } else if (data && !data.success) {
+                    toast.error(data.error || 'Cannot restore: dates are occupied')
+                } else {
+                    toast.success('Reservation restored')
+                    router.refresh()
+                }
+            })()
+        })
     }
 
     return (
         <Button
             onClick={handleRestore}
-            disabled={loading}
+            disabled={isPending}
             size="sm"
             className="bg-green-600 hover:bg-green-700 text-white"
             title="Restore Reservation"
         >
-            {loading ? (
+            {isPending ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
                 <RotateCcw className="h-3 w-3" />

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useTransition } from 'react'
 import { Archive, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 export function ArchiveButton({ reservationId }: { reservationId: string }) {
-    const [loading, setLoading] = useState(false)
+    const [isPending, startTransition] = useTransition()
     const router = useRouter()
     const supabase = createClient()
 
@@ -16,32 +17,34 @@ export function ArchiveButton({ reservationId }: { reservationId: string }) {
             return
         }
 
-        setLoading(true)
+        startTransition(() => {
+            void (async () => {
+                const { error } = await supabase
+                    .from('reservations')
+                    .update({ status: 'archived' })
+                    .eq('id', reservationId)
 
-        const { error } = await supabase
-            .from('reservations')
-            .update({ status: 'archived' })
-            .eq('id', reservationId)
-
-        if (error) {
-            console.error('Archive error:', error)
-            alert(error.message || 'Failed to archive reservation')
-        } else {
-            router.refresh()
-        }
-
-        setLoading(false)
+                if (error) {
+                    const message = error.message || 'Failed to archive reservation'
+                    console.error('Archive error:', error)
+                    toast.error(message)
+                } else {
+                    toast.success('Reservation archived')
+                    router.refresh()
+                }
+            })()
+        })
     }
 
     return (
         <Button
             onClick={handleArchive}
-            disabled={loading}
+            disabled={isPending}
             variant="outline"
             size="sm"
             title="Archive Reservation"
         >
-            {loading ? (
+            {isPending ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
                 <Archive className="h-3 w-3" />

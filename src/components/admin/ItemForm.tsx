@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
@@ -72,7 +72,7 @@ const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
 
 export const ItemForm = ({ item, mode, categories: initialCategories, collections: initialCollections }: ItemFormProps) => {
     const router = useRouter()
-    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isSubmitting, startSubmitting] = useTransition()
     const [images, setImages] = useState<string[]>(item?.image_paths ?? [])
     const [specs, setSpecs] = useState<ItemSpecs>(
         (item?.specs as ItemSpecs) ?? {}
@@ -165,11 +165,14 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
             const result = await uploadItemImage(formData)
             if (result.success && result.url) {
                 setImages([...images, result.url])
+                toast.success('Image uploaded')
             } else {
                 console.error('Upload failed:', result.error)
+                toast.error(result.error || 'Failed to upload image')
             }
         } catch (error) {
             console.error('Upload error:', error)
+            toast.error('Failed to upload image')
         } finally {
             setUploadingImage(false)
         }
@@ -197,82 +200,83 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
     }
 
     const onSubmit = async (data: ItemFormData) => {
-        setIsSubmitting(true)
-        try {
-            const itemData = {
-                ...data,
-                image_paths: images,
-                specs,
-                description: data.description || null,
-                category_id: data.category_id || null,
-                collection_id: data.collection_id || null,
-                material: data.material || null,
-                weight: data.weight || null,
-                color: data.color || null,
-                // Ensure category string is synced if category_id represents a known category
-                category: data.category || (data.category_id ? categories.find(c => c.id === data.category_id)?.name : null)
-            }
+        startSubmitting(() => {
+            void (async () => {
+                try {
+                    const itemData = {
+                        ...data,
+                        image_paths: images,
+                        specs,
+                        description: data.description || null,
+                        category_id: data.category_id || null,
+                        collection_id: data.collection_id || null,
+                        material: data.material || null,
+                        weight: data.weight || null,
+                        color: data.color || null,
+                        // Ensure category string is synced if category_id represents a known category
+                        category: data.category || (data.category_id ? categories.find(c => c.id === data.category_id)?.name : null)
+                    }
 
-            let result
+                    let result
 
-            // Determine operation:
-            // 1. Create Mode: Always create
-            // 2. Edit Mode + isAddingVariation (Clone loop): Always create new item
-            // 3. Edit Mode (Initial Save): Update existing
-            const shouldCreateNew = mode === 'create' || isAddingVariation
+                    // Determine operation:
+                    // 1. Create Mode: Always create
+                    // 2. Edit Mode + isAddingVariation (Clone loop): Always create new item
+                    // 3. Edit Mode (Initial Save): Update existing
+                    const shouldCreateNew = mode === 'create' || isAddingVariation
 
-            // Special case for "Save & Add Variation" from Edit Mode:
-            // If we are editing (not yet in loop) and click "Save & Add", we usually want to UPDATE the current item first, 
-            // then switch to creating new ones. 
-            // BUT, if the user requested "Clone", previously we forced Create. 
-            // The standard behavior for "Save & Add" on Edit Page is: Save changes to THIS item, then start NEW One.
+                    // Special case for "Save & Add Variation" from Edit Mode:
+                    // If we are editing (not yet in loop) and click "Save & Add", we usually want to UPDATE the current item first, 
+                    // then switch to creating new ones. 
+                    // BUT, if the user requested "Clone", previously we forced Create. 
+                    // The standard behavior for "Save & Add" on Edit Page is: Save changes to THIS item, then start NEW One.
 
-            if (shouldCreateNew) {
-                result = await createItem(itemData)
-            } else {
-                // We are in Edit Mode and NOT in the variation loop yet.
-                // Even if isCloneAfterSave is true, we update the current item first.
-                result = await updateItem(item!.id, itemData)
-            }
+                    if (shouldCreateNew) {
+                        result = await createItem(itemData)
+                    } else {
+                        // We are in Edit Mode and NOT in the variation loop yet.
+                        // Even if isCloneAfterSave is true, we update the current item first.
+                        result = await updateItem(item!.id, itemData)
+                    }
 
-            if (result.success) {
-                if (isCloneAfterSave) {
-                    // Clone Mode: Prepare form for the next variation
+                    if (result.success) {
+                        if (isCloneAfterSave) {
+                            // Clone Mode: Prepare form for the next variation
 
-                    // Logic: Keep existing images (user request), but prompt.
-                    // Keep everything else.
-                    // Reset SKU to avoid conflict.
+                            // Logic: Keep existing images (user request), but prompt.
+                            // Keep everything else.
+                            // Reset SKU to avoid conflict.
 
-                    setValue('sku', `${data.sku}-VAR`)
-                    setValue('color', '') // Reset Color
-                    setImages([]) // User requested to CLEAR images for new color
+                            setValue('sku', `${data.sku}-VAR`)
+                            setValue('color', '') // Reset Color
+                            setImages([]) // User requested to CLEAR images for new color
 
-                    setIsCloneAfterSave(false)
-                    setIsAddingVariation(true)
-                    setLastSavedItemName(itemData.name)
+                            setIsCloneAfterSave(false)
+                            setIsAddingVariation(true)
+                            setLastSavedItemName(itemData.name)
 
-                    toast.success("Item saved successfully", {
-                        description: "Design saved. Now adding a new variation..."
-                    })
+                            toast.success("Item saved successfully", {
+                                description: "Design saved. Now adding a new variation..."
+                            })
 
-                    // Scroll to top to show banner
-                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                            // Scroll to top to show banner
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
 
-                } else {
-                    toast.success("Item saved successfully")
-                    router.push('/admin/items')
-                    router.refresh()
+                        } else {
+                            toast.success("Item saved successfully")
+                            router.push('/admin/items')
+                            router.refresh()
+                        }
+                    } else {
+                        console.error('Save failed:', result.error)
+                        toast.error(`Failed to save item: ${result.error}`)
+                    }
+                } catch (error) {
+                    console.error('Submit error:', error)
+                    toast.error("An unexpected error occurred")
                 }
-            } else {
-                console.error('Save failed:', result.error)
-                toast.error(`Failed to save item: ${result.error}`)
-            }
-        } catch (error) {
-            console.error('Submit error:', error)
-            toast.error("An unexpected error occurred")
-        } finally {
-            setIsSubmitting(false)
-        }
+            })()
+        })
     }
 
     return (

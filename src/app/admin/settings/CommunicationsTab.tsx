@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, RefObject } from 'react'
+import { useState, useRef, RefObject, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Loader2, Mail, FileText, Send, User, Gem, Calendar, DollarSign, Hash, Building, CreditCard } from 'lucide-react'
 import { updateCommunicationSettings, sendTestEmail } from '@/app/admin/settings/communicationActions'
+import { toast } from 'sonner'
 
 interface CommunicationsTabProps {
     initialSettings: {
@@ -119,8 +120,7 @@ type SubTab = 'approval' | 'shipping' | 'invoice'
 
 export default function CommunicationsTab({ initialSettings, billingProfiles, onSwitchToBilling }: CommunicationsTabProps) {
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('approval')
-    const [loading, setLoading] = useState(false)
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+    const [isSaving, startSaveTransition] = useTransition()
 
     // Approval Email state
     const [approvalBody, setApprovalBody] = useState(initialSettings.email_approval_body || DEFAULTS.approvalBody)
@@ -139,7 +139,7 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
     const [testEmailOpen, setTestEmailOpen] = useState(false)
     const [testEmailType, setTestEmailType] = useState<'approval' | 'shipping'>('approval')
     const [testEmailAddress, setTestEmailAddress] = useState('')
-    const [sendingTest, setSendingTest] = useState(false)
+    const [isSendingTest, startTestTransition] = useTransition()
 
     // Refs for form fields - used for click-to-focus from preview
     const approvalBodyRef = useRef<HTMLTextAreaElement>(null)
@@ -166,25 +166,25 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
     }
 
     async function handleSave() {
-        setLoading(true)
-        setMessage(null)
+        startSaveTransition(() => {
+            void (async () => {
+                const result = await updateCommunicationSettings({
+                    email_approval_body: approvalBody || null,
+                    email_footer: approvalFooter || null,
+                    email_shipping_subject: shippingSubject || null,
+                    email_shipping_body: shippingBody || null,
+                    email_shipping_footer: shippingFooter || null,
+                    invoice_footer_text: invoiceFooter || null,
+                    invoice_notes_default: invoiceNotes || null,
+                })
 
-        const result = await updateCommunicationSettings({
-            email_approval_body: approvalBody || null,
-            email_footer: approvalFooter || null,
-            email_shipping_subject: shippingSubject || null,
-            email_shipping_body: shippingBody || null,
-            email_shipping_footer: shippingFooter || null,
-            invoice_footer_text: invoiceFooter || null,
-            invoice_notes_default: invoiceNotes || null,
+                if (result.error) {
+                    toast.error(result.error)
+                } else {
+                    toast.success('Communication settings saved')
+                }
+            })()
         })
-
-        if (result.error) {
-            setMessage({ type: 'error', text: result.error })
-        } else {
-            setMessage({ type: 'success', text: 'Communication settings saved!' })
-        }
-        setLoading(false)
     }
 
     function insertVariable(placeholder: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>, setter: (value: string) => void, currentValue: string) {
@@ -207,26 +207,28 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
     async function handleSendTestEmail() {
         if (!testEmailAddress) return
 
-        setSendingTest(true)
-        const result = await sendTestEmail({
-            type: testEmailType,
-            toEmail: testEmailAddress,
-            approvalBody: approvalBody || DEFAULTS.approvalBody,
-            approvalFooter: approvalFooter || DEFAULTS.approvalFooter,
-            shippingSubject: shippingSubject || DEFAULTS.shippingSubject,
-            shippingBody: shippingBody || DEFAULTS.shippingBody,
-            shippingFooter: shippingFooter || DEFAULTS.shippingFooter,
+        startTestTransition(() => {
+            void (async () => {
+                const result = await sendTestEmail({
+                    type: testEmailType,
+                    toEmail: testEmailAddress,
+                    approvalBody: approvalBody || DEFAULTS.approvalBody,
+                    approvalFooter: approvalFooter || DEFAULTS.approvalFooter,
+                    shippingSubject: shippingSubject || DEFAULTS.shippingSubject,
+                    shippingBody: shippingBody || DEFAULTS.shippingBody,
+                    shippingFooter: shippingFooter || DEFAULTS.shippingFooter,
+                })
+
+                setTestEmailOpen(false)
+
+                if (result.error) {
+                    toast.error(result.error)
+                } else {
+                    toast.success(`Test email sent to ${testEmailAddress}!`)
+                }
+                setTestEmailAddress('')
+            })()
         })
-
-        setSendingTest(false)
-        setTestEmailOpen(false)
-
-        if (result.error) {
-            setMessage({ type: 'error', text: result.error })
-        } else {
-            setMessage({ type: 'success', text: `Test email sent to ${testEmailAddress}!` })
-        }
-        setTestEmailAddress('')
     }
 
     return (
@@ -251,13 +253,6 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                     </button>
                 ))}
             </div>
-
-            {/* Status Message */}
-            {message && (
-                <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-gray-50 text-gray-900 border border-gray-200' : 'bg-red-50 text-red-900 border border-red-200'}`}>
-                    {message.text}
-                </div>
-            )}
 
             {/* Approval Email Tab */}
             {activeSubTab === 'approval' && (
@@ -546,10 +541,10 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
             <div className="flex justify-end pt-4 border-t border-gray-200">
                 <Button
                     onClick={handleSave}
-                    disabled={loading}
+                    disabled={isSaving}
                     className="bg-gray-900 hover:bg-gray-800 text-white font-normal px-8"
                 >
-                    {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                    {isSaving && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
                     Save All Changes
                 </Button>
             </div>
@@ -581,10 +576,10 @@ export default function CommunicationsTab({ initialSettings, billingProfiles, on
                         </Button>
                         <Button
                             onClick={handleSendTestEmail}
-                            disabled={sendingTest || !testEmailAddress}
+                            disabled={isSendingTest || !testEmailAddress}
                             className="bg-gray-900 hover:bg-gray-800"
                         >
-                            {sendingTest && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                            {isSendingTest && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
                             Send Test
                         </Button>
                     </DialogFooter>

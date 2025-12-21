@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,41 +17,48 @@ import {
 import { createBillingProfile, updateBillingProfile, deleteBillingProfile, setDefaultProfile } from '@/app/admin/actions'
 import { Loader2, Star, Pencil, Trash2, Plus } from 'lucide-react'
 import type { BillingProfile } from '@/types'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { useFormStatus } from 'react-dom'
 
 interface ProfileListProps {
     profiles: BillingProfile[]
 }
 
 export default function ProfileList({ profiles }: ProfileListProps) {
+    const router = useRouter()
     const [editingProfile, setEditingProfile] = useState<BillingProfile | null>(null)
     const [isCreating, setIsCreating] = useState(false)
-    const [loading, setLoading] = useState(false)
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+    const [isPending, startTransition] = useTransition()
 
     const handleSetDefault = async (profileId: string) => {
-        setLoading(true)
-        setMessage(null)
-        const result = await setDefaultProfile(profileId)
-        if (result.error) {
-            setMessage({ type: 'error', text: result.error })
-        } else {
-            setMessage({ type: 'success', text: 'Default profile updated!' })
-        }
-        setLoading(false)
+        startTransition(() => {
+            void (async () => {
+                const result = await setDefaultProfile(profileId)
+                if (result.error) {
+                    toast.error(result.error)
+                } else {
+                    toast.success('Default profile updated')
+                    router.refresh()
+                }
+            })()
+        })
     }
 
     const handleDelete = async (profileId: string) => {
         if (!confirm('Are you sure you want to delete this billing profile?')) return
 
-        setLoading(true)
-        setMessage(null)
-        const result = await deleteBillingProfile(profileId)
-        if (result.error) {
-            setMessage({ type: 'error', text: result.error })
-        } else {
-            setMessage({ type: 'success', text: 'Profile deleted!' })
-        }
-        setLoading(false)
+        startTransition(() => {
+            void (async () => {
+                const result = await deleteBillingProfile(profileId)
+                if (result.error) {
+                    toast.error(result.error)
+                } else {
+                    toast.success('Profile deleted')
+                    router.refresh()
+                }
+            })()
+        })
     }
 
     return (
@@ -71,12 +78,6 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
-                {message && (
-                    <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {message.text}
-                    </div>
-                )}
-
                 {profiles.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                         No billing profiles yet. Create one to get started.
@@ -108,7 +109,7 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => handleSetDefault(profile.id)}
-                                                disabled={loading}
+                                                disabled={isPending}
                                                 title="Set as default"
                                             >
                                                 <Star className="h-4 w-4" />
@@ -118,7 +119,7 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => setEditingProfile(profile)}
-                                            disabled={loading}
+                                            disabled={isPending}
                                         >
                                             <Pencil className="h-4 w-4" />
                                         </Button>
@@ -127,7 +128,7 @@ export default function ProfileList({ profiles }: ProfileListProps) {
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => handleDelete(profile.id)}
-                                                disabled={loading}
+                                                disabled={isPending}
                                                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                             >
                                                 <Trash2 className="h-4 w-4" />
@@ -170,11 +171,10 @@ interface ProfileEditorProps {
 }
 
 function ProfileEditor({ profile, open, onClose, mode, isFirstProfile = false }: ProfileEditorProps) {
-    const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const router = useRouter()
 
     async function handleSubmit(formData: FormData) {
-        setLoading(true)
         setError(null)
 
         let result
@@ -190,10 +190,11 @@ function ProfileEditor({ profile, open, onClose, mode, isFirstProfile = false }:
 
         if (result.error) {
             setError(result.error)
-            setLoading(false)
+            toast.error(result.error)
         } else {
-            setLoading(false)
             onClose()
+            toast.success(mode === 'create' ? 'Profile created' : 'Profile updated')
+            router.refresh()
         }
     }
 
@@ -274,16 +275,26 @@ function ProfileEditor({ profile, open, onClose, mode, isFirstProfile = false }:
                     </div>
 
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {mode === 'create' ? 'Create Profile' : 'Save Changes'}
-                        </Button>
+                        <ProfileEditorActions onClose={onClose} mode={mode} />
                     </DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>
+    )
+}
+
+function ProfileEditorActions({ onClose, mode }: { onClose: () => void, mode: 'create' | 'edit' }) {
+    const { pending } = useFormStatus()
+
+    return (
+        <>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+                Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+                {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {mode === 'create' ? 'Create Profile' : 'Save Changes'}
+            </Button>
+        </>
     )
 }

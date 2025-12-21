@@ -19,6 +19,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface TaxonomyManagerProps {
     categories: Category[]
@@ -26,6 +28,7 @@ interface TaxonomyManagerProps {
 }
 
 export default function TaxonomyManager({ categories, collections }: TaxonomyManagerProps) {
+    const router = useRouter()
     const [error, setError] = useState<string | null>(null)
     const [isCreating, setIsCreating] = useState(false)
     const [newItemName, setNewItemName] = useState('')
@@ -42,11 +45,14 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
             } else {
                 await createCollection(newItemName)
             }
+            toast.success(`${type === 'category' ? 'Category' : 'Collection'} created`)
             setDialogOpen(null)
             setNewItemName('')
+            router.refresh()
         } catch (err) {
             setError(`Failed to create ${type}`)
             console.error(err)
+            toast.error(`Failed to create ${type}`)
         } finally {
             setIsCreating(false)
         }
@@ -55,18 +61,24 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
     const handleCategoryToggle = async (id: string, currentHidden: boolean) => {
         try {
             await toggleCategoryVisibility(id, !currentHidden)
+            toast.success(currentHidden ? 'Category is now visible' : 'Category hidden in portal')
+            router.refresh()
         } catch (err) {
             setError('Failed to update category visibility')
             console.error(err)
+            toast.error('Failed to update category visibility')
         }
     }
 
     const handleCollectionToggle = async (id: string, currentHidden: boolean) => {
         try {
             await toggleCollectionVisibility(id, !currentHidden)
+            toast.success(currentHidden ? 'Collection is now visible' : 'Collection hidden in portal')
+            router.refresh()
         } catch (err) {
             setError('Failed to update collection visibility')
             console.error(err)
+            toast.error('Failed to update collection visibility')
         }
     }
 
@@ -74,9 +86,12 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
         if (!confirm(`Are you sure you want to delete category "${name}"? This action cannot be undone.`)) return
         try {
             await deleteCategory(id)
+            toast.success('Category deleted')
+            router.refresh()
         } catch (err) {
             setError('Failed to delete category')
             console.error(err)
+            toast.error('Failed to delete category')
         }
     }
 
@@ -84,9 +99,12 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
         if (!confirm(`Are you sure you want to delete collection "${name}"? This action cannot be undone.`)) return
         try {
             await deleteCollection(id)
+            toast.success('Collection deleted')
+            router.refresh()
         } catch (err) {
             setError('Failed to delete collection')
             console.error(err)
+            toast.error('Failed to delete collection')
         }
     }
 

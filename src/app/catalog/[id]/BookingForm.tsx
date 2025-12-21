@@ -36,7 +36,7 @@ export function BookingForm({ item }: BookingFormProps) {
     const [date, setDate] = React.useState<DateRange | undefined>()
     const [isChecking, setIsChecking] = React.useState(false)
     const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
-    const [isSubmitting, setIsSubmitting] = React.useState(false)
+    const [isSubmitting, startSubmitTransition] = React.useTransition()
     const [message, setMessage] = React.useState<{ type: 'success' | 'error', text: string } | null>(null)
 
     // Guest form fields
@@ -181,37 +181,42 @@ export function BookingForm({ item }: BookingFormProps) {
             return
         }
 
-        setIsSubmitting(true)
         setMessage(null)
 
-        try {
-            const result = await createGuestBooking({
-                item_id: item.id,
-                email: email.trim(),
-                full_name: fullName.trim(),
-                company_name: companyName.trim() || undefined,
-                start_date: format(date.from, 'yyyy-MM-dd'),
-                end_date: format(date.to, 'yyyy-MM-dd'),
-                access_password: accessPassword.trim() || undefined
-            })
+        startSubmitTransition(() => {
+            void (async () => {
+                try {
+                    const result = await createGuestBooking({
+                        item_id: item.id,
+                        email: email.trim(),
+                        full_name: fullName.trim(),
+                        company_name: companyName.trim() || undefined,
+                        start_date: format(date.from, 'yyyy-MM-dd'),
+                        end_date: format(date.to, 'yyyy-MM-dd'),
+                        access_password: accessPassword.trim() || undefined
+                    })
 
-            if (result.error) {
-                setMessage({ type: 'error', text: result.error })
-            } else {
-                setMessage({ type: 'success', text: 'Request submitted successfully! We will contact you shortly.' })
-                setDate(undefined)
-                setIsAvailable(null)
-                setEmail('')
-                setFullName('')
-                setCompanyName('')
-                setAccessPassword('')
-            }
-        } catch (err) {
-            console.error(err)
-            setMessage({ type: 'error', text: 'An unexpected error occurred.' })
-        } finally {
-            setIsSubmitting(false)
-        }
+                    if (result.error) {
+                        setMessage({ type: 'error', text: result.error })
+                        toast.error(result.error)
+                    } else {
+                        const successMessage = 'Request submitted successfully! We will contact you shortly.'
+                        setMessage({ type: 'success', text: successMessage })
+                        toast.success(successMessage)
+                        setDate(undefined)
+                        setIsAvailable(null)
+                        setEmail('')
+                        setFullName('')
+                        setCompanyName('')
+                        setAccessPassword('')
+                    }
+                } catch (err) {
+                    console.error(err)
+                    setMessage({ type: 'error', text: 'An unexpected error occurred.' })
+                    toast.error('An unexpected error occurred.')
+                }
+            })()
+        })
     }
 
     return (
