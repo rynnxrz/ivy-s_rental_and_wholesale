@@ -132,15 +132,17 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                         </h1>
 
                         <div className="flex items-baseline gap-2 mb-8 border-b border-gray-100 pb-8">
-                            <span className="text-2xl font-semibold text-slate-900">
-                                ${item.rental_price}
-                            </span>
                             {!isArchiveMode && (
-                                <div className="flex items-center gap-1">
-                                    <p className="text-sm font-medium text-slate-700">
-                                        / day (min. 10%)
-                                    </p>
-                                </div>
+                                <>
+                                    <span className="text-2xl font-semibold text-slate-900">
+                                        ${item.rental_price}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <p className="text-sm font-medium text-slate-700">
+                                            / day (min. 10%)
+                                        </p>
+                                    </div>
+                                </>
                             )}
                         </div>
 

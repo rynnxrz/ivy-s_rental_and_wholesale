@@ -9,17 +9,21 @@ export default async function ArchivePage() {
 
     const [
         { data: items, error: itemsError },
-        { data: visibleCollections, error: colsError }
+        { data: visibleCollections, error: colsError },
+        { data: categories, error: catsError }
     ] = await Promise.all([
         supabase
             .from('items')
-            .select('id, name, category, rental_price, image_paths, status, collection_id')
+            .select('id, name, category, rental_price, image_paths, status, collection_id, category_id')
             .neq('status', 'retired')
             .order('created_at', { ascending: false }),
         supabase
             .from('collections')
-            .select('id')
-            .eq('hidden_in_portal', false)
+            .select('id, name')
+            .eq('hidden_in_portal', false),
+        supabase
+            .from('categories')
+            .select('id, name')
     ])
 
     if (itemsError) {
@@ -46,7 +50,11 @@ export default async function ArchivePage() {
                     <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
                 </div>
             }>
-                <ArchiveClient initialItems={validItems} />
+                <ArchiveClient
+                    initialItems={validItems}
+                    categories={categories || []}
+                    collections={visibleCollections || []}
+                />
             </Suspense>
         </div>
     )
