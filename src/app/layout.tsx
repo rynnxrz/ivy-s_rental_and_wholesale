@@ -61,10 +61,9 @@ export default function RootLayout({
             `}
           </Script>
         )}
-        <Toaster />
+        <Toaster position="top-center" duration={2000} />
         <Header />
         {children}
-        <RequestFloatingButton />
       </body>
     </html>
   );

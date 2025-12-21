@@ -43,28 +43,34 @@ export function RequestFloatingButton() {
         return 'https://placehold.co/100x100?text=No+Img'
     }
 
+    // Bounce animation on item add
+    const [isBouncing, setIsBouncing] = React.useState(false)
+    const prevCountRef = React.useRef(items.length)
+
+    React.useEffect(() => {
+        if (items.length > prevCountRef.current) {
+            setIsBouncing(true)
+            const timer = setTimeout(() => setIsBouncing(false), 300)
+            return () => clearTimeout(timer)
+        }
+        prevCountRef.current = items.length
+    }, [items.length])
+
     if (!isMounted || items.length === 0) return null
 
     return (
         <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
                 <Button
-                    className="fixed bottom-8 right-8 h-16 rounded-full px-6 shadow-xl border-2 border-white/50 z-50 bg-gray-900 text-white hover:bg-gray-800 transition-all duration-300 animate-in fade-in slide-in-from-bottom-4"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                        "relative h-10 w-10 text-slate-900 hover:bg-slate-100 rounded-full transition-transform",
+                        isBouncing && "scale-125"
+                    )}
                 >
-                    <div className="flex items-center gap-3">
-                        <div className="relative">
-                            <ShoppingBag className="h-6 w-6" />
-                            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold h-5 w-5 flex items-center justify-center rounded-full border-2 border-gray-900">
-                                {items.length}
-                            </span>
-                        </div>
-                        <div className="flex flex-col items-start">
-                            <span className="text-xs font-medium opacity-80 uppercase tracking-wider">Request List</span>
-                            <span className="font-bold text-sm">
-                                {items.length} Item{items.length !== 1 ? 's' : ''}
-                            </span>
-                        </div>
-                    </div>
+                    <ShoppingBag className="h-5 w-5" />
+                    <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white ring-0 animate-in fade-in zoom-in" />
                 </Button>
             </SheetTrigger>
             <SheetContent className="flex flex-col w-full sm:max-w-lg">

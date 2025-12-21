@@ -29,6 +29,7 @@ interface Item {
     status: string
     category_id?: string | null
     collection_id?: string | null
+    color?: string | null
 }
 
 interface Category {
@@ -87,7 +88,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     const [isCalendarOpen, setIsCalendarOpen] = React.useState(false)
     const [activeDateInput, setActiveDateInput] = React.useState<'from' | 'to' | null>(null)
 
-    const { dateRange: globalDateRange, setDateRange: setGlobalDateRange, addItem, hasItem } = useRequestStore()
+    const { dateRange: globalDateRange, setDateRange: setGlobalDateRange, addItem, hasItem, removeItem } = useRequestStore()
     const [isMounted, setIsMounted] = React.useState(false)
 
     React.useEffect(() => {
@@ -544,11 +545,11 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                         {filteredItems.length > 0 ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                                 {filteredItems.map((item, index) => (
-                                    <div key={item.id} className="group block">
+                                    <div key={item.id} className="group flex flex-col h-full">
                                         <Link href={hasCommittedDate
                                             ? `/catalog/${item.id}?start=${format(committedDate!.from!, 'yyyy-MM-dd')}&end=${format(committedDate!.to!, 'yyyy-MM-dd')}`
                                             : `/catalog/${item.id}`
-                                        }>
+                                        } className="block flex-1">
                                             <div className="relative aspect-square bg-slate-100 overflow-hidden rounded mb-2">
                                                 <Image
                                                     src={getImageUrl(item.image_paths)}
@@ -559,70 +560,82 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                     priority={index < 10}
                                                 />
                                                 {hasCommittedDate && (
-                                                    <div className="absolute top-1 left-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded">
+                                                    <div className="absolute top-2 left-2 bg-green-500 text-white text-[10px] uppercase font-bold px-1.5 py-0.5 tracking-wider rounded-sm">
                                                         Available
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="space-y-0.5">
+                                            <div className="space-y-0.5 mb-2">
                                                 <h3 className="text-sm font-medium text-slate-900 truncate group-hover:text-slate-600 transition-colors">
                                                     {item.name}
                                                 </h3>
-                                                <div className="flex items-baseline justify-between">
-                                                    <p className="text-xs text-slate-400 truncate">{item.category}</p>
-                                                    <p className="text-sm font-medium text-slate-900">
-                                                        ${item.rental_price}<span className="text-[10px] text-slate-400 font-normal">/d</span>
-                                                    </p>
-                                                </div>
+                                                <p className="text-xs text-slate-500 truncate">
+                                                    {item.category} {item.color ? `· ${item.color}` : ''}
+                                                </p>
                                             </div>
                                         </Link>
 
-                                        {/* Compact Action button */}
-                                        <div className="mt-2">
-                                            {hasCommittedDate ? (
-                                                isMounted && hasItem(item.id) ? (
-                                                    <Button size="sm" className="w-full h-7 text-xs bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
-                                                        Added
-                                                    </Button>
+                                        {/* Split Action Footer */}
+                                        <div className="flex items-center justify-between gap-3 mt-auto">
+                                            {/* Left: Price Area */}
+                                            <div className="flex flex-col justify-center">
+                                                <div className="text-[11px] text-slate-400 font-normal leading-tight">
+                                                    ${item.rental_price}/d
+                                                </div>
+                                                <div className={cn("text-sm font-semibold leading-tight", hasCommittedDate ? "text-slate-900" : "text-slate-300")}>
+                                                    {hasCommittedDate
+                                                        ? `$${rentalDays * item.rental_price} Total`
+                                                        : '-- Total'
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            {/* Right: Add Button */}
+                                            <div className="flex-shrink-0">
+                                                {hasCommittedDate ? (
+                                                    isMounted && hasItem(item.id) ? (
+                                                        <Button
+                                                            size="icon"
+                                                            className="group/btn w-9 h-9 rounded-full bg-green-50 text-green-600 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                                            onClick={(e) => {
+                                                                e.preventDefault()
+                                                                removeItem(item.id)
+                                                                toast.info("Removed from request")
+                                                            }}
+                                                            title="Remove from request"
+                                                        >
+                                                            <Check className="h-4 w-4 group-hover/btn:hidden" />
+                                                            <X className="h-4 w-4 hidden group-hover/btn:block" />
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            className="px-4 h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium"
+                                                            onClick={(e) => {
+                                                                e.preventDefault()
+                                                                addItem({
+                                                                    id: item.id,
+                                                                    name: item.name,
+                                                                    category: item.category,
+                                                                    rental_price: item.rental_price,
+                                                                    image_paths: item.image_paths,
+                                                                    status: item.status
+                                                                })
+                                                                toast.success("Added to request")
+                                                            }}
+                                                        >
+                                                            + Add
+                                                        </Button>
+                                                    )
                                                 ) : (
                                                     <Button
-                                                        size="sm"
-                                                        className="w-full h-7 text-xs bg-slate-900 text-white hover:bg-slate-800"
-                                                        onClick={(e) => {
-                                                            e.preventDefault()
-                                                            addItem({
-                                                                id: item.id,
-                                                                name: item.name,
-                                                                category: item.category,
-                                                                rental_price: item.rental_price,
-                                                                image_paths: item.image_paths,
-                                                                status: item.status
-                                                            })
-                                                            toast.success("Added to request")
-                                                        }}
+                                                        className="px-4 h-9 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs font-medium"
+                                                        disabled
                                                     >
-                                                        <Plus className="h-3 w-3 mr-1" />
-                                                        Add
+                                                        + Add
                                                     </Button>
-                                                )
-                                            ) : (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="w-full h-7 text-xs text-slate-300 hover:text-slate-400 border-slate-100 bg-slate-50"
-                                                    disabled
-                                                >
-                                                    Select dates first
-                                                </Button>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-
-                                        {/* Compact price estimate */}
-                                        {hasCommittedDate && (
-                                            <p className="mt-1 text-center text-[10px] text-slate-400">
-                                                Est: <span className="font-medium text-slate-600">${(item.rental_price * rentalDays).toFixed(0)}</span>
-                                            </p>
-                                        )}
                                     </div>
                                 ))}
                             </div>
