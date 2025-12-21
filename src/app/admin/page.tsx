@@ -1,14 +1,14 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import { Package, Calendar, Users, TrendingUp } from 'lucide-react'
 
 export default function AdminDashboard() {
     return (
-        <div className="space-y-8">
-            {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-                <p className="text-slate-600">Welcome back! Here&apos;s an overview of your rental business.</p>
-            </div>
+        <div className="space-y-6">
+            <AdminPageHeader
+                title="Dashboard"
+                description="Welcome back! Here's an overview of your rental business."
+            />
 
             {/* Stats Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

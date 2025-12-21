@@ -191,8 +191,8 @@ export function BookingForm({ item }: BookingFormProps) {
                         email: email.trim(),
                         full_name: fullName.trim(),
                         company_name: companyName.trim() || undefined,
-                        start_date: format(date.from, 'yyyy-MM-dd'),
-                        end_date: format(date.to, 'yyyy-MM-dd'),
+                        start_date: format(date.from!, 'yyyy-MM-dd'),
+                        end_date: format(date.to!, 'yyyy-MM-dd'),
                         access_password: accessPassword.trim() || undefined
                     })
 

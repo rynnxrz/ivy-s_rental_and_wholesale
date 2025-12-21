@@ -1,40 +1,10 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
-import { Plus, Edit, Package } from 'lucide-react'
+import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
+import { Plus } from 'lucide-react'
 import type { Item } from '@/types'
-import { DeleteItemButton } from './DeleteItemButton'
 import { GroupedItemsList } from './components/GroupedItemsList'
-
-const statusVariant = (status: Item['status']) => {
-    switch (status) {
-        case 'active':
-            return 'default'
-        case 'maintenance':
-            return 'secondary'
-        case 'retired':
-            return 'outline'
-        default:
-            return 'default'
-    }
-}
 
 export default async function ItemsPage() {
     const supabase = await createClient()
@@ -63,13 +33,10 @@ export default async function ItemsPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900">Items</h1>
-                    <p className="text-slate-600">Manage your rental inventory</p>
-                </div>
-                {isAdmin && (
+            <AdminPageHeader
+                title="Items"
+                description="Manage your rental inventory"
+                action={isAdmin && (
                     <Button asChild>
                         <Link href="/admin/items/new">
                             <Plus className="mr-2 h-4 w-4" />
@@ -77,9 +44,8 @@ export default async function ItemsPage() {
                         </Link>
                     </Button>
                 )}
-            </div>
+            />
 
-            {/* Items List */}
             <GroupedItemsList
                 initialItems={items}
                 isAdmin={isAdmin}

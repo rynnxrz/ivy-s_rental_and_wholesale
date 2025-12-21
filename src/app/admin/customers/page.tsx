@@ -10,7 +10,8 @@ import {
     TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import { Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -43,24 +44,13 @@ export default async function CustomersPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-light text-gray-900">Customers</h1>
-                    <p className="text-gray-500 mt-1">Manage your customer database</p>
-                </div>
-            </div>
+            <AdminPageHeader
+                title="Customers"
+                description={`${customers?.length || 0} customer${(customers?.length || 0) !== 1 ? 's' : ''} registered`}
+            />
 
             <Card>
-                <CardHeader>
-                    <div className="flex items-center gap-2">
-                        <Users className="h-5 w-5 text-gray-500" />
-                        <CardTitle>Customer List</CardTitle>
-                    </div>
-                    <CardDescription>
-                        {customers?.length || 0} customer{(customers?.length || 0) !== 1 ? 's' : ''} registered
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+                <CardContent className="pt-6">
                     {customers && customers.length > 0 ? (
                         <Table>
                             <TableHeader>
@@ -74,10 +64,10 @@ export default async function CustomersPage() {
                             <TableBody>
                                 {customers.map((customer) => (
                                     <TableRow key={customer.id}>
-                                        <TableCell className="font-medium">
+                                        <TableCell className="font-medium text-sm">
                                             {customer.full_name || '—'}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="text-sm">
                                             {customer.email ? (
                                                 <Link
                                                     href={`/admin/reservations?customer=${encodeURIComponent(customer.email)}`}
@@ -89,7 +79,7 @@ export default async function CustomersPage() {
                                                 '—'
                                             )}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="text-sm">
                                             {customer.company_name || '—'}
                                         </TableCell>
                                         <TableCell>
@@ -98,7 +88,7 @@ export default async function CustomersPage() {
                                                     {customer.organization_domain}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-gray-400">—</span>
+                                                <span className="text-slate-400">—</span>
                                             )}
                                         </TableCell>
                                     </TableRow>
@@ -106,8 +96,8 @@ export default async function CustomersPage() {
                             </TableBody>
                         </Table>
                     ) : (
-                        <div className="text-center py-12 text-gray-500">
-                            <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <div className="text-center py-12 text-slate-500">
+                            <Users className="h-12 w-12 mx-auto mb-4 text-slate-300" />
                             <p>No customers yet</p>
                             <p className="text-sm mt-1">Customers will appear here when they submit booking requests.</p>
                         </div>

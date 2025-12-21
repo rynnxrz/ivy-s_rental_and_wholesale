@@ -4,7 +4,7 @@ export default function Loading() {
     return (
         <AdminLoading
             title="Items"
-            description="Managing inventory..."
+            description="Manage your rental inventory"
         />
     )
 }
