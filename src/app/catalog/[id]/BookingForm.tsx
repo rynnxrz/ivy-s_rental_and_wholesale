@@ -50,7 +50,7 @@ export function BookingForm({ item }: BookingFormProps) {
     const [reservedDates, setReservedDates] = React.useState<{ from: Date; to: Date }[]>([])
     const [bufferDates, setBufferDates] = React.useState<{ from: Date; to: Date }[]>([])
 
-    const { dateRange: globalDateRange, addItem, hasItem } = useRequestStore()
+    const { dateRange: globalDateRange, addItem, removeItem, hasItem } = useRequestStore()
     const isGlobalDateMode = !!(globalDateRange.from && globalDateRange.to)
     const [isMounted, setIsMounted] = React.useState(false)
 
@@ -220,19 +220,18 @@ export function BookingForm({ item }: BookingFormProps) {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
-                    Select Dates
-                </h3>
-                <div className={cn("grid gap-2")}>
+        <div className="space-y-4">
+            {/* Desktop: Horizontal Layout (Date 65% + Button 35%) */}
+            <div className="hidden md:flex md:gap-3 md:items-start">
+                {/* Date Picker - 65% */}
+                <div className="flex-[0_0_65%]">
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button
                                 id="date"
                                 variant={"outline"}
                                 className={cn(
-                                    "w-full justify-start text-left font-normal h-12",
+                                    "w-full justify-start text-left font-normal h-12 rounded-md",
                                     !date && "text-muted-foreground"
                                 )}
                             >
@@ -240,18 +239,17 @@ export function BookingForm({ item }: BookingFormProps) {
                                 {date?.from ? (
                                     date.to ? (
                                         <>
-                                            {format(date.from, "LLL dd, y")} -{" "}
-                                            {format(date.to, "LLL dd, y")}
+                                            {format(date.from, "LLL dd")} - {format(date.to, "LLL dd")}
                                         </>
                                     ) : (
                                         format(date.from, "LLL dd, y")
                                     )
                                 ) : (
-                                    <span>Pick a date range</span>
+                                    <span>Select dates</span>
                                 )}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
+                        <PopoverContent className="w-auto p-0 rounded-md" align="start">
                             <Calendar
                                 initialFocus
                                 mode="range"
@@ -272,9 +270,6 @@ export function BookingForm({ item }: BookingFormProps) {
                                     booked: { textDecoration: 'line-through', color: '#888', opacity: 0.8 },
                                     buffer: { backgroundColor: '#f3f4f6', color: '#9ca3af', textDecoration: 'none', cursor: 'not-allowed' }
                                 }}
-                                modifiersClassNames={{
-                                    buffer: 'cursor-not-allowed group relative' // We might try CSS tooltips if we can inject global styles, but simple style is safer
-                                }}
                                 footer={
                                     <div className="flex gap-4 mt-2 text-xs text-gray-500 justify-center">
                                         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-200 line-through text-gray-400 text-[10px] flex items-center justify-center">12</div> Booked</div>
@@ -284,29 +279,110 @@ export function BookingForm({ item }: BookingFormProps) {
                             />
                         </PopoverContent>
                     </Popover>
+                    {/* Availability hint below date */}
+                    {date?.from && date?.to && (
+                        <div className="text-[11px] mt-1.5 pl-1">
+                            {isChecking ? (
+                                <span className="text-slate-400">Checking...</span>
+                            ) : isAvailable ? (
+                                <span className="text-slate-500">✓ Available</span>
+                            ) : (
+                                <span className="text-red-400">✕ Not available</span>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {/* Button - 35% */}
+                <div className="flex-[0_0_35%]">
+                    {isMounted && hasItem(item.id) ? (
+                        <Button
+                            variant="outline"
+                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            onClick={() => {
+                                removeItem(item.id)
+                                toast("Item removed from request list")
+                            }}
+                        >
+                            ✕ Remove
+                        </Button>
+                    ) : (
+                        <Button
+                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest"
+                            disabled={!isAvailable}
+                            onClick={handleAddToRequest}
+                        >
+                            + Add to List
+                        </Button>
+                    )}
                 </div>
             </div>
 
-            {/* Availability Status */}
-            {date?.from && date?.to && (
-                <div className={cn(
-                    "p-4 rounded-md text-sm border",
-                    isChecking ? "bg-gray-50 border-gray-200 text-gray-500" :
-                        isAvailable ? "bg-green-50 border-green-200 text-green-700" :
-                            "bg-red-50 border-red-200 text-red-700"
-                )}>
-                    {isChecking ? (
-                        <div className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Checking availability...
-                        </div>
-                    ) : isAvailable ? (
-                        "Dates are available!"
-                    ) : (
-                        "Dates are not available."
-                    )}
-                </div>
-            )}
+            {/* Mobile: Date Picker Only (button is in sticky footer) */}
+            <div className="md:hidden space-y-2">
+                <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
+                    Select Dates
+                </h3>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            id="date-mobile"
+                            variant={"outline"}
+                            className={cn(
+                                "w-full justify-start text-left font-normal h-12 rounded-md",
+                                !date && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {date?.from ? (
+                                date.to ? (
+                                    <>
+                                        {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
+                                    </>
+                                ) : (
+                                    format(date.from, "LLL dd, y")
+                                )
+                            ) : (
+                                <span>Pick a date range</span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 rounded-md" align="start">
+                        <Calendar
+                            initialFocus
+                            mode="range"
+                            defaultMonth={date?.from}
+                            selected={date}
+                            onSelect={setDate}
+                            numberOfMonths={1}
+                            disabled={[
+                                ...reservedDates,
+                                ...bufferDates,
+                                { before: new Date(new Date().setHours(0, 0, 0, 0)) }
+                            ]}
+                            modifiers={{
+                                booked: reservedDates,
+                                buffer: bufferDates
+                            }}
+                            modifiersStyles={{
+                                booked: { textDecoration: 'line-through', color: '#888', opacity: 0.8 },
+                                buffer: { backgroundColor: '#f3f4f6', color: '#9ca3af', textDecoration: 'none', cursor: 'not-allowed' }
+                            }}
+                        />
+                    </PopoverContent>
+                </Popover>
+                {/* Availability hint */}
+                {date?.from && date?.to && (
+                    <div className="text-xs">
+                        {isChecking ? (
+                            <span className="text-slate-400">Checking availability...</span>
+                        ) : isAvailable ? (
+                            <span className="text-slate-500">✓ Dates are available</span>
+                        ) : (
+                            <span className="text-red-500">✕ Dates are not available</span>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {/* Guest Contact Form */}
             {/* Guest Contact Form - Only show if NOT in global mode (or if we want to confirm per item? User said "Add to Request List" button. 
@@ -369,16 +445,33 @@ export function BookingForm({ item }: BookingFormProps) {
             {isGlobalDateMode ? (
                 <>
                     {/* Spacer for mobile to prevent content occlusion */}
-                    <div className="h-16 md:hidden" />
+                    <div className="h-20 md:hidden" />
 
-                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-50 md:static md:p-0 md:bg-transparent md:border-none md:z-auto">
-                        <Button
-                            className="w-full h-12 uppercase tracking-widest text-sm shadow-lg md:shadow-none"
-                            disabled={!isAvailable || (isMounted && hasItem(item.id))}
-                            onClick={handleAddToRequest}
-                        >
-                            {isMounted && hasItem(item.id) ? "Added to List" : "Add to Request List"}
-                        </Button>
+                    {/* Mobile sticky footer with safe area */}
+                    <div
+                        className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 z-50 md:hidden"
+                        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+                    >
+                        {isMounted && hasItem(item.id) ? (
+                            <Button
+                                variant="outline"
+                                className="w-full h-12 rounded-md uppercase tracking-widest text-sm border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                onClick={() => {
+                                    removeItem(item.id)
+                                    toast("Item removed from request list")
+                                }}
+                            >
+                                ✕ Remove from List
+                            </Button>
+                        ) : (
+                            <Button
+                                className="w-full h-12 rounded-md uppercase tracking-widest text-sm shadow-lg"
+                                disabled={!isAvailable}
+                                onClick={handleAddToRequest}
+                            >
+                                Add to Request List
+                            </Button>
+                        )}
                     </div>
                 </>
             ) : (

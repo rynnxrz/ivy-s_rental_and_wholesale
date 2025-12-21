@@ -525,36 +525,46 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                 </div>
 
                 {/* Sidebar Filters */}
-                {/* Sidebar Filters */}
-                <aside className="hidden md:block w-full md:w-56 space-y-12 flex-shrink-0 pt-2 border-r border-slate-50 pr-4">
+                <aside className="hidden md:block w-full md:w-56 flex-shrink-0 pt-2 border-r border-slate-50 pr-2">
                     {/* 1. Rental Dates */}
                     <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3">
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Rental Dates
+                            {hasCommittedDate && (
+                                <button onClick={handleReset} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
+                                    Reset
+                                </button>
+                            )}
                         </h3>
                         <Popover open={isCalendarOpen} onOpenChange={handleCalendarOpenChange}>
                             <PopoverTrigger asChild>
-                                <div className="space-y-2 pl-2">
-                                    {/* Start Date */}
+                                <div className="space-y-3">
+                                    {/* Start Date - Frameless */}
                                     <button
                                         onClick={() => openCalendar('from')}
-                                        className="w-full text-left py-2 px-3 bg-slate-50 rounded-md text-sm hover:bg-slate-100 transition-colors group relative"
+                                        className="w-full text-left group"
                                     >
-                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-bold">Start</span>
-                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400")}>
+                                        <span className="block text-[9px] text-slate-400 uppercase tracking-wider font-medium">Start</span>
+                                        <span className={cn(
+                                            "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
+                                            (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400"
+                                        )}>
                                             {(isCalendarOpen ? draftDate?.from : committedDate?.from)
                                                 ? format((isCalendarOpen ? draftDate!.from! : committedDate!.from!), "MMM d, yyyy")
                                                 : "Select date"}
                                         </span>
                                     </button>
 
-                                    {/* End Date */}
+                                    {/* End Date - Frameless */}
                                     <button
                                         onClick={() => openCalendar('to')}
-                                        className="w-full text-left py-2 px-3 bg-slate-50 rounded-md text-sm hover:bg-slate-100 transition-colors group relative"
+                                        className="w-full text-left group"
                                     >
-                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-bold">End</span>
-                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400")}>
+                                        <span className="block text-[9px] text-slate-400 uppercase tracking-wider font-medium">End</span>
+                                        <span className={cn(
+                                            "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
+                                            (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400"
+                                        )}>
                                             {(isCalendarOpen ? draftDate?.to : committedDate?.to)
                                                 ? format((isCalendarOpen ? draftDate!.to! : committedDate!.to!), "MMM d, yyyy")
                                                 : "Select date"}
@@ -562,15 +572,9 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     </button>
 
                                     {hasCommittedDate && !isCalendarOpen && (
-                                        <div className="pt-1 flex items-center justify-between px-1">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+                                        <div>
+                                            <span className="text-[9px] text-slate-300 font-medium uppercase tracking-[0.1em]">
                                                 {rentalDays} days
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 hover:text-red-500 cursor-pointer font-bold tracking-wide uppercase transition-colors" onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleReset()
-                                            }}>
-                                                Clear
                                             </span>
                                         </div>
                                     )}
@@ -633,23 +637,23 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                         </Popover>
 
                         {hasCommittedDate && (
-                            <div className="flex items-center gap-2 mt-6 pl-2 origin-left">
-                                <Switch
-                                    id="show-unavailable"
-                                    checked={showUnavailable}
-                                    onCheckedChange={setShowUnavailable}
-                                    className="data-[state=checked]:bg-slate-900"
-                                />
-                                <Label htmlFor="show-unavailable" className="text-[10px] text-slate-400 font-bold uppercase tracking-wide cursor-pointer select-none">
-                                    Include booked items
-                                </Label>
-                            </div>
+                            <button
+                                onClick={() => setShowUnavailable(!showUnavailable)}
+                                className={cn(
+                                    "w-full text-left py-1 mt-3 text-xs transition-colors hover:text-slate-900",
+                                    showUnavailable
+                                        ? "font-semibold text-slate-900"
+                                        : "font-normal text-slate-500"
+                                )}
+                            >
+                                Show Booked Items
+                            </button>
                         )}
                     </div>
 
                     {/* 2. Categories */}
-                    <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
+                    <div className="mt-10">
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Categories
                             {selectedCategoryId && (
                                 <button onClick={() => setSelectedCategoryId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
@@ -657,7 +661,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                 </button>
                             )}
                         </h3>
-                        <div className="space-y-1 pl-2">
+                        <div className="space-y-1">
                             {categories.map(cat => (
                                 <button
                                     key={cat.id}
@@ -679,8 +683,8 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                     </div>
 
                     {/* 3. Collections */}
-                    <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
+                    <div className="mt-10">
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Collections
                             {selectedCollectionId && (
                                 <button onClick={() => setSelectedCollectionId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
@@ -688,7 +692,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                 </button>
                             )}
                         </h3>
-                        <div className="space-y-1 pl-2">
+                        <div className="space-y-1">
                             {collections.map(col => (
                                 <button
                                     key={col.id}
@@ -736,128 +740,167 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                     {/* Grid Content */}
                     <div className={cn("transition-opacity duration-300", isLoading ? "opacity-40 pointer-events-none" : "opacity-100")}>
                         {filteredItems.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[1px] bg-slate-50 border border-slate-50 center-grid">
                                 {filteredItems.map((item, index) => (
-                                    <div key={item.id} className="group flex flex-col h-full">
+                                    <div key={item.id} className="group flex flex-col h-full bg-white relative">
                                         <Link href={hasCommittedDate
                                             ? `/catalog/${item.id}?start=${format(committedDate!.from!, 'yyyy-MM-dd')}&end=${format(committedDate!.to!, 'yyyy-MM-dd')}`
                                             : `/catalog/${item.id}`
-                                        } className="block flex-1">
+                                        } className="block group/link">
                                             {/* Image */}
-                                            <div className="relative aspect-[4/5] bg-white overflow-hidden p-10 mb-3 rounded-md">
+                                            <div className="relative aspect-[4/5] bg-white overflow-hidden p-10">
                                                 <Image
                                                     src={getImageUrl(item.image_paths)}
                                                     alt={item.name}
                                                     fill
-                                                    className="object-contain object-center group-hover:scale-105 transition-transform duration-300"
+                                                    className="object-contain object-center group-hover/link:scale-105 transition-transform duration-300"
                                                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                                                     priority={index < 10}
                                                 />
                                             </div>
 
-                                            {/* Content */}
-                                            <div className={cn("space-y-1 mb-3 px-1", item.is_booked && "opacity-50")}>
-                                                <h3 className="text-sm font-medium text-slate-900 line-clamp-2 min-h-[40px] group-hover:text-slate-600 transition-colors">
+                                            {/* Title Only (Inside Link) */}
+                                            <div className={cn("px-5 pt-3", item.is_booked && "opacity-50")}>
+                                                <h3 className="text-sm font-medium text-slate-900 line-clamp-2 min-h-[40px] group-hover/link:text-slate-600 transition-colors text-left">
                                                     {item.color ? `${item.color} ${item.name}` : item.name}
                                                 </h3>
-                                                <p className="text-xs text-slate-500 truncate">
-                                                    {item.category}
-                                                </p>
                                             </div>
                                         </Link>
 
-                                        {/* Footer: Price & Action */}
-                                        <div className="flex items-center justify-between gap-3 mt-auto h-9 px-1">
-                                            {/* Left: Price Area */}
-                                            <div className="flex flex-col justify-center min-w-[80px] whitespace-nowrap">
-                                                <div className="text-[11px] text-slate-400 font-normal leading-tight">
+                                        {/* Action Area: Category + Price + Button (Separate Click Zone) */}
+                                        <div
+                                            className={cn(
+                                                "px-5 pb-5 pt-1 mt-auto cursor-pointer transition-colors hover:bg-slate-50/80 group/action",
+                                                item.is_booked && "pointer-events-none opacity-50"
+                                            )}
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                if (!hasCommittedDate || item.is_booked) return
+                                                if (isMounted && hasItem(item.id)) {
+                                                    removeItem(item.id)
+                                                    toast("Item removed from request", {
+                                                        action: {
+                                                            label: 'Undo',
+                                                            onClick: () => addItem({
+                                                                id: item.id,
+                                                                name: item.name,
+                                                                category: item.category,
+                                                                rental_price: item.rental_price,
+                                                                image_paths: item.image_paths,
+                                                                status: item.status
+                                                            })
+                                                        }
+                                                    })
+                                                } else {
+                                                    addItem({
+                                                        id: item.id,
+                                                        name: item.name,
+                                                        category: item.category,
+                                                        rental_price: item.rental_price,
+                                                        image_paths: item.image_paths,
+                                                        status: item.status
+                                                    })
+                                                    toast.success("Added to request")
+                                                }
+                                            }}
+                                        >
+                                            {/* Category */}
+                                            <p className="text-[10px] text-slate-400 truncate uppercase tracking-widest mb-2">
+                                                {item.category}
+                                            </p>
+                                            {/* Price & Button Row */}
+                                            <div className="flex items-center justify-between">
+                                                {/* Price (Left) */}
+                                                <div className="text-sm font-bold text-slate-900">
                                                     ${item.rental_price}/d
                                                 </div>
-                                                <div className={cn("text-sm font-semibold leading-tight", hasCommittedDate ? "text-slate-900" : "text-slate-300")}>
-                                                    {hasCommittedDate
-                                                        ? `$${rentalDays * item.rental_price} Total`
-                                                        : '-- Total'
-                                                    }
-                                                </div>
-                                            </div>
 
-                                            {/* Right: Add/Remove Button */}
-                                            <div className="flex-shrink-0 w-[70px] flex justify-end">
-                                                {hasCommittedDate ? (
-                                                    item.is_booked ? (
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
+                                                {/* Right: Add/Remove Button */}
+                                                <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                    {hasCommittedDate ? (
+                                                        item.is_booked ? (
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button
+                                                                        className="h-9 rounded-md bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600 px-4 text-[10px] font-medium uppercase tracking-wide"
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault()
+                                                                            e.stopPropagation()
+                                                                        }}
+                                                                    >
+                                                                        Booked
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-3 text-xs text-slate-500 max-w-[200px] rounded-md" align="end">
+                                                                    <p className="font-semibold text-slate-900 mb-1">Unavailable</p>
+                                                                    <p>Dates: {item.conflict_dates}</p>
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                        ) : (
+                                                            isMounted && hasItem(item.id) ? (
                                                                 <Button
-                                                                    className="w-full h-9 rounded-md bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600 px-0 text-[10px] font-medium uppercase tracking-wide"
+                                                                    className="h-9 w-9 rounded-md bg-white border border-green-200 text-green-500 hover:text-green-600 hover:border-green-300 hover:bg-green-50 p-0 flex items-center justify-center transition-all group-hover/action:scale-105"
                                                                     onClick={(e) => {
                                                                         e.preventDefault()
                                                                         e.stopPropagation()
+                                                                        removeItem(item.id)
+                                                                        toast("Item removed from request", {
+                                                                            action: {
+                                                                                label: 'Undo',
+                                                                                onClick: () => addItem({
+                                                                                    id: item.id,
+                                                                                    name: item.name,
+                                                                                    category: item.category,
+                                                                                    rental_price: item.rental_price,
+                                                                                    image_paths: item.image_paths,
+                                                                                    status: item.status
+                                                                                })
+                                                                            }
+                                                                        })
                                                                     }}
                                                                 >
-                                                                    Booked
+                                                                    <Check className="h-5 w-5" />
                                                                 </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-auto p-3 text-xs text-slate-500 max-w-[200px]" align="end">
-                                                                <p className="font-semibold text-slate-900 mb-1">Unavailable</p>
-                                                                <p>Dates: {item.conflict_dates}</p>
-                                                            </PopoverContent>
-                                                        </Popover>
-                                                    ) : (
-                                                        isMounted && hasItem(item.id) ? (
-                                                            <Button
-                                                                className="h-9 w-9 rounded-md bg-white border border-green-200 text-green-500 hover:text-green-600 hover:border-green-300 hover:bg-green-50 p-0 flex items-center justify-center transition-all animate-in zoom-in-95 fade-in duration-200 group"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault()
-                                                                    removeItem(item.id)
-                                                                    toast("Item removed from request", {
-                                                                        action: {
-                                                                            label: 'Undo',
-                                                                            onClick: () => addItem({
-                                                                                id: item.id,
-                                                                                name: item.name,
-                                                                                category: item.category,
-                                                                                rental_price: item.rental_price,
-                                                                                image_paths: item.image_paths,
-                                                                                status: item.status
-                                                                            })
-                                                                        }
-                                                                    })
-                                                                }}
-                                                            >
-                                                                <Check className="h-5 w-5" />
-                                                            </Button>
-                                                        ) : (
-                                                            <Button
-                                                                className="w-full h-9 rounded-md bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium animate-in zoom-in-95 fade-in duration-200 px-0"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault()
-                                                                    addItem({
-                                                                        id: item.id,
-                                                                        name: item.name,
-                                                                        category: item.category,
-                                                                        rental_price: item.rental_price,
-                                                                        image_paths: item.image_paths,
-                                                                        status: item.status
-                                                                    })
-                                                                    toast.success("Added to request")
-                                                                }}
-                                                            >
-                                                                + Add
-                                                            </Button>
+                                                            ) : (
+                                                                <Button
+                                                                    className="h-9 rounded-md bg-slate-900 text-white hover:bg-slate-800 group-hover/action:scale-105 text-xs font-medium px-6 transition-transform"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault()
+                                                                        e.stopPropagation()
+                                                                        addItem({
+                                                                            id: item.id,
+                                                                            name: item.name,
+                                                                            category: item.category,
+                                                                            rental_price: item.rental_price,
+                                                                            image_paths: item.image_paths,
+                                                                            status: item.status
+                                                                        })
+                                                                        toast.success("Added to request")
+                                                                    }}
+                                                                >
+                                                                    + Add
+                                                                </Button>
+                                                            )
                                                         )
-                                                    )
-                                                ) : (
-                                                    <Button
-                                                        className="w-full h-9 rounded-md bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs font-medium px-0"
-                                                        disabled
-                                                    >
-                                                        + Add
-                                                    </Button>
-                                                )}
+                                                    ) : (
+                                                        <Button
+                                                            className="h-9 rounded-md bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs font-medium px-6"
+                                                            disabled
+                                                        >
+                                                            + Add
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                ))}                </div>
+                                ))}
+                                {/* Ghost Cells for Full Grid Fill */}
+                                {Array.from({ length: Math.max(12, Math.ceil(filteredItems.length / 4) * 4) - filteredItems.length }).map((_, i) => (
+                                    <div key={`ghost-${i}`} className="bg-white" />
+                                ))}
+                            </div>
                         ) : (
                             <div className="text-center py-20">
                                 {hasCommittedDate ? (

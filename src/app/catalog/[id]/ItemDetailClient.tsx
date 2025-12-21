@@ -81,7 +81,7 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                                 src={currentImage}
                                 alt={item.name}
                                 fill
-                                className="object-contain object-center p-8"
+                                className="object-contain object-center p-8 transition-opacity duration-300"
                                 priority
                                 sizes="(max-width: 1024px) 100vw, 50vw"
                             />
@@ -95,9 +95,9 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                                         key={idx}
                                         onClick={() => setSelectedImage(path)}
                                         className={cn(
-                                            "relative w-16 h-16 flex-shrink-0 bg-white rounded-md overflow-hidden border transition-all",
+                                            "relative w-16 h-16 flex-shrink-0 bg-white rounded-md overflow-hidden border-2 transition-all",
                                             (selectedImage === path || (!selectedImage && idx === 0))
-                                                ? "border-slate-900 ring-1 ring-slate-900"
+                                                ? "border-black ring-1 ring-black"
                                                 : "border-transparent hover:border-slate-300"
                                         )}
                                     >
@@ -133,67 +133,60 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                             )}
                         </div>
 
-                        <div className="prose prose-gray max-w-none text-gray-600 font-light mb-12">
+                        {/* Action Area (Booking Form) - Moved Up, Only show if NOT in archive mode */}
+                        {!isArchiveMode && (
+                            <div className="mb-8">
+                                <BookingForm item={item} />
+                            </div>
+                        )}
+
+                        {/* Description */}
+                        <div className="prose prose-gray max-w-none text-gray-600 font-light mb-8">
                             <p>{item.description || 'No description available for this item.'}</p>
                         </div>
 
-                        {/* Specifications */}
-                        <div className="bg-gray-50 p-5 md:p-8 rounded-sm">
-                            <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6">
+                        {/* Specifications - More Compact */}
+                        <div className="border-t border-gray-100 pt-6">
+                            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
                                 Specifications
                             </h3>
-                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+                            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                                 {item.color && (
-                                    <div className="border-b border-gray-200 pb-2">
-                                        <dt className="text-xs text-gray-500 uppercase">Color</dt>
-                                        <dd className="text-sm text-gray-900 mt-1">{item.color}</dd>
+                                    <div>
+                                        <dt className="text-gray-400">Color</dt>
+                                        <dd className="text-gray-900">{item.color}</dd>
                                     </div>
                                 )}
-                                <div className="border-b border-gray-200 pb-2">
-                                    <dt className="text-xs text-gray-500 uppercase">SKU</dt>
-                                    <dd className="text-sm text-gray-900 mt-1">{item.sku}</dd>
+                                <div>
+                                    <dt className="text-gray-400">SKU</dt>
+                                    <dd className="text-gray-900">{item.sku}</dd>
                                 </div>
-                                {/** Only show replacement value if NOT in archive mode? 
-                                     User said: "Hide all rental related elements: price, date picker... Only keep name, description, specs and image".
-                                     Replacement value is kind of a spec, but also financial. 
-                                     I'll hide it to be safe as per "Hide all rental related elements". 
-                                 */}
                                 {!isArchiveMode && (
-                                    <div className="border-b border-gray-200 pb-2">
-                                        <dt className="text-xs text-gray-500 uppercase">Replacement Value</dt>
-                                        <dd className="text-sm text-gray-900 mt-1">${item.replacement_cost}</dd>
+                                    <div>
+                                        <dt className="text-gray-400">Replacement Value</dt>
+                                        <dd className="text-gray-900">${item.replacement_cost}</dd>
                                     </div>
                                 )}
-
                                 {item.material && (
-                                    <div className="border-b border-gray-200 pb-2">
-                                        <dt className="text-xs text-gray-500 uppercase">Material</dt>
-                                        <dd className="text-sm text-gray-900 mt-1">{item.material}</dd>
+                                    <div>
+                                        <dt className="text-gray-400">Material</dt>
+                                        <dd className="text-gray-900">{item.material}</dd>
                                     </div>
                                 )}
-
                                 {item.weight && (
-                                    <div className="border-b border-gray-200 pb-2">
-                                        <dt className="text-xs text-gray-500 uppercase">Weight</dt>
-                                        <dd className="text-sm text-gray-900 mt-1">{item.weight}</dd>
+                                    <div>
+                                        <dt className="text-gray-400">Weight</dt>
+                                        <dd className="text-gray-900">{item.weight}</dd>
                                     </div>
                                 )}
-
                                 {Object.entries(specs).map(([key, value]) => (
-                                    <div key={key} className="border-b border-gray-200 pb-2">
-                                        <dt className="text-xs text-gray-500 uppercase">{key}</dt>
-                                        <dd className="text-sm text-gray-900 mt-1">{value}</dd>
+                                    <div key={key}>
+                                        <dt className="text-gray-400">{key}</dt>
+                                        <dd className="text-gray-900">{value}</dd>
                                     </div>
                                 ))}
                             </dl>
                         </div>
-
-                        {/* Action Area (Booking Form) - Only show if NOT in archive mode */}
-                        {!isArchiveMode && (
-                            <div className="mt-12 bg-white rounded-sm">
-                                <BookingForm item={item} />
-                            </div>
-                        )}
 
                     </div>
                 </div>
