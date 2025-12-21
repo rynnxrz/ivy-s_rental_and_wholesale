@@ -1,9 +1,11 @@
 "use client"
 
+import * as React from "react"
 import Link from 'next/link'
 import Image from 'next/image'
 import { BookingForm } from './BookingForm'
 import { ArrowLeft } from 'lucide-react'
+import { cn } from "@/lib/utils"
 
 // Define the shape of the Item similar to what page.tsx uses, or import types if available.
 // For now inline to match page.tsx structure.
@@ -11,6 +13,7 @@ interface Item {
     id: string
     name: string
     category: string
+    color?: string | null
     rental_price: number
     replacement_cost: number
     description: string | null
@@ -28,13 +31,23 @@ interface ItemDetailClientProps {
     relatedItemsSlot?: React.ReactNode
 }
 
+
 export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetailClientProps) {
     const isArchiveMode = context === 'archive'
+
+    const [selectedImage, setSelectedImage] = React.useState<string | null>(null)
+
+    // Reset selected image when item changes
+    React.useEffect(() => {
+        setSelectedImage(null)
+    }, [item.id])
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
         return 'https://placehold.co/800x600?text=No+Image'
     }
+
+    const currentImage = selectedImage || getImageUrl(item.image_paths)
 
     const specs = (item.specs as Record<string, string>) || {}
 
@@ -48,7 +61,7 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
     return (
         <div className="min-h-screen bg-white pb-20">
             {/* Breadcrumb / Back */}
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6">
                 <Link
                     href={backHref}
                     className="flex items-center gap-2 text-sm text-gray-500 hover:text-black transition-colors"
@@ -62,22 +75,52 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-24">
 
                     {/* Image Side */}
-                    <div className="relative bg-white w-full h-[45vh] lg:h-auto lg:aspect-square overflow-hidden lg:sticky lg:top-24">
-                        <Image
-                            src={getImageUrl(item.image_paths)}
-                            alt={item.name}
-                            fill
-                            className="object-contain object-center"
-                            priority
-                            sizes="(max-width: 1024px) 100vw, 50vw"
-                        />
+                    <div className="lg:sticky lg:top-24">
+                        <div className="relative bg-white w-full h-[40vh] lg:h-auto lg:aspect-square overflow-hidden rounded-md mb-4">
+                            <Image
+                                src={currentImage}
+                                alt={item.name}
+                                fill
+                                className="object-contain object-center p-8"
+                                priority
+                                sizes="(max-width: 1024px) 100vw, 50vw"
+                            />
+                        </div>
+
+                        {/* Thumbnails */}
+                        {item.image_paths && item.image_paths.length > 1 && (
+                            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                                {item.image_paths.map((path, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setSelectedImage(path)}
+                                        className={cn(
+                                            "relative w-16 h-16 flex-shrink-0 bg-white rounded-md overflow-hidden border transition-all",
+                                            (selectedImage === path || (!selectedImage && idx === 0))
+                                                ? "border-slate-900 ring-1 ring-slate-900"
+                                                : "border-transparent hover:border-slate-300"
+                                        )}
+                                    >
+                                        <Image
+                                            src={path}
+                                            alt={`${item.name} view ${idx + 1}`}
+                                            fill
+                                            className="object-cover object-center"
+                                            sizes="64px"
+                                        />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Details Side */}
                     <div className="pt-4 lg:pt-0">
                         <div className="border-b border-gray-100 pb-6 mb-6">
                             <p className="text-sm text-gray-500 uppercase tracking-widest mb-2">{item.category}</p>
-                            <h1 className="text-3xl lg:text-4xl font-light text-gray-900 mb-4 lg:mb-6">{item.name}</h1>
+                            <h1 className="text-3xl lg:text-4xl font-light text-gray-900 mb-4 lg:mb-6">
+                                {item.color ? `${item.color} ${item.name}` : item.name}
+                            </h1>
 
                             {/* Price - Only show if NOT in archive mode */}
                             {!isArchiveMode && (
@@ -100,6 +143,12 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                                 Specifications
                             </h3>
                             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+                                {item.color && (
+                                    <div className="border-b border-gray-200 pb-2">
+                                        <dt className="text-xs text-gray-500 uppercase">Color</dt>
+                                        <dd className="text-sm text-gray-900 mt-1">{item.color}</dd>
+                                    </div>
+                                )}
                                 <div className="border-b border-gray-200 pb-2">
                                     <dt className="text-xs text-gray-500 uppercase">SKU</dt>
                                     <dd className="text-sm text-gray-900 mt-1">{item.sku}</dd>

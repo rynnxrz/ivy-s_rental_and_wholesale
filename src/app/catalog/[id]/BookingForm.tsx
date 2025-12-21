@@ -290,7 +290,7 @@ export function BookingForm({ item }: BookingFormProps) {
             {/* Availability Status */}
             {date?.from && date?.to && (
                 <div className={cn(
-                    "p-4 rounded-sm text-sm border",
+                    "p-4 rounded-md text-sm border",
                     isChecking ? "bg-gray-50 border-gray-200 text-gray-500" :
                         isAvailable ? "bg-green-50 border-green-200 text-green-700" :
                             "bg-red-50 border-red-200 text-red-700"
@@ -396,7 +396,7 @@ export function BookingForm({ item }: BookingFormProps) {
 
             {message && (
                 <div className={cn(
-                    "p-4 rounded-sm text-sm text-center",
+                    "p-4 rounded-md text-sm text-center",
                     message.type === 'success' ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
                 )}>
                     {message.text}

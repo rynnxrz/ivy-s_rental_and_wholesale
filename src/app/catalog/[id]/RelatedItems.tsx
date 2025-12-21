@@ -16,7 +16,7 @@ export async function RelatedItems({ collectionId, currentId, isArchiveMode }: P
 
     const { data: relatedItems } = await supabase
         .from('items')
-        .select('id, name, rental_price, image_paths, category, status')
+        .select('id, name, color, rental_price, image_paths, category, status')
         .eq('collection_id', collectionId)
         .neq('id', currentId)
         .limit(4)
@@ -40,7 +40,7 @@ export async function RelatedItems({ collectionId, currentId, isArchiveMode }: P
                         href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
                         className="group block"
                     >
-                        <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
+                        <div className="relative aspect-square bg-white overflow-hidden rounded-md mb-4">
                             <Image
                                 src={getImageUrl(related.image_paths)}
                                 alt={related.name}
@@ -51,7 +51,7 @@ export async function RelatedItems({ collectionId, currentId, isArchiveMode }: P
                         </div>
                         <div>
                             <h3 className="text-sm font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
-                                {related.name}
+                                {related.color ? `${related.color} ${related.name}` : related.name}
                             </h3>
                             {!isArchiveMode && (
                                 <p className="text-sm text-gray-500 mt-1">${related.rental_price}</p>

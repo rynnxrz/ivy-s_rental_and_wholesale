@@ -351,7 +351,8 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
             <div className="max-w-[1920px] mx-auto px-4 sm:px-8 py-8 flex flex-col md:flex-row gap-12">
 
                 {/* Mobile Filter Bar */}
-                <div className="md:hidden sticky top-16 z-30 bg-white/95 backdrop-blur border-b border-slate-100 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 mb-8 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {/* Mobile Filter Bar */}
+                <div className="md:hidden sticky top-16 z-30 bg-white/95 backdrop-blur border-b border-slate-100 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 mb-4 flex items-center gap-2 overflow-x-auto no-scrollbar">
                     {/* Mobile Date Picker Trigger */}
                     <Popover open={isMobileCalendarOpen} onOpenChange={handleMobileCalendarOpenChange}>
                         <PopoverTrigger asChild>
@@ -456,94 +457,91 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                 </SheetDescription>
                             </SheetHeader>
                             <div className="overflow-y-auto h-full px-6 py-6 space-y-8">
-                                {/* Categories */}
+                                {/* 2. Categories */}
                                 <div>
-                                    <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between">
+                                    <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
                                         Categories
                                         {selectedCategoryId && (
-                                            <button onClick={() => setSelectedCategoryId(null)} className="text-blue-600 font-normal text-xs">
+                                            <button onClick={() => setSelectedCategoryId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
                                                 Reset
                                             </button>
                                         )}
                                     </h3>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1 pl-4">
                                         {categories.map(cat => (
                                             <button
                                                 key={cat.id}
                                                 onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
                                                 className={cn(
-                                                    "px-3 py-2 text-xs rounded-md border text-left transition-all",
+                                                    "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group",
                                                     selectedCategoryId === cat.id
-                                                        ? "bg-slate-900 text-white border-slate-900"
-                                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                                                        ? "font-bold text-slate-900"
+                                                        : "font-normal text-slate-500 hover:text-slate-900"
                                                 )}
                                             >
-                                                <div className="flex justify-between items-center">
-                                                    <span>{cat.name}</span>
-                                                    <span className={cn("text-[10px]", selectedCategoryId === cat.id ? "text-slate-400" : "text-slate-400")}>
-                                                        {categoryCounts[cat.id] || 0}
-                                                    </span>
-                                                </div>
+                                                <span>{cat.name}</span>
+                                                <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-400" : "text-slate-300 group-hover:text-slate-400")}>
+                                                    {categoryCounts[cat.id] || 0}
+                                                </span>
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
-                                {/* Collections */}
+                                {/* 3. Collections */}
                                 <div>
-                                    <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between">
+                                    <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
                                         Collections
                                         {selectedCollectionId && (
-                                            <button onClick={() => setSelectedCollectionId(null)} className="text-blue-600 font-normal text-xs">
+                                            <button onClick={() => setSelectedCollectionId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
                                                 Reset
                                             </button>
                                         )}
                                     </h3>
-                                    <div className="space-y-2">
+                                    <div className="space-y-1 pl-4">
                                         {collections.map(col => (
                                             <button
                                                 key={col.id}
                                                 onClick={() => setSelectedCollectionId(selectedCollectionId === col.id ? null : col.id)}
                                                 className={cn(
-                                                    "w-full px-3 py-2 text-xs rounded-md border text-left transition-all flex items-center justify-between",
+                                                    "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group",
                                                     selectedCollectionId === col.id
-                                                        ? "bg-slate-50 border-slate-900 text-slate-900 font-medium"
-                                                        : "bg-white text-slate-600 border-slate-200"
+                                                        ? "font-bold text-slate-900"
+                                                        : "font-normal text-slate-500 hover:text-slate-900"
                                                 )}
                                             >
                                                 <span>{col.name}</span>
-                                                <span className="text-slate-400 text-[10px]">{collectionCounts[col.id] || 0}</span>
+                                                <span className={cn("text-[10px] transition-colors", selectedCollectionId === col.id ? "text-slate-400" : "text-slate-300 group-hover:text-slate-400")}>
+                                                    {collectionCounts[col.id] || 0}
+                                                </span>
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             </div>
+
                         </SheetContent>
                     </Sheet>
                 </div>
 
                 {/* Sidebar Filters */}
-                <aside className="hidden md:block w-full md:w-56 space-y-12 flex-shrink-0 pt-2">
-                    {/* 1. Date Picker (Minimalist) */}
+                {/* Sidebar Filters */}
+                <aside className="hidden md:block w-full md:w-56 space-y-12 flex-shrink-0 pt-2 border-r border-slate-50 pr-4">
+                    {/* 1. Rental Dates */}
                     <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-6">
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3">
                             Rental Dates
                         </h3>
                         <Popover open={isCalendarOpen} onOpenChange={handleCalendarOpenChange}>
                             <PopoverTrigger asChild>
-                                <div className="space-y-4">
+                                <div className="space-y-2 pl-2">
                                     {/* Start Date */}
                                     <button
                                         onClick={() => openCalendar('from')}
-                                        className={cn(
-                                            "w-full text-left py-1 border-b transition-colors group relative",
-                                            activeDateInput === 'from' && isCalendarOpen
-                                                ? "border-slate-900"
-                                                : "border-slate-200 hover:border-slate-300"
-                                        )}
+                                        className="w-full text-left py-2 px-3 bg-slate-50 rounded-md text-sm hover:bg-slate-100 transition-colors group relative"
                                     >
-                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-medium">Start</span>
-                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-300")}>
+                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-bold">Start</span>
+                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400")}>
                                             {(isCalendarOpen ? draftDate?.from : committedDate?.from)
                                                 ? format((isCalendarOpen ? draftDate!.from! : committedDate!.from!), "MMM d, yyyy")
                                                 : "Select date"}
@@ -553,15 +551,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     {/* End Date */}
                                     <button
                                         onClick={() => openCalendar('to')}
-                                        className={cn(
-                                            "w-full text-left py-1 border-b transition-colors group relative",
-                                            activeDateInput === 'to' && isCalendarOpen
-                                                ? "border-slate-900"
-                                                : "border-slate-200 hover:border-slate-300"
-                                        )}
+                                        className="w-full text-left py-2 px-3 bg-slate-50 rounded-md text-sm hover:bg-slate-100 transition-colors group relative"
                                     >
-                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-medium">End</span>
-                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-300")}>
+                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-bold">End</span>
+                                        <span className={cn("text-sm font-medium block", (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400")}>
                                             {(isCalendarOpen ? draftDate?.to : committedDate?.to)
                                                 ? format((isCalendarOpen ? draftDate!.to! : committedDate!.to!), "MMM d, yyyy")
                                                 : "Select date"}
@@ -569,11 +562,11 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     </button>
 
                                     {hasCommittedDate && !isCalendarOpen && (
-                                        <div className="pt-2 flex items-center justify-between">
-                                            <span className="text-[10px] text-slate-400 font-medium">
+                                        <div className="pt-1 flex items-center justify-between px-1">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
                                                 {rentalDays} days
                                             </span>
-                                            <span className="text-[10px] text-slate-400 hover:text-red-500 cursor-pointer font-medium tracking-wide uppercase transition-colors" onClick={(e) => {
+                                            <span className="text-[10px] text-slate-400 hover:text-red-500 cursor-pointer font-bold tracking-wide uppercase transition-colors" onClick={(e) => {
                                                 e.stopPropagation()
                                                 handleReset()
                                             }}>
@@ -581,6 +574,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                             </span>
                                         </div>
                                     )}
+
                                 </div>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start" side="right" sideOffset={20}>
@@ -632,22 +626,21 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         className="h-8 text-xs bg-slate-900 text-white hover:bg-slate-800"
                                     >
                                         {isLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                                        Apply Dates
+                                        Apply
                                     </Button>
                                 </div>
                             </PopoverContent>
                         </Popover>
 
-                        {/* Include Booked Items Switch */}
                         {hasCommittedDate && (
-                            <div className="flex items-center gap-2 mt-4 pl-0">
+                            <div className="flex items-center gap-2 mt-6 pl-2 origin-left">
                                 <Switch
                                     id="show-unavailable"
                                     checked={showUnavailable}
                                     onCheckedChange={setShowUnavailable}
-                                    className="scale-90 data-[state=checked]:bg-slate-900"
+                                    className="data-[state=checked]:bg-slate-900"
                                 />
-                                <Label htmlFor="show-unavailable" className="text-xs text-slate-500 cursor-pointer select-none">
+                                <Label htmlFor="show-unavailable" className="text-[10px] text-slate-400 font-bold uppercase tracking-wide cursor-pointer select-none">
                                     Include booked items
                                 </Label>
                             </div>
@@ -656,100 +649,76 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
                     {/* 2. Categories */}
                     <div>
-                        <h3
-                            className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-6 cursor-pointer flex items-center justify-between group"
-                            onClick={() => setSelectedCategoryId(null)}
-                        >
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
                             Categories
-                            {selectedCategoryId && <span className="text-[9px] font-normal text-slate-400 group-hover:text-red-500 transition-colors">CLEAR</span>}
+                            {selectedCategoryId && (
+                                <button onClick={() => setSelectedCategoryId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
+                                    Reset
+                                </button>
+                            )}
                         </h3>
-                        <ul className="space-y-1 pl-0">
-                            {categories.length === 0 && <li className="text-xs text-slate-400 py-1">No categories</li>}
-                            {categories.map(cat => {
-                                const count = categoryCounts[cat.id] || 0
-                                const isSelected = selectedCategoryId === cat.id
-                                return (
-                                    <li key={cat.id}>
-                                        <button
-                                            onClick={() => setSelectedCategoryId(isSelected ? null : cat.id)}
-                                            disabled={isLoading}
-                                            className={cn(
-                                                "w-full text-left py-1.5 pl-4 pr-0 border-l-[2px] transition-all flex items-center group relative",
-                                                "disabled:opacity-50 disabled:cursor-not-allowed",
-                                                isSelected
-                                                    ? "border-slate-900"
-                                                    : "border-transparent hover:border-slate-200"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "text-sm leading-relaxed transition-colors",
-                                                isSelected ? "font-medium text-slate-900" : "text-slate-500 group-hover:text-slate-900"
-                                            )}>
-                                                {cat.name}
-                                            </span>
-                                            <span className="ml-auto text-[10px] text-slate-300 group-hover:text-slate-400 tabular-nums">
-                                                {count}
-                                            </span>
-                                        </button>
-                                    </li>
-                                )
-                            })}
-                        </ul>
+                        <div className="space-y-1 pl-2">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat.id}
+                                    onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
+                                    className={cn(
+                                        "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group",
+                                        selectedCategoryId === cat.id
+                                            ? "font-bold text-slate-900"
+                                            : "font-normal text-slate-500 hover:text-slate-900"
+                                    )}
+                                >
+                                    <span>{cat.name}</span>
+                                    <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-400" : "text-slate-300 group-hover:text-slate-400")}>
+                                        {categoryCounts[cat.id] || 0}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* 3. Collections */}
                     <div>
-                        <h3
-                            className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-6 cursor-pointer flex items-center justify-between group"
-                            onClick={() => setSelectedCollectionId(null)}
-                        >
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-3 flex items-center justify-between">
                             Collections
-                            {selectedCollectionId && <span className="text-[9px] font-normal text-slate-400 group-hover:text-red-500 transition-colors">CLEAR</span>}
+                            {selectedCollectionId && (
+                                <button onClick={() => setSelectedCollectionId(null)} className="text-[10px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide">
+                                    Reset
+                                </button>
+                            )}
                         </h3>
-                        <ul className="space-y-1 pl-0">
-                            {collections.length === 0 && <li className="text-xs text-slate-400 py-1">No collections</li>}
-                            {collections.map(col => {
-                                const count = collectionCounts[col.id] || 0
-                                const isSelected = selectedCollectionId === col.id
-                                return (
-                                    <li key={col.id}>
-                                        <button
-                                            onClick={() => setSelectedCollectionId(isSelected ? null : col.id)}
-                                            disabled={isLoading}
-                                            className={cn(
-                                                "w-full text-left py-1.5 pl-4 pr-0 border-l-[2px] transition-all flex items-center group relative",
-                                                "disabled:opacity-50 disabled:cursor-not-allowed",
-                                                isSelected
-                                                    ? "border-slate-900"
-                                                    : "border-transparent hover:border-slate-200"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "text-sm leading-relaxed transition-colors",
-                                                isSelected ? "font-medium text-slate-900" : "text-slate-500 group-hover:text-slate-900"
-                                            )}>
-                                                {col.name}
-                                            </span>
-                                            <span className="ml-auto text-[10px] text-slate-300 group-hover:text-slate-400 tabular-nums">
-                                                {count}
-                                            </span>
-                                        </button>
-                                    </li>
-                                )
-                            })}
-                        </ul>
+                        <div className="space-y-1 pl-2">
+                            {collections.map(col => (
+                                <button
+                                    key={col.id}
+                                    onClick={() => setSelectedCollectionId(selectedCollectionId === col.id ? null : col.id)}
+                                    className={cn(
+                                        "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group",
+                                        selectedCollectionId === col.id
+                                            ? "font-bold text-slate-900"
+                                            : "font-normal text-slate-500 hover:text-slate-900"
+                                    )}
+                                >
+                                    <span>{col.name}</span>
+                                    <span className={cn("text-[10px] transition-colors", selectedCollectionId === col.id ? "text-slate-400" : "text-slate-300 group-hover:text-slate-400")}>
+                                        {collectionCounts[col.id] || 0}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </aside>
 
                 {/* Grid Section - Sidebar First Layout */}
                 <section className="flex-1 relative min-h-[500px]">
 
-                    {/* Empty State Guidance Banner (When no dates selected) */}
-                    {!hasCommittedDate && !isLoading && (
-                        <div className="mb-4 text-center text-slate-400 text-sm font-light tracking-wide">
-                            Discover the collection · Select dates to check availability
-                        </div>
-                    )}
+                    {/* Aligned Header (Desktop Only) */}
+                    <div className="hidden md:block mb-6 pt-2">
+                        <h2 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase">
+                            {hasCommittedDate ? "Available Pieces" : "All Collection"}
+                        </h2>
+                    </div>
 
                     {/* Loading Overlay */}
                     <div
@@ -774,28 +743,32 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                             ? `/catalog/${item.id}?start=${format(committedDate!.from!, 'yyyy-MM-dd')}&end=${format(committedDate!.to!, 'yyyy-MM-dd')}`
                                             : `/catalog/${item.id}`
                                         } className="block flex-1">
-                                            <div className={cn("relative aspect-[4/5] bg-slate-100 overflow-hidden", item.is_booked && "grayscale")}>
+                                            {/* Image */}
+                                            <div className="relative aspect-[4/5] bg-white overflow-hidden p-10 mb-3 rounded-md">
                                                 <Image
                                                     src={getImageUrl(item.image_paths)}
                                                     alt={item.name}
                                                     fill
-                                                    className="object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                                                    className="object-contain object-center group-hover:scale-105 transition-transform duration-300"
                                                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                                                     priority={index < 10}
                                                 />
                                             </div>
-                                            <div className={cn("space-y-0.5 mb-2", item.is_booked && "opacity-50")}>
-                                                <h3 className="text-sm font-medium text-slate-900 truncate group-hover:text-slate-600 transition-colors">
-                                                    {item.name}
+
+                                            {/* Content */}
+                                            <div className={cn("space-y-1 mb-3 px-1", item.is_booked && "opacity-50")}>
+                                                <h3 className="text-sm font-medium text-slate-900 line-clamp-2 min-h-[40px] group-hover:text-slate-600 transition-colors">
+                                                    {item.color ? `${item.color} ${item.name}` : item.name}
                                                 </h3>
                                                 <p className="text-xs text-slate-500 truncate">
-                                                    {item.category} {item.color ? `· ${item.color}` : ''}
+                                                    {item.category}
                                                 </p>
                                             </div>
                                         </Link>
 
-                                        <div className="flex items-center justify-between gap-3 mt-auto h-9">
-                                            {/* Left: Price Area (Fixed layout to prevent shifts) */}
+                                        {/* Footer: Price & Action */}
+                                        <div className="flex items-center justify-between gap-3 mt-auto h-9 px-1">
+                                            {/* Left: Price Area */}
                                             <div className="flex flex-col justify-center min-w-[80px] whitespace-nowrap">
                                                 <div className="text-[11px] text-slate-400 font-normal leading-tight">
                                                     ${item.rental_price}/d
@@ -808,14 +781,14 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                 </div>
                                             </div>
 
-                                            {/* Right: Add/Remove Button (Fixed width container for stability) */}
+                                            {/* Right: Add/Remove Button */}
                                             <div className="flex-shrink-0 w-[70px] flex justify-end">
                                                 {hasCommittedDate ? (
                                                     item.is_booked ? (
                                                         <Popover>
                                                             <PopoverTrigger asChild>
                                                                 <Button
-                                                                    className="w-full h-9 rounded-full bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600 px-0 text-[10px] font-medium uppercase tracking-wide"
+                                                                    className="w-full h-9 rounded-md bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600 px-0 text-[10px] font-medium uppercase tracking-wide"
                                                                     onClick={(e) => {
                                                                         e.preventDefault()
                                                                         e.stopPropagation()
@@ -832,7 +805,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                     ) : (
                                                         isMounted && hasItem(item.id) ? (
                                                             <Button
-                                                                className="h-9 w-9 rounded-full bg-white border border-green-200 text-green-500 hover:text-green-600 hover:border-green-300 hover:bg-green-50 p-0 flex items-center justify-center transition-all animate-in zoom-in-95 fade-in duration-200 group"
+                                                                className="h-9 w-9 rounded-md bg-white border border-green-200 text-green-500 hover:text-green-600 hover:border-green-300 hover:bg-green-50 p-0 flex items-center justify-center transition-all animate-in zoom-in-95 fade-in duration-200 group"
                                                                 onClick={(e) => {
                                                                     e.preventDefault()
                                                                     removeItem(item.id)
@@ -855,7 +828,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                             </Button>
                                                         ) : (
                                                             <Button
-                                                                className="w-full h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium animate-in zoom-in-95 fade-in duration-200 px-0"
+                                                                className="w-full h-9 rounded-md bg-slate-900 text-white hover:bg-slate-800 text-xs font-medium animate-in zoom-in-95 fade-in duration-200 px-0"
                                                                 onClick={(e) => {
                                                                     e.preventDefault()
                                                                     addItem({
@@ -875,7 +848,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                     )
                                                 ) : (
                                                     <Button
-                                                        className="w-full h-9 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs font-medium px-0"
+                                                        className="w-full h-9 rounded-md bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs font-medium px-0"
                                                         disabled
                                                     >
                                                         + Add
@@ -884,8 +857,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                             </div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                ))}                </div>
                         ) : (
                             <div className="text-center py-20">
                                 {hasCommittedDate ? (
@@ -910,7 +882,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                         )}
                     </div>
                 </section>
-            </div>
+            </div >
         </div >
     )
 }
