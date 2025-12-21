@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { useRequestStore } from "@/store/request"
-import { format, differenceInDays, parse } from "date-fns"
+import { format, parse } from "date-fns"
 import { ShoppingBag, Trash2, Calendar, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +20,7 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 
 export function RequestFloatingButton() {
+    const pathname = usePathname()
     const { items, dateRange, removeItem } = useRequestStore()
     const [open, setOpen] = React.useState(false)
     const [isMounted, setIsMounted] = React.useState(false)
@@ -26,6 +28,21 @@ export function RequestFloatingButton() {
     React.useEffect(() => {
         setIsMounted(true)
     }, [])
+
+    // Route-based visibility rules
+    const shouldShow = React.useMemo(() => {
+        // Hide on these routes
+        if (pathname === '/') return false
+        if (pathname.startsWith('/admin')) return false
+        if (pathname.startsWith('/archive')) return false
+
+        // Show on catalog and wholesale routes
+        if (pathname.startsWith('/catalog')) return true
+        if (pathname.startsWith('/wholesale')) return true
+
+        // Default: hide
+        return false
+    }, [pathname])
 
     // Calculate details
     const hasDates = dateRange.from && dateRange.to
@@ -56,7 +73,8 @@ export function RequestFloatingButton() {
         prevCountRef.current = items.length
     }, [items.length])
 
-    if (!isMounted || items.length === 0) return null
+    // Don't render if: not mounted, no items, or route doesn't allow
+    if (!isMounted || items.length === 0 || !shouldShow) return null
 
     return (
         <Sheet open={open} onOpenChange={setOpen}>

@@ -64,7 +64,7 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
             <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6">
                 <Link
                     href={backHref}
-                    className="flex items-center gap-2 text-sm text-gray-500 hover:text-black transition-colors"
+                    className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors py-2 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none rounded-md"
                 >
                     <ArrowLeft className="h-4 w-4" />
                     {backLabel}
@@ -89,21 +89,22 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
 
                         {/* Thumbnails */}
                         {item.image_paths && item.image_paths.length > 1 && (
-                            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                                 {item.image_paths.map((path, idx) => (
                                     <button
                                         key={idx}
                                         onClick={() => setSelectedImage(path)}
+                                        aria-label={`View view ${idx + 1} of ${item.name}`}
                                         className={cn(
-                                            "relative w-16 h-16 flex-shrink-0 bg-white rounded-md overflow-hidden border-2 transition-all",
+                                            "relative w-16 h-16 flex-shrink-0 bg-white rounded-md overflow-hidden border-2 transition-all focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none",
                                             (selectedImage === path || (!selectedImage && idx === 0))
-                                                ? "border-black ring-1 ring-black"
+                                                ? "border-slate-900 ring-1 ring-slate-900"
                                                 : "border-transparent hover:border-slate-300"
                                         )}
                                     >
                                         <Image
                                             src={path}
-                                            alt={`${item.name} view ${idx + 1}`}
+                                            alt={`Thumbnail ${idx + 1} of ${item.name}`}
                                             fill
                                             className="object-cover object-center"
                                             sizes="64px"
@@ -114,75 +115,81 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
                         )}
                     </div>
 
-                    {/* Details Side */}
-                    <div className="pt-4 lg:pt-0">
-                        <div className="border-b border-gray-100 pb-6 mb-6">
-                            <p className="text-sm text-gray-500 uppercase tracking-widest mb-2">{item.category}</p>
-                            <h1 className="text-3xl lg:text-4xl font-light text-gray-900 mb-4 lg:mb-6">
-                                {item.color ? `${item.color} ${item.name}` : item.name}
-                            </h1>
+                    {/* Content Side */}
+                    <div className="lg:mt-8">
+                        <div className="mb-2">
+                            <span className="text-xs font-medium tracking-widest text-slate-500 uppercase">
+                                {item.category}
+                            </span>
+                        </div>
 
-                            {/* Price - Only show if NOT in archive mode */}
+                        <h1 className="text-3xl md:text-4xl font-light text-slate-900 mb-6 tracking-tight">
+                            {item.name}
+                        </h1>
+
+                        <div className="flex items-baseline gap-2 mb-8 border-b border-gray-100 pb-8">
+                            <span className="text-2xl font-light text-slate-900">
+                                ${item.rental_price}
+                            </span>
                             {!isArchiveMode && (
-                                <div className="flex items-baseline gap-4">
-                                    <p className="text-3xl font-light text-gray-900">
-                                        ${item.rental_price}
+                                <div className="flex items-center gap-1">
+                                    <p className="text-sm font-light text-slate-500">
+                                        / day (min. 10%)
                                     </p>
-                                    <span className="text-gray-500">per day</span>
                                 </div>
                             )}
                         </div>
 
                         {/* Action Area (Booking Form) - Moved Up, Only show if NOT in archive mode */}
                         {!isArchiveMode && (
-                            <div className="mb-8">
+                            <div className="mb-4">
                                 <BookingForm item={item} />
                             </div>
                         )}
 
                         {/* Description */}
-                        <div className="prose prose-gray max-w-none text-gray-600 font-light mb-8">
+                        <div className="prose prose-gray max-w-none text-slate-600 font-light mb-8">
                             <p>{item.description || 'No description available for this item.'}</p>
                         </div>
 
                         {/* Specifications - More Compact */}
                         <div className="border-t border-gray-100 pt-6">
-                            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+                            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">
                                 Specifications
                             </h3>
                             <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                                 {item.color && (
                                     <div>
-                                        <dt className="text-gray-400">Color</dt>
-                                        <dd className="text-gray-900">{item.color}</dd>
+                                        <dt className="text-slate-500">Color</dt>
+                                        <dd className="text-slate-900">{item.color}</dd>
                                     </div>
                                 )}
                                 <div>
-                                    <dt className="text-gray-400">SKU</dt>
-                                    <dd className="text-gray-900">{item.sku}</dd>
+                                    <dt className="text-slate-500">SKU</dt>
+                                    <dd className="text-slate-900">{item.sku}</dd>
                                 </div>
                                 {!isArchiveMode && (
                                     <div>
-                                        <dt className="text-gray-400">Replacement Value</dt>
-                                        <dd className="text-gray-900">${item.replacement_cost}</dd>
+                                        <dt className="text-slate-500">Replacement Value</dt>
+                                        <dd className="text-slate-900">${item.replacement_cost}</dd>
                                     </div>
                                 )}
                                 {item.material && (
                                     <div>
-                                        <dt className="text-gray-400">Material</dt>
-                                        <dd className="text-gray-900">{item.material}</dd>
+                                        <dt className="text-slate-500">Material</dt>
+                                        <dd className="text-slate-900">{item.material}</dd>
                                     </div>
                                 )}
                                 {item.weight && (
                                     <div>
-                                        <dt className="text-gray-400">Weight</dt>
-                                        <dd className="text-gray-900">{item.weight}</dd>
+                                        <dt className="text-slate-500">Weight</dt>
+                                        <dd className="text-slate-900">{item.weight}</dd>
                                     </div>
                                 )}
                                 {Object.entries(specs).map(([key, value]) => (
                                     <div key={key}>
-                                        <dt className="text-gray-400">{key}</dt>
-                                        <dd className="text-gray-900">{value}</dd>
+                                        <dt className="text-slate-500">{key}</dt>
+                                        <dd className="text-slate-900">{value}</dd>
                                     </div>
                                 ))}
                             </dl>

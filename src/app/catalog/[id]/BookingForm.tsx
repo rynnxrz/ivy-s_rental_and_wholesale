@@ -1,17 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { addDays, format } from "date-fns"
-import { Calendar as CalendarIcon, Loader2 } from "lucide-react"
-import { DateRange } from "react-day-picker"
+import { addDays, format, parse } from "date-fns"
+import { CalendarIcon, Loader2, ArrowLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { createGuestBooking } from "@/actions/booking"
+import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
     Popover,
     PopoverContent,
@@ -19,7 +16,6 @@ import {
 } from "@/components/ui/popover"
 import { useRequestStore } from "@/store/request"
 import { toast } from "sonner"
-import { parse } from "date-fns"
 
 interface BookingFormProps {
     item: {
@@ -33,17 +29,9 @@ interface BookingFormProps {
 }
 
 export function BookingForm({ item }: BookingFormProps) {
-    const [date, setDate] = React.useState<DateRange | undefined>()
     const [isChecking, setIsChecking] = React.useState(false)
     const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
-    const [isSubmitting, startSubmitTransition] = React.useTransition()
-    const [message, setMessage] = React.useState<{ type: 'success' | 'error', text: string } | null>(null)
-
-    // Guest form fields
-    const [email, setEmail] = React.useState('')
-    const [fullName, setFullName] = React.useState('')
-    const [companyName, setCompanyName] = React.useState('')
-    const [accessPassword, setAccessPassword] = React.useState('')
+    const [isMounted, setIsMounted] = React.useState(false)
 
     const supabase = createClient()
 
@@ -51,26 +39,23 @@ export function BookingForm({ item }: BookingFormProps) {
     const [bufferDates, setBufferDates] = React.useState<{ from: Date; to: Date }[]>([])
 
     const { dateRange: globalDateRange, addItem, removeItem, hasItem } = useRequestStore()
-    const isGlobalDateMode = !!(globalDateRange.from && globalDateRange.to)
-    const [isMounted, setIsMounted] = React.useState(false)
+    const hasGlobalDate = !!(globalDateRange.from && globalDateRange.to)
+
+    // Parse global date range
+    const parsedDateRange = React.useMemo(() => {
+        if (!globalDateRange.from || !globalDateRange.to) return null
+        return {
+            from: parse(globalDateRange.from, 'yyyy-MM-dd', new Date()),
+            to: parse(globalDateRange.to, 'yyyy-MM-dd', new Date())
+        }
+    }, [globalDateRange])
 
     React.useEffect(() => {
         setIsMounted(true)
     }, [])
 
-    // Initial date set from global store (only once)
-    React.useEffect(() => {
-        if (globalDateRange.from && globalDateRange.to && !date) {
-            setDate({
-                from: parse(globalDateRange.from, 'yyyy-MM-dd', new Date()),
-                to: parse(globalDateRange.to, 'yyyy-MM-dd', new Date())
-            })
-        }
-    }, [globalDateRange, date])
-
     const handleAddToRequest = () => {
         if (!isAvailable) return
-
         addItem(item)
         toast.success("Item added to request list")
     }
@@ -78,8 +63,7 @@ export function BookingForm({ item }: BookingFormProps) {
     // Fetch unavailable dates and buffer on mount or when item changes
     React.useEffect(() => {
         async function fetchData() {
-            // 1. Fetch Buffer Setting
-            let buffer = 1 // default
+            let buffer = 1
             const { data: settings } = await supabase
                 .from('app_settings')
                 .select('turnaround_buffer')
@@ -89,7 +73,6 @@ export function BookingForm({ item }: BookingFormProps) {
                 buffer = settings.turnaround_buffer
             }
 
-            // 2. Fetch Unavailable Date Ranges via RPC (bypasses RLS)
             const { data, error } = await supabase
                 .rpc('get_unavailable_date_ranges', { p_item_id: item.id })
 
@@ -119,19 +102,18 @@ export function BookingForm({ item }: BookingFormProps) {
         fetchData()
     }, [item.id, supabase])
 
-    // Check availability logic
+    // Check availability for global date range
     React.useEffect(() => {
         const checkAvailability = async () => {
-            if (!date?.from || !date?.to) {
+            if (!parsedDateRange) {
                 setIsAvailable(null)
                 return
             }
 
-            // Client-side quick check against fetched disabled dates
+            // Client-side quick check
             const allDisabled = [...reservedDates, ...bufferDates]
             const isBlockedData = allDisabled.some(disabled => {
-                if (!date.from || !date.to) return false
-                return (date.from <= disabled.to) && (date.to >= disabled.from)
+                return (parsedDateRange.from <= disabled.to) && (parsedDateRange.to >= disabled.from)
             })
 
             if (isBlockedData) {
@@ -141,19 +123,16 @@ export function BookingForm({ item }: BookingFormProps) {
 
             setIsChecking(true)
             setIsAvailable(null)
-            setMessage(null)
-
-            const payload = {
-                p_item_id: item.id,
-                p_start_date: format(date.from, 'yyyy-MM-dd'),
-                p_end_date: format(date.to, 'yyyy-MM-dd')
-            }
 
             try {
-                const { data, error } = await supabase.rpc('check_item_availability', payload)
+                const { data, error } = await supabase.rpc('check_item_availability', {
+                    p_item_id: item.id,
+                    p_start_date: globalDateRange.from,
+                    p_end_date: globalDateRange.to
+                })
 
                 if (error) {
-                    console.error('Error checking availability:', JSON.stringify(error, null, 2))
+                    console.error('Error checking availability:', error)
                     return
                 }
 
@@ -163,153 +142,119 @@ export function BookingForm({ item }: BookingFormProps) {
             }
         }
 
-        const timeoutId = setTimeout(() => {
-            checkAvailability()
-        }, 500) // Debounce
-
-        return () => clearTimeout(timeoutId)
-    }, [date, item.id, supabase, reservedDates, bufferDates])
-
-    const handleRequestBooking = async () => {
-        if (!date?.from || !date?.to || !isAvailable) return
-
-        // If in global date mode, this button acts as "Add to List" (though UI changes, logic double check)
-        // actually we will render different buttons.
-
-        if (!email.trim() || !fullName.trim()) {
-            setMessage({ type: 'error', text: 'Please fill in your email and name.' })
-            return
+        if (hasGlobalDate) {
+            const timeoutId = setTimeout(checkAvailability, 300)
+            return () => clearTimeout(timeoutId)
         }
+    }, [parsedDateRange, item.id, supabase, reservedDates, bufferDates, globalDateRange, hasGlobalDate])
 
-        setMessage(null)
+    // If no global date, show "Select Dates First"
+    if (!hasGlobalDate) {
+        return (
+            <div className="space-y-4">
+                {/* Desktop */}
+                <div className="hidden md:block">
+                    <Link href="/catalog">
+                        <Button
+                            variant="outline"
+                            className="w-full h-12 rounded-md text-sm border-slate-300 text-slate-600 hover:bg-slate-50"
+                        >
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Select Dates First
+                        </Button>
+                    </Link>
+                </div>
 
-        startSubmitTransition(() => {
-            void (async () => {
-                try {
-                    const result = await createGuestBooking({
-                        item_id: item.id,
-                        email: email.trim(),
-                        full_name: fullName.trim(),
-                        company_name: companyName.trim() || undefined,
-                        start_date: format(date.from!, 'yyyy-MM-dd'),
-                        end_date: format(date.to!, 'yyyy-MM-dd'),
-                        access_password: accessPassword.trim() || undefined
-                    })
-
-                    if (result.error) {
-                        setMessage({ type: 'error', text: result.error })
-                        toast.error(result.error)
-                    } else {
-                        const successMessage = 'Request submitted successfully! We will contact you shortly.'
-                        setMessage({ type: 'success', text: successMessage })
-                        toast.success(successMessage)
-                        setDate(undefined)
-                        setIsAvailable(null)
-                        setEmail('')
-                        setFullName('')
-                        setCompanyName('')
-                        setAccessPassword('')
-                    }
-                } catch (err) {
-                    console.error(err)
-                    setMessage({ type: 'error', text: 'An unexpected error occurred.' })
-                    toast.error('An unexpected error occurred.')
-                }
-            })()
-        })
+                {/* Mobile sticky footer */}
+                <div className="h-16 md:hidden" />
+                <div
+                    className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 z-50 md:hidden"
+                    style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+                >
+                    <Link href="/catalog">
+                        <Button
+                            variant="outline"
+                            className="w-full h-12 rounded-md text-sm border-slate-300 text-slate-600"
+                        >
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Select Dates First
+                        </Button>
+                    </Link>
+                </div>
+            </div>
+        )
     }
 
+    // Has global date - show availability and Add/Remove
     return (
         <div className="space-y-4">
-            {/* Desktop: Horizontal Layout (Date 65% + Button 35%) */}
+            {/* Mobile: Date Display */}
+            <div className="md:hidden">
+                <div className="h-12 flex items-center px-3 border border-slate-200 rounded-md bg-slate-50/50">
+                    <CalendarIcon className="mr-2 h-4 w-4 text-slate-500" />
+                    <span className="text-sm text-slate-900">
+                        {format(parsedDateRange!.from, "LLL dd")} - {format(parsedDateRange!.to, "LLL dd")}
+                    </span>
+                </div>
+                {/* Availability status */}
+                <div className="text-[11px] mt-1.5 pl-1">
+                    {isChecking ? (
+                        <span className="text-slate-500 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Checking...
+                        </span>
+                    ) : isAvailable ? (
+                        <span className="text-slate-600">✓ Available</span>
+                    ) : isAvailable === false ? (
+                        <span className="text-red-600">✕ Not available for these dates</span>
+                    ) : null}
+                </div>
+            </div>
+
+            {/* Desktop: Date Display + Button */}
             <div className="hidden md:flex md:gap-3 md:items-start">
-                {/* Date Picker - 65% */}
+                {/* Date Display (Read-Only) - 65% */}
                 <div className="flex-[0_0_65%]">
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                id="date"
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-normal h-12 rounded-md",
-                                    !date && "text-muted-foreground"
-                                )}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {date?.from ? (
-                                    date.to ? (
-                                        <>
-                                            {format(date.from, "LLL dd")} - {format(date.to, "LLL dd")}
-                                        </>
-                                    ) : (
-                                        format(date.from, "LLL dd, y")
-                                    )
-                                ) : (
-                                    <span>Select dates</span>
-                                )}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 rounded-md" align="start">
-                            <Calendar
-                                initialFocus
-                                mode="range"
-                                defaultMonth={date?.from}
-                                selected={date}
-                                onSelect={setDate}
-                                numberOfMonths={2}
-                                disabled={[
-                                    ...reservedDates,
-                                    ...bufferDates,
-                                    { before: new Date(new Date().setHours(0, 0, 0, 0)) }
-                                ]}
-                                modifiers={{
-                                    booked: reservedDates,
-                                    buffer: bufferDates
-                                }}
-                                modifiersStyles={{
-                                    booked: { textDecoration: 'line-through', color: '#888', opacity: 0.8 },
-                                    buffer: { backgroundColor: '#f3f4f6', color: '#9ca3af', textDecoration: 'none', cursor: 'not-allowed' }
-                                }}
-                                footer={
-                                    <div className="flex gap-4 mt-2 text-xs text-gray-500 justify-center">
-                                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-200 line-through text-gray-400 text-[10px] flex items-center justify-center">12</div> Booked</div>
-                                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-100 text-gray-400 text-[10px] flex items-center justify-center">13</div> Buffer</div>
-                                    </div>
-                                }
-                            />
-                        </PopoverContent>
-                    </Popover>
-                    {/* Availability hint below date */}
-                    {date?.from && date?.to && (
-                        <div className="text-[11px] mt-1.5 pl-1">
-                            {isChecking ? (
-                                <span className="text-slate-400">Checking...</span>
-                            ) : isAvailable ? (
-                                <span className="text-slate-500">✓ Available</span>
-                            ) : (
-                                <span className="text-red-400">✕ Not available</span>
-                            )}
-                        </div>
-                    )}
+                    <div className="h-12 flex items-center px-3 border border-slate-200 rounded-md bg-slate-50/50">
+                        <CalendarIcon className="mr-2 h-4 w-4 text-slate-500" />
+                        <span className="text-sm text-slate-900">
+                            {format(parsedDateRange!.from, "LLL dd")} - {format(parsedDateRange!.to, "LLL dd")}
+                        </span>
+                    </div>
+                    {/* Availability status */}
+                    <div className="text-[11px] mt-1.5 pl-1">
+                        {isChecking ? (
+                            <span className="text-slate-500 flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Checking...
+                            </span>
+                        ) : isAvailable ? (
+                            <span className="text-slate-600">✓ Available</span>
+                        ) : isAvailable === false ? (
+                            <span className="text-red-600">✕ Not available for these dates</span>
+                        ) : null}
+                    </div>
                 </div>
                 {/* Button - 35% */}
                 <div className="flex-[0_0_35%]">
                     {isMounted && hasItem(item.id) ? (
                         <Button
                             variant="outline"
-                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none"
                             onClick={() => {
                                 removeItem(item.id)
                                 toast("Item removed from request list")
                             }}
+                            aria-label={`Remove ${item.name} from your request list`}
                         >
                             ✕ Remove
                         </Button>
                     ) : (
                         <Button
-                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest"
+                            className="w-full h-12 rounded-md text-xs uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none"
                             disabled={!isAvailable}
                             onClick={handleAddToRequest}
+                            aria-label={`Add ${item.name} to your request list`}
                         >
                             + Add to List
                         </Button>
@@ -317,42 +262,19 @@ export function BookingForm({ item }: BookingFormProps) {
                 </div>
             </div>
 
-            {/* Mobile: Date Picker Only (button is in sticky footer) */}
-            <div className="md:hidden space-y-2">
-                <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
-                    Select Dates
-                </h3>
+            {/* Mobile: View Availability Calendar Link (Read-Only) */}
+            <div className="md:hidden">
                 <Popover>
                     <PopoverTrigger asChild>
-                        <Button
-                            id="date-mobile"
-                            variant={"outline"}
-                            className={cn(
-                                "w-full justify-start text-left font-normal h-12 rounded-md",
-                                !date && "text-muted-foreground"
-                            )}
-                        >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {date?.from ? (
-                                date.to ? (
-                                    <>
-                                        {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
-                                    </>
-                                ) : (
-                                    format(date.from, "LLL dd, y")
-                                )
-                            ) : (
-                                <span>Pick a date range</span>
-                            )}
-                        </Button>
+                        <button className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2 py-2 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none rounded-sm">
+                            Check item availability calendar
+                        </button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 rounded-md" align="start">
                         <Calendar
-                            initialFocus
                             mode="range"
-                            defaultMonth={date?.from}
-                            selected={date}
-                            onSelect={setDate}
+                            defaultMonth={parsedDateRange?.from}
+                            selected={parsedDateRange || undefined}
                             numberOfMonths={1}
                             disabled={[
                                 ...reservedDates,
@@ -370,131 +292,74 @@ export function BookingForm({ item }: BookingFormProps) {
                         />
                     </PopoverContent>
                 </Popover>
-                {/* Availability hint */}
-                {date?.from && date?.to && (
-                    <div className="text-xs">
-                        {isChecking ? (
-                            <span className="text-slate-400">Checking availability...</span>
-                        ) : isAvailable ? (
-                            <span className="text-slate-500">✓ Dates are available</span>
-                        ) : (
-                            <span className="text-red-500">✕ Dates are not available</span>
-                        )}
-                    </div>
-                )}
             </div>
 
-            {/* Guest Contact Form */}
-            {/* Guest Contact Form - Only show if NOT in global mode (or if we want to confirm per item? User said "Add to Request List" button. 
-                Usually multi-select means we request once at the end. 
-                So hiding the single-item contact form makes sense if we are in global mode.) 
-            */}
-            {isAvailable && !isGlobalDateMode && (
-                <div className="space-y-4 border-t pt-6">
-                    <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
-                        Your Contact Information
-                    </h3>
-                    <div className="space-y-2">
-                        <Label htmlFor="email">Email *</Label>
-                        <Input
-                            id="email"
-                            type="email"
-                            placeholder="your@email.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
+            {/* Desktop: View Availability Calendar Link (Read-Only) */}
+            <div className="hidden md:block">
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <button className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none rounded-sm">
+                            Check item availability calendar
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 rounded-md" align="start">
+                        <Calendar
+                            mode="range"
+                            defaultMonth={parsedDateRange?.from}
+                            selected={parsedDateRange || undefined}
+                            numberOfMonths={2}
+                            disabled={[
+                                ...reservedDates,
+                                ...bufferDates,
+                                { before: new Date(new Date().setHours(0, 0, 0, 0)) }
+                            ]}
+                            modifiers={{
+                                booked: reservedDates,
+                                buffer: bufferDates
+                            }}
+                            modifiersStyles={{
+                                booked: { textDecoration: 'line-through', color: '#888', opacity: 0.8 },
+                                buffer: { backgroundColor: '#f3f4f6', color: '#9ca3af', textDecoration: 'none', cursor: 'not-allowed' }
+                            }}
+                            footer={
+                                <div className="flex gap-4 mt-2 text-xs text-gray-500 justify-center">
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-200 line-through text-gray-400 text-[10px] flex items-center justify-center">12</div> Booked</div>
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-100 text-gray-400 text-[10px] flex items-center justify-center">13</div> Buffer</div>
+                                </div>
+                            }
                         />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="fullName">Full Name *</Label>
-                        <Input
-                            id="fullName"
-                            type="text"
-                            placeholder="Jane Smith"
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="companyName">Company Name (optional)</Label>
-                        <Input
-                            id="companyName"
-                            type="text"
-                            placeholder="Acme Corp"
-                            value={companyName}
-                            onChange={(e) => setCompanyName(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="accessPassword">Access Password (if required)</Label>
-                        <Input
-                            id="accessPassword"
-                            type="password"
-                            placeholder="Enter access password"
-                            value={accessPassword}
-                            onChange={(e) => setAccessPassword(e.target.value)}
-                        />
-                        <p className="text-xs text-gray-500">
-                            If you were given an access password, enter it here.
-                        </p>
-                    </div>
-                </div>
-            )}
+                    </PopoverContent>
+                </Popover>
+            </div>
 
-            {isGlobalDateMode ? (
-                <>
-                    {/* Spacer for mobile to prevent content occlusion */}
-                    <div className="h-20 md:hidden" />
-
-                    {/* Mobile sticky footer with safe area */}
-                    <div
-                        className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 z-50 md:hidden"
-                        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
-                    >
-                        {isMounted && hasItem(item.id) ? (
-                            <Button
-                                variant="outline"
-                                className="w-full h-12 rounded-md uppercase tracking-widest text-sm border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                onClick={() => {
-                                    removeItem(item.id)
-                                    toast("Item removed from request list")
-                                }}
-                            >
-                                ✕ Remove from List
-                            </Button>
-                        ) : (
-                            <Button
-                                className="w-full h-12 rounded-md uppercase tracking-widest text-sm shadow-lg"
-                                disabled={!isAvailable}
-                                onClick={handleAddToRequest}
-                            >
-                                Add to Request List
-                            </Button>
-                        )}
-                    </div>
-                </>
-            ) : (
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-50 md:static md:p-0 md:bg-transparent md:border-none md:z-auto">
+            {/* Mobile: Sticky Footer */}
+            <div
+                className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 z-50 md:hidden"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+            >
+                {isMounted && hasItem(item.id) ? (
                     <Button
-                        className="w-full h-12 uppercase tracking-widest text-sm shadow-lg md:shadow-none"
-                        disabled={!isAvailable || isSubmitting || !date?.from || !date?.to || !email.trim() || !fullName.trim()}
-                        onClick={handleRequestBooking}
+                        variant="outline"
+                        className="w-full h-12 rounded-md uppercase tracking-widest text-sm border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none"
+                        onClick={() => {
+                            removeItem(item.id)
+                            toast("Item removed from request list")
+                        }}
+                        aria-label={`Remove ${item.name} from your request list`}
                     >
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isSubmitting ? 'Submitting...' : 'Request Booking'}
+                        ✕ Remove from List
                     </Button>
-                </div>
-            )}
-
-            {message && (
-                <div className={cn(
-                    "p-4 rounded-md text-sm text-center",
-                    message.type === 'success' ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                )}>
-                    {message.text}
-                </div>
-            )}
+                ) : (
+                    <Button
+                        className="w-full h-12 rounded-md uppercase tracking-widest text-sm shadow-lg focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:outline-none"
+                        disabled={!isAvailable}
+                        onClick={handleAddToRequest}
+                        aria-label={`Add ${item.name} to your request list`}
+                    >
+                        Add to Request List
+                    </Button>
+                )}
+            </div>
         </div>
     )
 }
