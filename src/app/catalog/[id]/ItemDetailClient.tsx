@@ -25,10 +25,10 @@ interface Item {
 interface ItemDetailClientProps {
     item: Item
     context?: string
-    relatedItems?: Item[]
+    relatedItemsSlot?: React.ReactNode
 }
 
-export function ItemDetailClient({ item, context, relatedItems = [] }: ItemDetailClientProps) {
+export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetailClientProps) {
     const isArchiveMode = context === 'archive'
 
     const getImageUrl = (images: string[] | null) => {
@@ -149,39 +149,8 @@ export function ItemDetailClient({ item, context, relatedItems = [] }: ItemDetai
                     </div>
                 </div>
 
-                {/* Related Items Section */}
-                {relatedItems.length > 0 && (
-                    <section className="mt-24 pt-12 border-t border-gray-100">
-                        <h2 className="text-xl font-light tracking-wide uppercase text-center mb-12">More from this Collection</h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                            {relatedItems.map((related) => (
-                                <Link
-                                    key={related.id}
-                                    href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
-                                    className="group block"
-                                >
-                                    <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
-                                        <Image
-                                            src={getImageUrl(related.image_paths)}
-                                            alt={related.name}
-                                            fill
-                                            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                                            sizes="(max-width: 640px) 100vw, 25vw"
-                                        />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
-                                            {related.name}
-                                        </h3>
-                                        {!isArchiveMode && (
-                                            <p className="text-sm text-gray-500 mt-1">${related.rental_price}</p>
-                                        )}
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-                    </section>
-                )}
+                {/* Related Items Section - Injected via Slot */}
+                {relatedItemsSlot}
             </main>
         </div>
     )

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { format, parse } from "date-fns"
-import { Calendar as CalendarIcon, X, ShoppingBag, Plus } from "lucide-react"
+import { Calendar as CalendarIcon, X, ShoppingBag, Plus, Pencil, Check, Loader2 } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
@@ -55,8 +55,9 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     const [selectedCategoryId, setSelectedCategoryId] = React.useState<string | null>(null)
     const [selectedCollectionId, setSelectedCollectionId] = React.useState<string | null>(null)
 
-    // Initialize date from URL params
-    const [date, setDate] = React.useState<DateRange | undefined>(() => {
+    // === CORE STATE ===
+    // "Committed" date - the actively applied search
+    const [committedDate, setCommittedDate] = React.useState<DateRange | undefined>(() => {
         const from = searchParams.get('from')
         const to = searchParams.get('to')
         if (from && to) {
@@ -72,6 +73,20 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         return undefined
     })
 
+    // "Draft" date - temporary selection in calendar before applying
+    const [draftDate, setDraftDate] = React.useState<DateRange | undefined>(committedDate)
+
+    // UI Lock: Once user has done a search, stay in narrow mode
+    const [hasActiveSearch, setHasActiveSearch] = React.useState(() => {
+        const from = searchParams.get('from')
+        const to = searchParams.get('to')
+        return !!(from && to)
+    })
+
+    // Calendar popover open state
+    const [isCalendarOpen, setIsCalendarOpen] = React.useState(false)
+    const [activeDateInput, setActiveDateInput] = React.useState<'from' | 'to' | null>(null)
+
     const { dateRange: globalDateRange, setDateRange: setGlobalDateRange, addItem, hasItem } = useRequestStore()
     const [isMounted, setIsMounted] = React.useState(false)
 
@@ -84,90 +99,55 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         const from = searchParams.get('from')
         const to = searchParams.get('to')
         if (!from && !to && globalDateRange.from && globalDateRange.to) {
-            setDate({
+            const parsedDate = {
                 from: parse(globalDateRange.from, 'yyyy-MM-dd', new Date()),
                 to: parse(globalDateRange.to, 'yyyy-MM-dd', new Date())
-            })
+            }
+            setCommittedDate(parsedDate)
+            setDraftDate(parsedDate)
+            setHasActiveSearch(true)
         }
     }, []) // Run once on mount
 
-    // Sync to Global Store when date changes
+    // Sync committed date to Global Store
     React.useEffect(() => {
-        if (date?.from && date?.to) {
+        if (committedDate?.from && committedDate?.to) {
             setGlobalDateRange({
-                from: format(date.from, 'yyyy-MM-dd'),
-                to: format(date.to, 'yyyy-MM-dd')
+                from: format(committedDate.from, 'yyyy-MM-dd'),
+                to: format(committedDate.to, 'yyyy-MM-dd')
             })
-        } else if (!date) {
+        } else if (!committedDate) {
             setGlobalDateRange({ from: null, to: null })
         }
-    }, [date, setGlobalDateRange])
+    }, [committedDate, setGlobalDateRange])
 
     const [items, setItems] = React.useState<Item[]>(initialItems)
     const [isLoading, setIsLoading] = React.useState(false)
     const supabase = createClient()
 
-    // Helper: check if date range is complete (both dates) or empty (no dates)
-    const isDateRangeComplete = date?.from && date?.to
-    const isDateRangeEmpty = !date?.from && !date?.to
-    const isValidState = isDateRangeComplete || isDateRangeEmpty
-
-    // Sync date to URL (with guards to prevent updates during incomplete selection)
+    // Fetch available items when COMMITTED date changes (not draft)
     React.useEffect(() => {
-        // Guard: only sync when range is complete or empty, not in-between
-        if (!isValidState) {
-            return
-        }
-
-        const currentFrom = searchParams.get('from')
-        const currentTo = searchParams.get('to')
-
-        const newFrom = date?.from ? format(date.from, 'yyyy-MM-dd') : null
-        const newTo = date?.to ? format(date.to, 'yyyy-MM-dd') : null
-
-        // Only update URL if values actually changed
-        if (currentFrom === newFrom && currentTo === newTo) {
-            return
-        }
-
-        const params = new URLSearchParams(searchParams.toString())
-
-        if (newFrom && newTo) {
-            params.set('from', newFrom)
-            params.set('to', newTo)
-        } else {
-            params.delete('from')
-            params.delete('to')
-        }
-
-        const newUrl = params.toString() ? `?${params.toString()}` : '/'
-        router.replace(newUrl, { scroll: false })
-    }, [date, router, searchParams, isValidState])
-
-    // Fetch available items when date changes
-    React.useEffect(() => {
-        // Guard: only fetch when range is complete or empty
-        if (!isValidState) {
-            return
-        }
-
         async function fetchAvailableItems() {
-            if (!date?.from || !date?.to) {
-                // No date selected - show all initial items
+            if (!committedDate?.from || !committedDate?.to) {
                 setItems(initialItems)
                 return
             }
 
             setIsLoading(true)
             try {
-                const { data, error } = await supabase.rpc('get_available_items', {
-                    p_start_date: format(date.from, 'yyyy-MM-dd'),
-                    p_end_date: format(date.to, 'yyyy-MM-dd')
-                })
+                // Enforce minimum loading time of 800ms
+                const [rpcResult] = await Promise.all([
+                    supabase.rpc('get_available_items', {
+                        p_start_date: format(committedDate.from, 'yyyy-MM-dd'),
+                        p_end_date: format(committedDate.to, 'yyyy-MM-dd')
+                    }),
+                    new Promise(resolve => setTimeout(resolve, 800))
+                ])
+
+                const { data, error } = rpcResult
 
                 if (error) {
-                    // If RPC doesn't exist or fails, show warning and keep showing all items
-                    console.warn('get_available_items RPC not available, showing all items. Run the SQL migration to enable filtering.', error.message)
+                    console.warn('get_available_items RPC not available, showing all items.', error.message)
                     setItems(initialItems)
                     return
                 }
@@ -184,23 +164,114 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         }
 
         fetchAvailableItems()
-    }, [date, supabase, initialItems, isValidState])
-
+    }, [committedDate, supabase, initialItems, collections])
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
         return 'https://placehold.co/600x400?text=No+Image'
     }
 
-    const clearDates = () => {
-        setDate(undefined)
+    // === ACTION HANDLERS ===
+
+    // Apply: Commit draft date, update URL, lock UI
+    const handleApplySearch = () => {
+        if (!draftDate?.from || !draftDate?.to) {
+            toast.error("Please select both start and end dates")
+            return
+        }
+
+        setCommittedDate(draftDate)
+        setHasActiveSearch(true)
+        setIsCalendarOpen(false)
+        setActiveDateInput(null)
+
+        // Update URL
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('from', format(draftDate.from, 'yyyy-MM-dd'))
+        params.set('to', format(draftDate.to, 'yyyy-MM-dd'))
+        router.replace(`/catalog?${params.toString()}`, { scroll: false })
     }
 
-    const hasDateSelected = date?.from && date?.to
+    // Reset: Clear all, unlock UI, return to hero mode
+    const handleReset = () => {
+        setCommittedDate(undefined)
+        setDraftDate(undefined)
+        setHasActiveSearch(false)
+        setIsCalendarOpen(false)
+        setActiveDateInput(null)
+
+        // Update URL
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('from')
+        params.delete('to')
+        const queryString = params.toString()
+        router.replace(queryString ? `/catalog?${queryString}` : '/catalog', { scroll: false })
+    }
+
+    // Micro clear
+    const handleClearStartDate = () => {
+        setDraftDate(prev => prev ? { ...prev, from: undefined } : undefined)
+    }
+
+    const handleClearEndDate = () => {
+        setDraftDate(prev => prev ? { ...prev, to: undefined } : undefined)
+    }
+
+    // Open Calendar for specific input
+    const openCalendar = (type: 'from' | 'to') => {
+        setActiveDateInput(type)
+        if (!isCalendarOpen) {
+            setDraftDate(committedDate) // Sync only if opening fresh
+            setIsCalendarOpen(true)
+        }
+    }
+
+    const handleCalendarOpenChange = (open: boolean) => {
+        setIsCalendarOpen(open)
+        if (!open) setActiveDateInput(null)
+        else if (!activeDateInput) setActiveDateInput('from') // Default to from
+    }
+
+    // === ANCHOR DATE SELECTION LOGIC ===
+    const handleDayClick = (day: Date) => {
+        if (activeDateInput === 'from') {
+            // Modifying Start Date
+            setDraftDate(prev => {
+                const currentTo = prev?.to
+
+                // If new Start > current End, clear End (invalid range)
+                if (currentTo && day > currentTo) {
+                    return { from: day, to: undefined }
+                }
+
+                return { from: day, to: currentTo }
+            })
+
+            // AUTO-NEXT: If we are in an empty state (no End date) or we just invalidated the End date,
+            // automatically switch focus to the 'End' input to encourage flow.
+            if (!draftDate?.to || day > draftDate.to) {
+                setActiveDateInput('to')
+            }
+        } else if (activeDateInput === 'to') {
+            // Modifying End Date
+            setDraftDate(prev => {
+                // If new End < current Start, theoretically invalid.
+                // For simplified "Anchor styling", we update End. 
+                // Calendar disabled prop prevents selection < From if needed, or we just set it.
+                return { from: prev?.from, to: day }
+            })
+        } else {
+            // Fallback (shouldn't happen with anchor logic)
+            setDraftDate({ from: day, to: undefined })
+        }
+    }
+
+    const hasCommittedDate = committedDate?.from && committedDate?.to
+    const hasDraftComplete = draftDate?.from && draftDate?.to
 
     // Calculate rental days for display
-    const rentalDays = hasDateSelected
-        ? Math.ceil((date.to!.getTime() - date.from!.getTime()) / (1000 * 60 * 60 * 24))
+    const rentalDays = hasCommittedDate
+        ? Math.ceil((committedDate.to!.getTime() - committedDate.from!.getTime()) / (1000 * 60 * 60 * 24))
         : 0
 
     // Filter Logic
@@ -212,272 +283,374 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         })
     }, [items, selectedCategoryId, selectedCollectionId])
 
+    // Dynamic counts for sidebar (based on current items, respecting collection filter)
+    const categoryCounts = React.useMemo(() => {
+        const counts: Record<string, number> = {}
+        const baseItems = selectedCollectionId
+            ? items.filter(item => item.collection_id === selectedCollectionId)
+            : items
+        baseItems.forEach(item => {
+            if (item.category_id) {
+                counts[item.category_id] = (counts[item.category_id] || 0) + 1
+            }
+        })
+        return counts
+    }, [items, selectedCollectionId])
+
+    const collectionCounts = React.useMemo(() => {
+        const counts: Record<string, number> = {}
+        const baseItems = selectedCategoryId
+            ? items.filter(item => item.category_id === selectedCategoryId)
+            : items
+        baseItems.forEach(item => {
+            if (item.collection_id) {
+                counts[item.collection_id] = (counts[item.collection_id] || 0) + 1
+            }
+        })
+        return counts
+    }, [items, selectedCategoryId])
+
+
     return (
         <div className="min-h-screen bg-white">
-            {/* Hero Section with Date Picker */}
-            <section className="py-12 px-8 bg-gray-50 border-b border-gray-100">
-                <div className="max-w-[1600px] mx-auto">
-                    <div className="text-center mb-8">
-                        <h1 className="text-4xl md:text-5xl font-light tracking-tight text-gray-900 mb-4">
-                            The Collection
-                        </h1>
-                        <p className="text-gray-500 max-w-2xl mx-auto">
-                            Select your rental dates to see available pieces
-                        </p>
-                    </div>
+            {/* Layout Container */}
+            <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-6 flex flex-col md:flex-row gap-8">
 
-                    {/* Date Range Picker */}
-                    <div className="flex justify-center items-center gap-4">
-                        <Popover>
+                {/* Sidebar Filters */}
+                <aside className="w-full md:w-48 lg:w-56 space-y-10 flex-shrink-0 pt-1">
+                    {/* 1. Date Picker (Sidebar First) */}
+                    <div>
+                        <h3 className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4 pb-2 border-b border-slate-100">
+                            Rental Dates
+                        </h3>
+                        <Popover open={isCalendarOpen} onOpenChange={handleCalendarOpenChange}>
                             <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    className={cn(
-                                        "w-[320px] justify-start text-left font-normal h-12 border-2",
-                                        !date && "text-muted-foreground",
-                                        hasDateSelected && "border-green-500 bg-green-50"
+                                <div className="space-y-2">
+                                    {/* Start Date Anchor */}
+                                    <button
+                                        onClick={() => openCalendar('from')}
+                                        className={cn(
+                                            "w-full text-left px-3 py-2.5 rounded-sm border transition-all text-sm group",
+                                            activeDateInput === 'from' && isCalendarOpen
+                                                ? "border-slate-900 ring-1 ring-slate-900 bg-white"
+                                                : "bg-slate-50 border-slate-100 hover:border-slate-300"
+                                        )}
+                                    >
+                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-medium">Start</span>
+                                        <span className={cn("font-medium", (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400")}>
+                                            {(isCalendarOpen ? draftDate?.from : committedDate?.from)
+                                                ? format((isCalendarOpen ? draftDate!.from! : committedDate!.from!), "MMM d, yyyy")
+                                                : "Select date"}
+                                        </span>
+                                    </button>
+
+                                    {/* End Date Anchor */}
+                                    <button
+                                        onClick={() => openCalendar('to')}
+                                        className={cn(
+                                            "w-full text-left px-3 py-2.5 rounded-sm border transition-all text-sm group",
+                                            activeDateInput === 'to' && isCalendarOpen
+                                                ? "border-slate-900 ring-1 ring-slate-900 bg-white"
+                                                : "bg-slate-50 border-slate-100 hover:border-slate-300"
+                                        )}
+                                    >
+                                        <span className="block text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-medium">End</span>
+                                        <span className={cn("font-medium", (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400")}>
+                                            {(isCalendarOpen ? draftDate?.to : committedDate?.to)
+                                                ? format((isCalendarOpen ? draftDate!.to! : committedDate!.to!), "MMM d, yyyy")
+                                                : "Select date"}
+                                        </span>
+                                    </button>
+
+                                    {hasCommittedDate && !isCalendarOpen && (
+                                        <div className="pt-1 flex items-center justify-between px-1">
+                                            <span className="text-[10px] text-slate-400 font-medium">
+                                                {rentalDays} days
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer font-medium" onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleReset()
+                                            }}>
+                                                Reset
+                                            </span>
+                                        </div>
                                     )}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {date?.from ? (
-                                        date.to ? (
-                                            <>
-                                                {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
-                                            </>
-                                        ) : (
-                                            format(date.from, "LLL dd, y")
-                                        )
-                                    ) : (
-                                        <span>Select rental dates</span>
-                                    )}
-                                </Button>
+                                </div>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="center">
+                            <PopoverContent className="w-auto p-0" align="start" side="right" sideOffset={10}>
+                                <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                                    <div className="flex items-center gap-2 text-sm justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn("text-xs font-medium px-2 py-1 rounded bg-white border", draftDate?.from ? "text-slate-900" : "text-slate-400")}>
+                                                {draftDate?.from ? format(draftDate.from, "MMM d") : 'Start'}
+                                            </span>
+                                            <span className="text-slate-300">→</span>
+                                            <span className={cn("text-xs font-medium px-2 py-1 rounded bg-white border", draftDate?.to ? "text-slate-900" : "text-slate-400")}>
+                                                {draftDate?.to ? format(draftDate.to, "MMM d") : 'End'}
+                                            </span>
+                                        </div>
+                                        {(draftDate?.from || draftDate?.to) && (
+                                            <button
+                                                onClick={() => {
+                                                    setDraftDate(undefined)
+                                                    if (!committedDate) handleReset()
+                                                }}
+                                                className="text-[10px] text-slate-400 hover:text-red-500 uppercase tracking-wider font-medium"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                                 <Calendar
                                     initialFocus
                                     mode="range"
-                                    defaultMonth={date?.from}
-                                    selected={date}
-                                    onSelect={setDate}
-                                    numberOfMonths={2}
-                                    disabled={{ before: new Date() }}
+                                    month={draftDate?.from || new Date()}
+                                    selected={draftDate}
+                                    onDayClick={handleDayClick}
+                                    numberOfMonths={1}
+                                    disabled={[
+                                        { before: new Date() },
+                                        activeDateInput === 'to' && draftDate?.from ? { before: draftDate.from } : { before: new Date() }
+                                    ]}
+                                    className="p-3"
                                 />
+                                <div className="p-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                    <Button variant="ghost" size="sm" onClick={() => setIsCalendarOpen(false)} className="h-8 text-xs">
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleApplySearch}
+                                        disabled={!hasDraftComplete || isLoading}
+                                        className="h-8 text-xs bg-slate-900 text-white hover:bg-slate-800"
+                                    >
+                                        {isLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                                        Apply Dates
+                                    </Button>
+                                </div>
                             </PopoverContent>
                         </Popover>
-
-                        {hasDateSelected && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={clearDates}
-                                className="text-gray-500 hover:text-gray-900"
-                                title="Clear dates"
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        )}
                     </div>
 
-                    {/* Status indicator */}
-                    <div className="text-center mt-4 space-y-2 min-h-[48px]">
-                        {isLoading ? (
-                            <span className="inline-flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-4 py-2 rounded-full border border-blue-200">
-                                <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Searching available items...
-                            </span>
-                        ) : hasDateSelected ? (
-                            <>
-                                <span className="inline-flex items-center gap-2 text-sm text-green-700 bg-green-100 px-3 py-1 rounded-full">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                    {filteredItems.length} available item{filteredItems.length !== 1 ? 's' : ''} for {rentalDays} day{rentalDays !== 1 ? 's' : ''}
-                                </span>
-                                <p className="text-xs text-gray-400">
-                                    {format(date.from!, "MMM d")} - {format(date.to!, "MMM d, yyyy")}
-                                </p>
-                            </>
-                        ) : null}
-                    </div>
-                </div>
-            </section>
-
-            {/* Layout Container */}
-            <div className="max-w-[1700px] mx-auto px-4 sm:px-8 py-12 flex flex-col md:flex-row gap-12">
-
-                {/* Sidebar Filters */}
-                <aside className="w-full md:w-64 space-y-12 flex-shrink-0">
+                    {/* 2. Categories */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6 pb-2 border-b border-gray-100 cursor-pointer" onClick={() => setSelectedCategoryId(null)}>
-                            Categories {selectedCategoryId && <span className="ml-2 text-xs text-gray-400 font-normal">(Clear)</span>}
+                        <h3
+                            className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4 pb-2 border-b border-slate-100 cursor-pointer flex items-center justify-between"
+                            onClick={() => setSelectedCategoryId(null)}
+                        >
+                            Categories
+                            {selectedCategoryId && <span className="text-[9px] font-normal text-blue-500 hover:text-blue-600">Clear</span>}
                         </h3>
-                        <ul className="space-y-3">
-                            {categories.length === 0 && <li className="text-sm text-gray-400">No categories found</li>}
-                            {categories.map(cat => (
-                                <li key={cat.id}>
-                                    <button
-                                        onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
-                                        className={cn(
-                                            "text-sm font-light hover:text-black transition-colors text-left w-full",
-                                            selectedCategoryId === cat.id ? "text-black font-medium underline underline-offset-4" : "text-gray-500"
-                                        )}
-                                    >
-                                        {cat.name}
-                                    </button>
-                                </li>
-                            ))}
+                        <ul className="space-y-1">
+                            {categories.length === 0 && <li className="text-xs text-slate-400 py-1">No categories</li>}
+                            {categories.map(cat => {
+                                const count = categoryCounts[cat.id] || 0
+                                const isSelected = selectedCategoryId === cat.id
+                                return (
+                                    <li key={cat.id}>
+                                        <button
+                                            onClick={() => setSelectedCategoryId(isSelected ? null : cat.id)}
+                                            disabled={isLoading}
+                                            className={cn(
+                                                "text-xs transition-all text-left w-full py-1.5 px-2 rounded-sm flex items-center justify-between",
+                                                "hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed",
+                                                isSelected
+                                                    ? "text-slate-900 font-medium bg-slate-50"
+                                                    : "text-slate-500"
+                                            )}
+                                        >
+                                            <span>{cat.name}</span>
+                                            <span className={cn(
+                                                "text-[10px] tabular-nums",
+                                                isSelected ? "text-slate-600" : "text-slate-400"
+                                            )}>
+                                                ({count})
+                                            </span>
+                                        </button>
+                                    </li>
+                                )
+                            })}
                         </ul>
                     </div>
 
+                    {/* 3. Collections */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider mb-6 pb-2 border-b border-gray-100 cursor-pointer" onClick={() => setSelectedCollectionId(null)}>
-                            Collections {selectedCollectionId && <span className="ml-2 text-xs text-gray-400 font-normal">(Clear)</span>}
+                        <h3
+                            className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4 pb-2 border-b border-slate-100 cursor-pointer flex items-center justify-between"
+                            onClick={() => setSelectedCollectionId(null)}
+                        >
+                            Collections
+                            {selectedCollectionId && <span className="text-[9px] font-normal text-blue-500 hover:text-blue-600">Clear</span>}
                         </h3>
-                        <ul className="space-y-3">
-                            {collections.length === 0 && <li className="text-sm text-gray-400">No collections found</li>}
-                            {collections.map(col => (
-                                <li key={col.id}>
-                                    <button
-                                        onClick={() => setSelectedCollectionId(selectedCollectionId === col.id ? null : col.id)}
-                                        className={cn(
-                                            "text-sm font-light hover:text-black transition-colors text-left w-full",
-                                            selectedCollectionId === col.id ? "text-black font-medium underline underline-offset-4" : "text-gray-500"
-                                        )}
-                                    >
-                                        {col.name}
-                                    </button>
-                                </li>
-                            ))}
+                        <ul className="space-y-1">
+                            {collections.length === 0 && <li className="text-xs text-slate-400 py-1">No collections</li>}
+                            {collections.map(col => {
+                                const count = collectionCounts[col.id] || 0
+                                const isSelected = selectedCollectionId === col.id
+                                return (
+                                    <li key={col.id}>
+                                        <button
+                                            onClick={() => setSelectedCollectionId(isSelected ? null : col.id)}
+                                            disabled={isLoading}
+                                            className={cn(
+                                                "text-xs transition-all text-left w-full py-1.5 px-2 rounded-sm flex items-center justify-between",
+                                                "hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed",
+                                                isSelected
+                                                    ? "text-slate-900 font-medium bg-slate-50"
+                                                    : "text-slate-500"
+                                            )}
+                                        >
+                                            <span>{col.name}</span>
+                                            <span className={cn(
+                                                "text-[10px] tabular-nums",
+                                                isSelected ? "text-slate-600" : "text-slate-400"
+                                            )}>
+                                                ({count})
+                                            </span>
+                                        </button>
+                                    </li>
+                                )
+                            })}
                         </ul>
                     </div>
                 </aside>
 
-                {/* Grid Section */}
-                <section className="flex-1">
-                    {isLoading ? (
-                        <div className="text-center py-20">
-                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
-                            <p className="mt-4 text-gray-500">Loading available items...</p>
-                        </div>
-                    ) : filteredItems.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-x-8 gap-y-12">
-                            {filteredItems.map((item, index) => (
-                                <div key={item.id} className="group block">
-                                    <Link href={hasDateSelected
-                                        ? `/catalog/${item.id}?start=${format(date!.from!, 'yyyy-MM-dd')}&end=${format(date!.to!, 'yyyy-MM-dd')}`
-                                        : `/catalog/${item.id}`
-                                    }>
-                                        <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
-                                            <Image
-                                                src={getImageUrl(item.image_paths)}
-                                                alt={item.name}
-                                                fill
-                                                className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                                                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                                                priority={index === 0}
-                                            />
-                                            {hasDateSelected && (
-                                                <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                                                    Available
-                                                </div>
-                                            )}
-                                            {item.collection_id && (
-                                                <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm text-gray-900 text-[10px] px-2 py-1 rounded-sm uppercase tracking-wider border border-gray-100 shadow-sm">
-                                                    {collections.find(c => c.id === item.collection_id)?.name}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className="text-lg font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
-                                                    {item.name}
-                                                </h3>
-                                                <p className="text-sm text-gray-500 capitalize">{item.category}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-lg font-light text-gray-900">
-                                                    ${item.rental_price}
-                                                </p>
-                                                <p className="text-xs text-gray-400">/day</p>
-                                            </div>
-                                        </div>
-                                    </Link>
+                {/* Grid Section - Sidebar First Layout */}
+                <section className="flex-1 relative min-h-[500px]">
 
-                                    {/* Action button: Add to Request */}
-                                    <div className="mt-4">
-                                        {hasDateSelected ? (
-                                            isMounted && hasItem(item.id) ? (
-                                                <Button className="w-full gap-2 bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
-                                                    <ShoppingBag className="h-4 w-4" />
-                                                    Added to Request
-                                                </Button>
-                                            ) : (
-                                                <Button
-                                                    className="w-full gap-2"
-                                                    onClick={(e) => {
-                                                        e.preventDefault()
-                                                        addItem({
-                                                            id: item.id,
-                                                            name: item.name,
-                                                            category: item.category,
-                                                            rental_price: item.rental_price,
-                                                            image_paths: item.image_paths,
-                                                            status: item.status
-                                                        })
-                                                        toast.success("Item added to request list")
-                                                    }}
-                                                >
-                                                    <Plus className="h-4 w-4" />
-                                                    Add to Request
-                                                </Button>
-                                            )
-                                        ) : (
-                                            <Button
-                                                variant="outline"
-                                                className="w-full text-gray-400"
-                                                disabled
-                                                title="Please select rental dates first"
-                                            >
-                                                <CalendarIcon className="h-4 w-4 mr-2" />
-                                                Select dates first
-                                            </Button>
-                                        )}
-                                    </div>
-
-                                    {/* Price estimate when dates selected */}
-                                    {hasDateSelected && (
-                                        <div className="mt-2 text-center text-sm text-gray-500">
-                                            Est. total: <span className="font-medium text-gray-900">${(item.rental_price * rentalDays).toFixed(2)}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-32">
-                            {hasDateSelected ? (
-                                <>
-                                    <h3 className="text-lg text-gray-400 font-light">
-                                        Currently no stock available for the selected dates.
-                                    </h3>
-                                    <Button
-                                        variant="ghost"
-                                        className="mt-4 text-gray-400 hover:text-gray-600 font-light"
-                                        onClick={clearDates}
-                                    >
-                                        Clear dates
-                                    </Button>
-                                </>
-                            ) : (
-                                <h3 className="text-lg text-gray-400 font-light">
-                                    The collection is currently empty. Please check back later.
-                                </h3>
-                            )}
+                    {/* Empty State Guidance Banner (When no dates selected) */}
+                    {!hasCommittedDate && !isLoading && (
+                        <div className="mb-6 text-center text-slate-400 text-sm py-4 font-light tracking-wide">
+                            Discover the collection · Select dates to check availability
                         </div>
                     )}
+
+                    {/* Loading Overlay */}
+                    <div
+                        className={cn(
+                            "absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/50 backdrop-blur-[1px] transition-all duration-300",
+                            isLoading ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
+                        )}
+                    >
+                        <div className="flex flex-col items-center gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+                            <p className="text-sm font-medium text-slate-600">Scanning availability...</p>
+                        </div>
+                    </div>
+
+                    {/* Grid Content */}
+                    <div className={cn("transition-opacity duration-300", isLoading ? "opacity-40 pointer-events-none" : "opacity-100")}>
+                        {filteredItems.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                                {filteredItems.map((item, index) => (
+                                    <div key={item.id} className="group block">
+                                        <Link href={hasCommittedDate
+                                            ? `/catalog/${item.id}?start=${format(committedDate!.from!, 'yyyy-MM-dd')}&end=${format(committedDate!.to!, 'yyyy-MM-dd')}`
+                                            : `/catalog/${item.id}`
+                                        }>
+                                            <div className="relative aspect-square bg-slate-100 overflow-hidden rounded mb-2">
+                                                <Image
+                                                    src={getImageUrl(item.image_paths)}
+                                                    alt={item.name}
+                                                    fill
+                                                    className="object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                                                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                                                    priority={index < 10}
+                                                />
+                                                {hasCommittedDate && (
+                                                    <div className="absolute top-1 left-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded">
+                                                        Available
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <h3 className="text-sm font-medium text-slate-900 truncate group-hover:text-slate-600 transition-colors">
+                                                    {item.name}
+                                                </h3>
+                                                <div className="flex items-baseline justify-between">
+                                                    <p className="text-xs text-slate-400 truncate">{item.category}</p>
+                                                    <p className="text-sm font-medium text-slate-900">
+                                                        ${item.rental_price}<span className="text-[10px] text-slate-400 font-normal">/d</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </Link>
+
+                                        {/* Compact Action button */}
+                                        <div className="mt-2">
+                                            {hasCommittedDate ? (
+                                                isMounted && hasItem(item.id) ? (
+                                                    <Button size="sm" className="w-full h-7 text-xs bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" disabled>
+                                                        Added
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        className="w-full h-7 text-xs bg-slate-900 text-white hover:bg-slate-800"
+                                                        onClick={(e) => {
+                                                            e.preventDefault()
+                                                            addItem({
+                                                                id: item.id,
+                                                                name: item.name,
+                                                                category: item.category,
+                                                                rental_price: item.rental_price,
+                                                                image_paths: item.image_paths,
+                                                                status: item.status
+                                                            })
+                                                            toast.success("Added to request")
+                                                        }}
+                                                    >
+                                                        <Plus className="h-3 w-3 mr-1" />
+                                                        Add
+                                                    </Button>
+                                                )
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full h-7 text-xs text-slate-300 hover:text-slate-400 border-slate-100 bg-slate-50"
+                                                    disabled
+                                                >
+                                                    Select dates first
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        {/* Compact price estimate */}
+                                        {hasCommittedDate && (
+                                            <p className="mt-1 text-center text-[10px] text-slate-400">
+                                                Est: <span className="font-medium text-slate-600">${(item.rental_price * rentalDays).toFixed(0)}</span>
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-20">
+                                {hasCommittedDate ? (
+                                    <>
+                                        <h3 className="text-base text-slate-400 font-light">
+                                            No items available for selected dates.
+                                        </h3>
+                                        <Button
+                                            variant="ghost"
+                                            className="mt-3 text-slate-400 hover:text-slate-600 text-sm"
+                                            onClick={handleReset}
+                                        >
+                                            Clear dates
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <h3 className="text-base text-slate-400 font-light">
+                                        The collection is currently empty.
+                                    </h3>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </section>
             </div>
-        </div>
+        </div >
     )
 }

@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { ItemDetailClient } from './ItemDetailClient'
+import { RelatedItems } from './RelatedItems'
+import { RelatedItemsSkeleton } from '@/components/skeletons/RelatedItemsSkeleton'
+import { Suspense } from 'react'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -25,21 +28,24 @@ export default async function ItemDetailPage({ params, searchParams }: Props) {
         notFound()
     }
 
-    // Fetch related items (same collection, exclude current)
-    let relatedItems: any[] = []
-
-    if (item.collection_id) {
-        const { data: related } = await supabase
-            .from('items')
-            .select('id, name, rental_price, image_paths, category, status')
-            .eq('collection_id', item.collection_id)
-            .neq('id', item.id)
-            .limit(4)
-
-        relatedItems = related || []
-    }
-
     const contextValue = typeof context === 'string' ? context : undefined
+    const isArchiveMode = contextValue === 'archive'
 
-    return <ItemDetailClient item={item} context={contextValue} relatedItems={relatedItems} />
+    return (
+        <ItemDetailClient
+            item={item}
+            context={contextValue}
+            relatedItemsSlot={
+                item.collection_id ? (
+                    <Suspense fallback={<RelatedItemsSkeleton />}>
+                        <RelatedItems
+                            collectionId={item.collection_id}
+                            currentId={item.id}
+                            isArchiveMode={isArchiveMode}
+                        />
+                    </Suspense>
+                ) : null
+            }
+        />
+    )
 }

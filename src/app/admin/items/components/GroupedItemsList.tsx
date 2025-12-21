@@ -161,43 +161,45 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
     return (
         <div className="space-y-6">
             {/* Tabs */}
-            <div className="flex border-b">
-                <button
-                    onClick={() => setActiveTab('all')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all'
-                        ? 'border-slate-900 text-slate-900'
-                        : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    All
-                </button>
-                <button
-                    onClick={() => setActiveTab('active')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active'
-                        ? 'border-indigo-600 text-indigo-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    Active
-                </button>
-                <button
-                    onClick={() => setActiveTab('maintenance')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'maintenance'
-                        ? 'border-amber-600 text-amber-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    Maintenance
-                </button>
-                <button
-                    onClick={() => setActiveTab('retired')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'retired'
-                        ? 'border-slate-400 text-slate-500'
-                        : 'border-transparent text-slate-400 hover:text-slate-600'
-                        }`}
-                >
-                    Retired / Deleted
-                </button>
+            <div className="border-b border-slate-200">
+                <nav className="flex gap-6">
+                    <button
+                        onClick={() => setActiveTab('all')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all'
+                            ? 'border-slate-900 text-slate-900'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                            }`}
+                    >
+                        All
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('active')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'active'
+                            ? 'border-slate-900 text-slate-900'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                            }`}
+                    >
+                        Active
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('maintenance')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'maintenance'
+                            ? 'border-slate-900 text-slate-900'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                            }`}
+                    >
+                        Maintenance
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('retired')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'retired'
+                            ? 'border-slate-900 text-slate-900'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                            }`}
+                    >
+                        Retired / Deleted
+                    </button>
+                </nav>
             </div>
 
             {/* List */}

@@ -1,0 +1,65 @@
+import Link from 'next/link'
+import Image from 'next/image'
+import { createClient } from '@/lib/supabase/server'
+
+interface Props {
+    collectionId: string
+    currentId: string
+    isArchiveMode: boolean
+}
+
+export async function RelatedItems({ collectionId, currentId, isArchiveMode }: Props) {
+    const supabase = await createClient()
+
+    // Artificial delay to demonstrate Suspense (optional, but requested implicitly by "slow down 0.5s")
+    // await new Promise(resolve => setTimeout(resolve, 500))
+
+    const { data: relatedItems } = await supabase
+        .from('items')
+        .select('id, name, rental_price, image_paths, category, status')
+        .eq('collection_id', collectionId)
+        .neq('id', currentId)
+        .limit(4)
+
+    if (!relatedItems || relatedItems.length === 0) {
+        return null
+    }
+
+    const getImageUrl = (images: string[] | null) => {
+        if (images && images.length > 0) return images[0]
+        return 'https://placehold.co/800x600?text=No+Image'
+    }
+
+    return (
+        <section className="mt-24 pt-12 border-t border-gray-100">
+            <h2 className="text-xl font-light tracking-wide uppercase text-center mb-12">More from this Collection</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                {relatedItems.map((related) => (
+                    <Link
+                        key={related.id}
+                        href={`/catalog/${related.id}${isArchiveMode ? '?context=archive' : ''}`}
+                        className="group block"
+                    >
+                        <div className="relative aspect-square bg-white overflow-hidden rounded-sm mb-4">
+                            <Image
+                                src={getImageUrl(related.image_paths)}
+                                alt={related.name}
+                                fill
+                                className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                                sizes="(max-width: 640px) 100vw, 25vw"
+                            />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-900 group-hover:text-gray-600 transition-colors">
+                                {related.name}
+                            </h3>
+                            {!isArchiveMode && (
+                                <p className="text-sm text-gray-500 mt-1">${related.rental_price}</p>
+                            )}
+                        </div>
+                    </Link>
+                ))}
+            </div>
+        </section>
+    )
+}
