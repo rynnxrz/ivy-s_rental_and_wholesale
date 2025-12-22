@@ -437,13 +437,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     {(draftDate?.from || draftDate?.to) && (
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                setDraftDate(undefined)
-                                                if (!committedDate) handleReset()
-                                            }}
+                                            onClick={handleReset}
                                             className="text-[10px] text-slate-600 hover:text-red-600 uppercase tracking-wider font-semibold focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none rounded-sm"
                                         >
-                                            Clear
+                                            Reset
                                         </button>
                                     )}
                                 </div>
@@ -682,13 +679,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         {(draftDate?.from || draftDate?.to) && (
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    setDraftDate(undefined)
-                                                    if (!committedDate) handleReset()
-                                                }}
+                                                onClick={handleReset}
                                                 className="text-[11px] text-slate-700 hover:text-red-600 uppercase tracking-wider font-semibold focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none rounded-sm"
                                             >
-                                                Clear
+                                                Reset
                                             </button>
                                         )}
                                     </div>
