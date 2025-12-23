@@ -446,7 +446,7 @@ export async function markAsShipped(reservationId: string) {
         .from('reservations')
         .select(`
             *,
-            items (name),
+            items (name, sku, rental_price, sku),
             profiles:profiles!reservations_renter_id_fkey (full_name, email)
         `)
         .eq('id', reservationId)
@@ -454,9 +454,35 @@ export async function markAsShipped(reservationId: string) {
 
     if (fetchError || !reservation) return { error: 'Reservation not found' }
 
-    const evidence: string[] = reservation.dispatch_image_paths
-    if (!evidence || evidence.length === 0) {
-        return { error: 'Cannot dispatch: No evidence photos uploaded.' }
+    // FETCH GROUP SIBLINGS
+    let allReservations = [reservation]
+    if (reservation.group_id) {
+        const { data: siblings } = await supabase
+            .from('reservations')
+            .select(`
+                *,
+                items (name, sku, rental_price, sku),
+                profiles:profiles!reservations_renter_id_fkey (full_name, email)
+            `)
+            .eq('group_id', reservation.group_id)
+            .neq('id', reservation.id)
+
+        if (siblings) {
+            allReservations = [...allReservations, ...siblings]
+        }
+    }
+
+    // COLLECT ALL EVIDENCE from all items (deduplicated)
+    const allEvidence = new Set<string>()
+    allReservations.forEach(r => {
+        if (r.dispatch_image_paths && Array.isArray(r.dispatch_image_paths)) {
+            r.dispatch_image_paths.forEach((p: string) => allEvidence.add(p))
+        }
+    })
+
+    const evidence = Array.from(allEvidence)
+    if (evidence.length === 0) {
+        return { error: 'Cannot dispatch: No evidence photos uploaded for any item in this group.' }
     }
 
     // 3. Download images from storage as attachments
@@ -485,41 +511,41 @@ export async function markAsShipped(reservationId: string) {
         })
     }
 
-    if (attachments.length === 0) {
-        return { error: 'Failed to download any evidence photos' }
+    // 4. Update Status to Active for ALL Query
+    // We update by group_id if present, otherwise by id
+    let updateQuery = supabase.from('reservations').update({ status: 'active' })
+
+    if (reservation.group_id) {
+        updateQuery = updateQuery.eq('group_id', reservation.group_id)
+    } else {
+        updateQuery = updateQuery.eq('id', reservationId)
     }
 
-    // 4. Update Status to Active
-    const { error: updateError } = await supabase
-        .from('reservations')
-        .update({ status: 'active' })
-        .eq('id', reservationId)
+    const { error: updateError } = await updateQuery
 
     if (updateError) return { error: 'Failed to update status' }
 
-    // 5. Send Email with attachments
+    // 5. Send Email with attachments (One email for the whole group)
     const settings = await getAppSettings(supabase)
     type DbCustomer = {
         full_name: string
         email: string
     }
-    type DbItem = {
-        name: string
-    }
-
+    // We assume customer is same for all group items, take from primary
     const customerRaw = (reservation as { profiles?: DbCustomer | DbCustomer[] }).profiles
     const customer = (Array.isArray(customerRaw) ? customerRaw[0] : customerRaw) as DbCustomer | undefined
 
-    const item = (reservation as { items?: DbItem }).items as DbItem | undefined
+    // Collect all item names
+    const itemNames = allReservations.map(r => (r.items as { name: string })?.name || 'Item').join(', ')
 
     try {
         await sendShippingEmail({
             toIndices: [customer?.email ?? ''],
             customerName: customer?.full_name ?? 'Customer',
-            itemName: item?.name ?? 'Item',
+            itemName: itemNames, // Pass comma-separated list or update function to handle array
             startDate: format(new Date(reservation.start_date), 'MMM dd, yyyy'),
             endDate: format(new Date(reservation.end_date), 'MMM dd, yyyy'),
-            reservationId: reservation.id,
+            reservationId: reservation.group_id ?? reservation.id, // Use group ID as Order ID if available
             attachments,
             companyName: settings?.company_name ?? undefined,
             replyTo: settings?.contact_email || undefined,
@@ -565,10 +591,23 @@ export async function saveEvidence(
         if (notes !== undefined) updateData.return_notes = notes
     }
 
-    const { error } = await supabase
+    // Check if this reservation is part of a group
+    const { data: resData } = await supabase.from('reservations').select('group_id').eq('id', reservationId).single()
+    const groupId = resData?.group_id
+
+    let query = supabase
         .from('reservations')
         .update(updateData)
-        .eq('id', reservationId)
+
+    if (groupId) {
+        // Update ALL items in the group
+        query = query.eq('group_id', groupId)
+    } else {
+        // Update only this item
+        query = query.eq('id', reservationId)
+    }
+
+    const { error } = await query
 
     if (error) return { error: 'Failed to save evidence' }
 
