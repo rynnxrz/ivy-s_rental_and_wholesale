@@ -337,32 +337,34 @@ function DroppableGroup({
                 <TableRow className="border-0 p-0 hover:bg-transparent bg-slate-50/30 shadow-inner">
                     <TableCell colSpan={6} className="p-0">
                         <CollapsibleContent>
-                            <div className="pl-12 py-2 pr-4 border-b border-slate-100">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="border-b-slate-200 hover:bg-transparent">
-                                            <TableHead className="h-8 w-10"></TableHead>
-                                            <TableHead className="h-8 w-14 text-xs font-semibold text-slate-500">IMAGE</TableHead>
-                                            <TableHead className="h-8 text-xs font-semibold text-slate-500">SKU</TableHead>
-                                            <TableHead className="h-8 text-xs font-semibold text-slate-500">COLOR</TableHead>
-                                            <TableHead className="h-8 text-xs font-semibold text-slate-500">MATERIAL</TableHead>
-                                            <TableHead className="h-8 text-right text-xs font-semibold text-slate-500">PRICE</TableHead>
-                                            <TableHead className="h-8 text-xs font-semibold text-slate-500">STATUS</TableHead>
-                                            <TableHead className="h-8 text-right text-xs font-semibold text-slate-500">ACTIONS</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {group.items.map((item) => (
-                                            <DraggableVariantRow
-                                                key={item.id}
-                                                item={item}
-                                                onEdit={onEdit}
-                                                onRemove={onRemove}
-                                                isPending={isPending}
-                                            />
-                                        ))}
-                                    </TableBody>
-                                </Table>
+                            <div className="pl-6 py-2 pr-4 border-b border-slate-100 bg-slate-50/50">
+                                <div className="pl-4 border-l-2 border-indigo-200">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="border-b-slate-200 hover:bg-transparent">
+                                                <TableHead className="h-8 w-10"></TableHead>
+                                                <TableHead className="h-8 w-14 text-xs font-semibold text-slate-500">IMAGE</TableHead>
+                                                <TableHead className="h-8 text-xs font-semibold text-slate-500">SKU</TableHead>
+                                                <TableHead className="h-8 text-xs font-semibold text-slate-500">COLOR</TableHead>
+                                                <TableHead className="h-8 text-xs font-semibold text-slate-500">MATERIAL</TableHead>
+                                                <TableHead className="h-8 text-right text-xs font-semibold text-slate-500">PRICE</TableHead>
+                                                <TableHead className="h-8 text-xs font-semibold text-slate-500">STATUS</TableHead>
+                                                <TableHead className="h-8 text-right text-xs font-semibold text-slate-500">ACTIONS</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {group.items.map((item) => (
+                                                <DraggableVariantRow
+                                                    key={item.id}
+                                                    item={item}
+                                                    onEdit={onEdit}
+                                                    onRemove={onRemove}
+                                                    isPending={isPending}
+                                                />
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
                             </div>
                         </CollapsibleContent>
                     </TableCell>
@@ -817,7 +819,6 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                     </TableBody>
                                 </Table>
                             </div>
-
                             {/* Drag Overlay - Floating ghost element */}
                             <DragOverlay>
                                 {activeItem ? (
@@ -879,7 +880,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                 }}
                                 categories={categories}
                                 collections={collections}
-                                isStaging={true}
+                                isStaging
                                 onSubmitOverride={handleSaveEdit}
                                 onCancel={() => setEditingItem(null)}
                             />

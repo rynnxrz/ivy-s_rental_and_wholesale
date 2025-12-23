@@ -186,6 +186,7 @@ export async function createCollection(name: string) {
 // ============================================================
 
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
+import { createStreamableValue } from '@/lib/ai-stream'
 
 // Initialize Gemini client
 const getGeminiClient = () => {
@@ -839,6 +840,130 @@ export async function extractCategoriesAction(sourceUrl: string, modelId?: strin
             sourceUrl
         }
     }
+}
+
+/**
+ * Streaming version of extractCategoriesAction
+ */
+export async function extractCategoriesStreamAction(sourceUrl: string, modelId?: string) {
+    const stream = createStreamableValue()
+
+        // Run async logic detached from the return
+        ; (async () => {
+            try {
+                // 1. Validate URL
+                if (!sourceUrl || !sourceUrl.startsWith('http')) {
+                    stream.update({ success: false, error: 'Invalid URL provided' }) // Use update instead of directly sending object as stream chunks are usually partials, but here we use it for structured events
+                    stream.done()
+                    return
+                }
+
+                // Fetch Settings
+                const supabase = await createClient()
+                const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_category').single()
+
+                // Use provided modelId, or falling back to settings, or default
+                const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+
+                // Simplified prompt - let Gemini browse the site directly
+                const defaultPrompt = `请访问这个网站：${sourceUrl}
+
+分析该珠宝电商网站的导航结构，告诉我有哪几类饰品（Category，如 Rings, Earrings, Necklaces 等物理产品类型）和设计系列（Collection，如 Best Sellers, New Arrivals 等营销分组）。
+
+请详细说明你的思考过程，比如：
+- "正在访问网站..."
+- "发现导航栏含有..."
+- "正在区分 Design Series 和 Product Categories..."
+
+最后返回 JSON 数组，每个元素包含：
+- "name": 分类/系列名称
+- "url": 对应的链接地址（完整 URL）
+- "suggestedType": "category" 或 "collection" 或 "unknown"
+
+示例：
+[
+  {"name": "Rings", "url": "https://example.com/collections/rings", "suggestedType": "category"},
+  {"name": "Best Sellers", "url": "https://example.com/collections/best-sellers", "suggestedType": "collection"}
+]`
+
+                const prompt = settings?.ai_prompt_category
+                    ? `${settings.ai_prompt_category}\n\n目标网站: ${sourceUrl}`
+                    : defaultPrompt
+
+                // 2. Call Gemini API with Streaming
+                const ai = getGeminiClient()
+
+                const response = await ai.models.generateContentStream({
+                    model: activeModelId,
+                    contents: prompt,
+                    config: {
+                        tools: [{ googleSearch: {} }],
+                        thinkingConfig: { includeThoughts: true }
+                    }
+                })
+
+                let fullText = ''
+
+                // 3. Process stream chunks
+                for await (const chunk of response) {
+                    // Gemini 2.0+ thinking chain handling
+                    // Multiple parts can exist in a single chunk (e.g. thought part followed by text part)
+                    const parts = chunk.candidates?.[0]?.content?.parts || []
+
+                    for (const part of parts) {
+                        const isThought = (part as any).thought === true
+                        const text = part.text || ''
+
+                        if (text) {
+                            stream.update({
+                                type: 'chunk',
+                                isThought,
+                                text
+                            })
+
+                            if (!isThought) {
+                                fullText += text
+                            }
+                        }
+                    }
+                }
+
+                // 4. Parse Final JSON
+                // Extract JSON from response (handle markdown code blocks)
+                let jsonStr = fullText
+                const jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/)
+                if (jsonMatch) {
+                    jsonStr = jsonMatch[1].trim()
+                }
+
+                try {
+                    const parsed = JSON.parse(jsonStr)
+
+                    // Normalize and enhance detection
+                    const categories = parsed.map((cat: { name: string; url?: string | null; itemCount?: number; suggestedType?: string }) => {
+                        const url = cat.url ? (cat.url.startsWith('http') ? cat.url : new URL(cat.url, sourceUrl).href) : null
+                        let suggestedType = cat.suggestedType as 'category' | 'collection' | 'unknown'
+                        if (!suggestedType || suggestedType === 'unknown') {
+                            suggestedType = detectLinkType(cat.name)
+                        }
+                        return { name: cat.name, url, itemCount: cat.itemCount, suggestedType }
+                    })
+
+                    stream.update({ type: 'result', success: true, categories, sourceUrl })
+                } catch (e) {
+                    stream.update({ type: 'result', success: false, error: 'Failed to parse JSON result' })
+                }
+
+                stream.done()
+
+            } catch (error) {
+                console.error('Stream error:', error)
+                stream.update({ type: 'result', success: false, error: error instanceof Error ? error.message : 'Unknown error' })
+                stream.done()
+            }
+        })()
+
+    return { output: stream.value }
 }
 
 
@@ -1809,6 +1934,136 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
             itemsFound: totalItemsFound
         }
     }
+}
+
+/**
+ * Streaming version of quickScanAction
+ */
+export async function quickScanStreamAction(
+    input: ScanCategoriesInput,
+    batchId: string,
+    modelId: string = 'gemini-2.0-flash'
+) {
+    const stream = createStreamableValue()
+
+        ; (async () => {
+            const supabase = await createClient()
+            let totalItemsFound = 0
+            const ai = getGeminiClient()
+
+            try {
+                // Get AI settings
+                const { data: settings } = await supabase.from('app_settings').select('ai_prompt_quick_list').single()
+
+                await supabase.from('staging_imports')
+                    .update({ status: 'scanning', current_category: 'Quick scanning...' })
+                    .eq('id', batchId)
+
+                for (const category of input.categories) {
+                    if (!category.url) continue
+
+                    // Notify frontend we are starting this category
+                    stream.update({ type: 'category_start', categoryName: category.name })
+
+                    const defaultPrompt = `Please visit this URL: ${category.url}
+
+${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}
+
+Please clearly describe your thinking process as you analyze the page, for example:
+- "Accessing page content..."
+- "Locating product grid container..."
+- "Found 12 product cards..."
+- "Extracting prices and names..."
+`
+                    const prompt = settings?.ai_prompt_quick_list
+                        ? `${settings.ai_prompt_quick_list}\n\nTarget URL: ${category.url}`
+                        : defaultPrompt
+
+                    // Generate stream
+                    const response = await ai.models.generateContentStream({
+                        model: modelId,
+                        contents: prompt,
+                        config: {
+                            tools: [{ googleSearch: {} }],
+                            thinkingConfig: { includeThoughts: true }
+                        }
+                    })
+
+                    let fullText = ''
+
+                    for await (const chunk of response) {
+                        const parts = chunk.candidates?.[0]?.content?.parts || []
+                        for (const part of parts) {
+                            const isThought = (part as any).thought === true
+                            const text = part.text || ''
+
+                            if (text) {
+                                stream.update({ type: 'chunk', isThought, text, categoryName: category.name })
+                                if (!isThought) fullText += text
+                            }
+                        }
+                    }
+
+                    // Process JSON for this category
+                    let jsonStr = fullText
+                    const jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/)
+                    if (jsonMatch) jsonStr = jsonMatch[1].trim()
+
+                    let products: QuickScanItem[] = []
+                    try {
+                        products = JSON.parse(jsonStr)
+                        if (!Array.isArray(products)) products = []
+                    } catch (e) {
+                        stream.update({ type: 'log', message: `Failed to parse products for ${category.name}`, level: 'warning' })
+                        continue
+                    }
+
+                    // Insert into DB
+                    for (const product of products) {
+                        const absoluteUrl = product.product_url ? new URL(product.product_url, category.url).href : null
+                        const absoluteThumbnail = product.thumbnail_url ? new URL(product.thumbnail_url, category.url).href : null
+
+                        await supabase.from('staging_items').insert({
+                            import_batch_id: batchId,
+                            name: product.name || 'Unknown Product',
+                            rental_price: product.price || 0,
+                            image_urls: absoluteThumbnail ? [absoluteThumbnail] : [],
+                            color: product.color,
+                            source_url: absoluteUrl,
+                            category_id: category.categoryId,
+                            collection_id: category.collectionId,
+                            status: 'pending',
+                            needs_enrichment: true,
+                            description: null, material: null, weight: null, sku: null, replacement_cost: null
+                        })
+                        totalItemsFound++
+                    }
+
+                    stream.update({ type: 'category_done', count: products.length, categoryName: category.name })
+                }
+
+                // Finalize
+                await supabase.from('staging_imports')
+                    .update({
+                        status: 'completed',
+                        items_scraped: totalItemsFound,
+                        items_total: totalItemsFound,
+                        current_category: 'Completed'
+                    })
+                    .eq('id', batchId)
+
+                stream.update({ type: 'result', success: true, batchId, itemsFound: totalItemsFound })
+                stream.done()
+
+            } catch (error) {
+                console.error('Scan stream error:', error)
+                await supabase.from('staging_imports').update({ status: 'failed' }).eq('id', batchId)
+                stream.update({ type: 'result', success: false, error: 'Scan failed' })
+                stream.done()
+            }
+        })()
+
+    return { output: stream.value }
 }
 
 /**

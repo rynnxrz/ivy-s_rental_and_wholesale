@@ -14,21 +14,25 @@ import {
 import { ArrowLeft, Loader2, Sparkles, ExternalLink, Check, Package, Search, Settings, Zap } from 'lucide-react'
 import {
     extractCategoriesAction,
+    extractCategoriesStreamAction, // NEW: Streaming version
     ExtractedCategory,
     createStagingBatchAction,
-    quickScanAction,  // NEW: Fast index-only scan
+    quickScanAction,
+    quickScanStreamAction, // NEW: Streaming version
     getStagingItemsAction,
     getAvailableModelsAction,
     exploreSubCategoriesAction,
     AvailableModel
 } from '@/actions/items'
+import { readStreamableValue } from '@/lib/ai-stream'
 import { getAISettingsAction } from '@/app/admin/settings/actions'
 import { AIImportSettings } from './AIImportSettings'
 import { StagingItemsList } from './StagingItemsList'
 import { toast } from 'sonner'
 import type { StagingItem } from '@/types'
 import { GEMINI_MODELS } from '@/types'
-import { useAIWorkflow, EXTRACT_STEPS, SCAN_STEPS } from '@/hooks/useAIWorkflow'
+import { useAIWorkflow } from '@/hooks/useAIWorkflow'
+import type { AIWorkflowState } from '@/hooks/useAIWorkflow'
 import { AIStatusConsole } from '@/components/admin/AIStatusConsole'
 
 
@@ -56,6 +60,18 @@ interface CategoryMapping {
 }
 
 type ViewMode = 'extract' | 'scanning' | 'results'
+
+type CategoryExtractionChunk =
+    | { type: 'chunk'; text: string; isThought?: boolean }
+    | { type: 'usage'; usage: AIWorkflowState['usage'] }
+    | { type: 'result'; success: boolean; categories?: ExtractedCategory[]; error?: string }
+
+type QuickScanChunk =
+    | { type: 'category_start'; categoryName: string }
+    | { type: 'chunk'; text: string; isThought?: boolean }
+    | { type: 'category_done'; categoryName: string; count: number }
+    | { type: 'log'; message: string }
+    | { type: 'result'; success: boolean; itemsFound: number; error?: string }
 
 export function AIImportPanel({ categories, collections, onClose }: AIImportPanelProps) {
     const [url, setUrl] = useState('')
@@ -134,8 +150,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setCurrentItem,
         setStatus,
         reset: resetAIWorkflow,
-        startSimulatedProgress,
-        stopSimulatedProgress
+        setUsage,
+        appendToLastLog // NEW: For streaming text
     } = useAIWorkflow()
 
     // Loading step messages (kept for backward compatibility)
@@ -156,67 +172,93 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             setLoadingStep('Analyzing website structure...')
 
             // Reset and start workflow
-            resetAIWorkflow() // Reset hook state
+            resetAIWorkflow()
             setStatus('analyzing')
+            addLog(`Analyzing ${domain}...`, 'loading', 'Fetch')
 
-            // Start simulated progress (fake streaming while AI works)
-            startSimulatedProgress(EXTRACT_STEPS)
+            try {
+                const { output } = await extractCategoriesStreamAction(url, selectedModel)
 
-            const result = await extractCategoriesAction(url, selectedModel)
+                let scanSuccess = false
+                let scanError = null
+                let categoriesResult: ExtractedCategory[] = []
 
-            // Stop simulated progress when action completes
-            stopSimulatedProgress()
-            setLoadingStep('')
-
-            if (!result.success) {
-                addLog(`Analysis failed: ${result.error}`, 'error', 'Error')
-                toast.error(result.error || 'Failed to extract categories')
-                return
-            }
-
-            if (result.categories.length === 0) {
-                addLog('No categories found on this page', 'warning', 'Discovery')
-                toast.warning('No categories found on this page')
-                return
-            }
-
-            // Log final success
-            addLog(`Successfully connected to ${domain}`, 'success', 'Fetch')
-
-            // Log each category found
-            const categoryNames = result.categories.slice(0, 4).map(c => c.name).join(', ')
-            const moreCount = result.categories.length > 4 ? ` +${result.categories.length - 4} more` : ''
-            addLog(`Found ${result.categories.length} items: ${categoryNames}${moreCount}`, 'success', 'Discovery')
-
-            // Log structure analysis
-            const categoryCount = result.categories.filter(c => c.suggestedType === 'category').length
-            const collectionCount = result.categories.filter(c => c.suggestedType === 'collection').length
-            if (categoryCount > 0 || collectionCount > 0) {
-                addLog(`Structure: ${categoryCount} categories, ${collectionCount} collections`, 'info', 'Logic')
-            }
-
-            // Initialize mappings with auto-matching
-            const mappings: CategoryMapping[] = result.categories.map(cat => {
-                // Try to auto-match by name similarity based on suggestedType
-                const matchedCategory = cat.suggestedType === 'category'
-                    ? categories.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
-                    : null
-
-                const matchedCollection = cat.suggestedType === 'collection'
-                    ? collections.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
-                    : null
-
-                return {
-                    extractedCategory: cat,
-                    mappedCategoryId: matchedCategory?.id || null,
-                    mappedCollectionId: matchedCollection?.id || null,
-                    selectedForScan: false
+                for await (const chunk of readStreamableValue<CategoryExtractionChunk>(output)) {
+                    if (chunk.type === 'chunk') {
+                        if (chunk.isThought) {
+                            // Real-time append to last thought line or new one
+                            const lastLog = aiState.logs[aiState.logs.length - 1]
+                            if (lastLog?.tag === 'Thinking' && lastLog?.type === 'loading') {
+                                appendToLastLog(chunk.text)
+                            } else {
+                                addLog(chunk.text, 'loading', 'Thinking')
+                            }
+                        }
+                    } else if (chunk.type === 'usage') {
+                        // Update usage stats
+                        setUsage(chunk.usage)
+                    } else if (chunk.type === 'result') {
+                        if (chunk.success) {
+                            scanSuccess = true
+                            categoriesResult = chunk.categories || []
+                        } else {
+                            scanError = chunk.error
+                        }
+                    }
                 }
-            })
 
-            setExtractedCategories(mappings)
-            setHasExtracted(true)
-            toast.success(`Found ${result.categories.length} categories`)
+                setLoadingStep('')
+
+                if (!scanSuccess) {
+                    addLog(`Analysis failed: ${scanError}`, 'error', 'Error')
+                    toast.error(scanError || 'Failed to extract categories')
+                    setStatus('error')
+                    return
+                }
+
+                if (categoriesResult.length === 0) {
+                    addLog('No categories found on this page', 'warning', 'Discovery')
+                    toast.warning('No categories found on this page')
+                    setStatus('idle')
+                    return
+                }
+
+                // Log final success
+                setStatus('success')
+                addLog(`Successfully connected to ${domain}`, 'success', 'Fetch')
+
+                // Log each category found
+                const categoryNames = categoriesResult.slice(0, 4).map(c => c.name).join(', ')
+                const moreCount = categoriesResult.length > 4 ? ` +${categoriesResult.length - 4} more` : ''
+                addLog(`Found ${categoriesResult.length} items: ${categoryNames}${moreCount}`, 'success', 'Discovery')
+
+                // Initialize mappings with auto-matching
+                const mappings: CategoryMapping[] = categoriesResult.map(cat => {
+                    const matchedCategory = cat.suggestedType === 'category'
+                        ? categories.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
+                        : null
+
+                    const matchedCollection = cat.suggestedType === 'collection'
+                        ? collections.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
+                        : null
+
+                    return {
+                        extractedCategory: cat,
+                        mappedCategoryId: matchedCategory?.id || null,
+                        mappedCollectionId: matchedCollection?.id || null,
+                        selectedForScan: false
+                    }
+                })
+
+                setExtractedCategories(mappings)
+                setHasExtracted(true)
+                toast.success(`Found ${categoriesResult.length} categories`)
+
+            } catch (error) {
+                console.error("Extraction Stream failed:", error)
+                addLog(`Stream error: ${error}`, 'error', 'Error')
+                setStatus('error')
+            }
         })
     }
 
@@ -244,13 +286,9 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setIsScanning(true)
         setLoadingStep(`Scanning ${selectedCategories.length} category pages with AI...`)
 
-        // Start simulated progress (fake streaming while AI works)
-        startSimulatedProgress(SCAN_STEPS)
-
         // Create batch in background
         const { batchId: newBatchId, error } = await createStagingBatchAction(url)
         if (error || !newBatchId) {
-            stopSimulatedProgress()
             addLog(`Failed to create batch: ${error}`, 'error', 'Error')
             toast.error(error || 'Failed to create import batch')
             setLoadingStep('')
@@ -262,42 +300,84 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setBatchId(newBatchId)
         setCurrentItem(`Processing ${selectedCategories.length} categories...`)
 
-        // Use quick scan (index-only mode) - should complete in seconds
-        const result = await quickScanAction({ categories: selectedCategories }, newBatchId, selectedModel)
+        // Start Streaming Quick Scan
+        try {
+            const { output } = await quickScanStreamAction({ categories: selectedCategories }, newBatchId, selectedModel)
 
-        // Stop simulated progress when action completes
-        stopSimulatedProgress()
-        setIsScanning(false)
-        setCurrentItem(null)
-        setLoadingStep('')
+            let itemsFound = 0
+            let scanSuccess = false
+            let scanError = null
 
-        if (!result.success) {
-            setStatus('error')
-            addLog(result.error || 'Quick scan failed', 'error', 'Error')
-            toast.error(result.error || 'Quick scan failed')
-            setViewMode('extract')
-            return
+            for await (const chunk of readStreamableValue<QuickScanChunk>(output)) {
+                if (chunk.type === 'category_start') {
+                    setCurrentItem(`Scanning: ${chunk.categoryName}`)
+                    addLog(`Accessing ${chunk.categoryName}...`, 'loading', 'Fetch')
+                } else if (chunk.type === 'chunk') {
+                    if (chunk.isThought) {
+                        const lastLog = aiState.logs[aiState.logs.length - 1]
+                        if (lastLog?.tag === 'Thinking' && lastLog?.type === 'loading') {
+                            appendToLastLog(chunk.text)
+                        } else {
+                            addLog(chunk.text, 'loading', 'Thinking')
+                        }
+                    }
+                } else if (chunk.type === 'category_done') {
+                    // Mark previous Thinking log as success before stating category done
+                    const lastLog = aiState.logs[aiState.logs.length - 1]
+                    if (lastLog?.tag === 'Thinking') {
+                        updateLastLog({ type: 'success' })
+                    }
+                    addLog(`Found ${chunk.count} items in ${chunk.categoryName}`, 'success', 'Discovery')
+                } else if (chunk.type === 'log') {
+                    addLog(chunk.message, 'warning', 'System')
+                } else if (chunk.type === 'result') {
+                    if (chunk.success) {
+                        itemsFound = chunk.itemsFound
+                        scanSuccess = true
+                    } else {
+                        scanError = chunk.error
+                    }
+                }
+            }
+
+            setIsScanning(false)
+            setCurrentItem(null)
+            setLoadingStep('')
+
+            if (!scanSuccess) {
+                setStatus('error')
+                addLog(scanError || 'Quick scan failed', 'error', 'Error')
+                toast.error(scanError || 'Quick scan failed')
+                setViewMode('extract')
+                return
+            }
+
+            // Log success details
+            setStatus('success')
+            addLog(`Batch created: ${newBatchId.substring(0, 8)}...`, 'success', 'System')
+            addLog(`Found ${itemsFound} products across all categories`, 'success', 'Discovery')
+
+            // Log variant detection hint
+            if (itemsFound > 0) {
+                addLog('Products ready for review and grouping', 'info', 'Logic')
+            }
+
+            toast.success(`Found ${itemsFound} items (quick scan)`)
+
+            // Allow user to read the logs before switching
+            await new Promise(resolve => setTimeout(resolve, 2000))
+
+            // Fetch results immediately
+            const { data } = await getStagingItemsAction(newBatchId)
+            setStagingItems(data || [])
+            setViewMode('results')
+
+        } catch (error) {
+            console.error("Quick Scan Stream failed:", error)
+            addLog(`Stream error: ${error}`, 'error', 'Error')
+            setIsScanning(false)
         }
 
-        // Log success details
-        setStatus('success')
-        addLog(`Batch created: ${newBatchId.substring(0, 8)}...`, 'success', 'System')
-        addLog(`Found ${result.itemsFound} products across all categories`, 'success', 'Discovery')
-
-        // Log variant detection hint
-        if (result.itemsFound > 0) {
-            addLog('Products ready for review and grouping', 'info', 'Logic')
-        }
-
-        toast.success(`Found ${result.itemsFound} items (quick scan)`)
-
-        // Allow user to read the logs before switching
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        // Fetch results immediately
-        const { data } = await getStagingItemsAction(newBatchId)
-        setStagingItems(data || [])
-        setViewMode('results')
     }
 
     const updateMapping = (index: number, categoryId: string | null) => {

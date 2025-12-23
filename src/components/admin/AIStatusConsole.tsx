@@ -32,6 +32,7 @@ const TAG_COLORS: Record<string, string> = {
     Logic: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     System: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
     Error: 'bg-red-500/20 text-red-300 border-red-500/30',
+    Thinking: 'bg-indigo-500/30 text-indigo-300 border-indigo-500/50',
 }
 
 /**
@@ -105,12 +106,18 @@ export function AIStatusConsole({
     const [isCollapsed, setIsCollapsed] = useState(false)
     const scrollRef = useRef<HTMLDivElement>(null)
 
-    // Auto-scroll to bottom when new logs are added
+    // Auto-scroll to bottom when new logs are added or updated
     useEffect(() => {
         if (scrollRef.current && !isCollapsed) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+            // Use requestAnimationFrame to ensure DOM is updated
+            const scroll = () => {
+                if (scrollRef.current) {
+                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+                }
+            }
+            requestAnimationFrame(scroll)
         }
-    }, [state.logs, isCollapsed])
+    }, [state.logs, isCollapsed, state.logs.map(l => l.message).join('')]) // Watch message changes for appending
 
     // Auto-collapse on success after a short delay
     useEffect(() => {
@@ -232,8 +239,22 @@ export function AIStatusConsole({
                                         </span>
                                     </div>
                                 ))}
+                                {/* Computation Report */}
+                                {state.usage && (
+                                    <div className="mt-4 pt-3 border-t border-slate-800/50 text-[10px] font-mono text-slate-500 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-700 animate-pulse"></div>
+                                            <span>[System] Computation complete.</span>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <span>Reasoned through <span className="text-indigo-400 font-semibold">{state.usage.thinkingTokenCount || 0}</span> tokens</span>
+                                            <span className="text-slate-600">Total: {state.usage.totalTokenCount || 0}</span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Spacer for scroll */}
-                                <div className="h-2" />
+                                <div className="h-4" />
                             </div>
                         )}
                     </div>
