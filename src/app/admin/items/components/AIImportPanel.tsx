@@ -28,6 +28,8 @@ import { StagingItemsList } from './StagingItemsList'
 import { toast } from 'sonner'
 import type { StagingItem } from '@/types'
 import { GEMINI_MODELS } from '@/types'
+import { useAIWorkflow, EXTRACT_STEPS, SCAN_STEPS } from '@/hooks/useAIWorkflow'
+import { AIStatusConsole } from '@/components/admin/AIStatusConsole'
 
 
 interface Category {
@@ -124,7 +126,19 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
     const [stagingItems, setStagingItems] = useState<StagingItem[]>([])
     const [isScanning, setIsScanning] = useState(false)
 
-    // Loading step messages
+    // AI Workflow state (replaces simple loadingStep)
+    const {
+        state: aiState,
+        addLog,
+        updateLastLog,
+        setCurrentItem,
+        setStatus,
+        reset: resetAIWorkflow,
+        startSimulatedProgress,
+        stopSimulatedProgress
+    } = useAIWorkflow()
+
+    // Loading step messages (kept for backward compatibility)
     const [loadingStep, setLoadingStep] = useState<string>('')
 
     const handleExtract = () => {
@@ -133,24 +147,52 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             return
         }
 
-        startTransition(async () => {
-            setLoadingStep('Fetching page content...')
+        // Reset and prepare console
+        resetAIWorkflow()
 
-            // Small delay to show the step
-            await new Promise(r => setTimeout(r, 100))
-            setLoadingStep('Sending to AI for analysis...')
+        startTransition(async () => {
+            // Extract domain for display
+            const domain = new URL(url).hostname
+            setLoadingStep('Analyzing website structure...')
+
+            // Reset and start workflow
+            resetAIWorkflow() // Reset hook state
+            setStatus('analyzing')
+
+            // Start simulated progress (fake streaming while AI works)
+            startSimulatedProgress(EXTRACT_STEPS)
 
             const result = await extractCategoriesAction(url, selectedModel)
+
+            // Stop simulated progress when action completes
+            stopSimulatedProgress()
             setLoadingStep('')
 
             if (!result.success) {
+                addLog(`Analysis failed: ${result.error}`, 'error', 'Error')
                 toast.error(result.error || 'Failed to extract categories')
                 return
             }
 
             if (result.categories.length === 0) {
+                addLog('No categories found on this page', 'warning', 'Discovery')
                 toast.warning('No categories found on this page')
                 return
+            }
+
+            // Log final success
+            addLog(`Successfully connected to ${domain}`, 'success', 'Fetch')
+
+            // Log each category found
+            const categoryNames = result.categories.slice(0, 4).map(c => c.name).join(', ')
+            const moreCount = result.categories.length > 4 ? ` +${result.categories.length - 4} more` : ''
+            addLog(`Found ${result.categories.length} items: ${categoryNames}${moreCount}`, 'success', 'Discovery')
+
+            // Log structure analysis
+            const categoryCount = result.categories.filter(c => c.suggestedType === 'category').length
+            const collectionCount = result.categories.filter(c => c.suggestedType === 'collection').length
+            if (categoryCount > 0 || collectionCount > 0) {
+                addLog(`Structure: ${categoryCount} categories, ${collectionCount} collections`, 'info', 'Logic')
             }
 
             // Initialize mappings with auto-matching
@@ -193,37 +235,69 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             return
         }
 
-        // Create batch
-        setLoadingStep('Creating import batch...')
-        const { batchId: newBatchId, error } = await createStagingBatchAction(url)
-        if (error || !newBatchId) {
-            toast.error(error || 'Failed to create import batch')
-            setLoadingStep('')
-            return
-        }
+        // Reset and prepare console for scan
+        resetAIWorkflow()
+        setStatus('analyzing')
 
-        setBatchId(newBatchId)
+        setBatchId(null)
         setViewMode('scanning')
         setIsScanning(true)
         setLoadingStep(`Scanning ${selectedCategories.length} category pages with AI...`)
 
+        // Start simulated progress (fake streaming while AI works)
+        startSimulatedProgress(SCAN_STEPS)
+
+        // Create batch in background
+        const { batchId: newBatchId, error } = await createStagingBatchAction(url)
+        if (error || !newBatchId) {
+            stopSimulatedProgress()
+            addLog(`Failed to create batch: ${error}`, 'error', 'Error')
+            toast.error(error || 'Failed to create import batch')
+            setLoadingStep('')
+            setViewMode('extract')
+            setIsScanning(false)
+            return
+        }
+
+        setBatchId(newBatchId)
+        setCurrentItem(`Processing ${selectedCategories.length} categories...`)
+
         // Use quick scan (index-only mode) - should complete in seconds
         const result = await quickScanAction({ categories: selectedCategories }, newBatchId, selectedModel)
 
+        // Stop simulated progress when action completes
+        stopSimulatedProgress()
         setIsScanning(false)
+        setCurrentItem(null)
         setLoadingStep('')
 
         if (!result.success) {
+            setStatus('error')
+            addLog(result.error || 'Quick scan failed', 'error', 'Error')
             toast.error(result.error || 'Quick scan failed')
             setViewMode('extract')
             return
         }
 
+        // Log success details
+        setStatus('success')
+        addLog(`Batch created: ${newBatchId.substring(0, 8)}...`, 'success', 'System')
+        addLog(`Found ${result.itemsFound} products across all categories`, 'success', 'Discovery')
+
+        // Log variant detection hint
+        if (result.itemsFound > 0) {
+            addLog('Products ready for review and grouping', 'info', 'Logic')
+        }
+
+        toast.success(`Found ${result.itemsFound} items (quick scan)`)
+
+        // Allow user to read the logs before switching
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
         // Fetch results immediately
         const { data } = await getStagingItemsAction(newBatchId)
         setStagingItems(data || [])
         setViewMode('results')
-        toast.success(`Found ${result.itemsFound} items (quick scan)`)
     }
 
     const updateMapping = (index: number, categoryId: string | null) => {
@@ -321,7 +395,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
                         <Zap className="h-5 w-5 text-purple-600 animate-pulse" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                         <h2 className="text-xl font-semibold flex items-center gap-2">
                             Quick Scanning
                             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
@@ -332,24 +406,25 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                             {loadingStep || 'Extracting products from category listings...'}
                         </p>
                     </div>
+                    {isScanning && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+                            <span>Processing...</span>
+                        </div>
+                    )}
                 </div>
 
-                <div className="text-center py-12">
-                    <div className="relative inline-flex">
-                        <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
-                        <Sparkles className="h-5 w-5 text-yellow-500 absolute -top-1 -right-1 animate-pulse" />
-                    </div>
-                    <p className="mt-6 text-sm font-medium text-foreground">
-                        {loadingStep || 'Analyzing page with AI...'}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                        This should only take a few seconds
-                    </p>
-                    <div className="mt-4 w-48 mx-auto h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse"
-                            style={{ width: '60%' }} />
-                    </div>
-                </div>
+                {/* AI Status Console - Terminal-style log display */}
+                <AIStatusConsole
+                    state={aiState}
+                    isOpen={true}
+                    title="AI Console"
+                    maxHeight={280}
+                />
+
+                <p className="text-xs text-center text-muted-foreground">
+                    This should only take a few seconds
+                </p>
             </div>
         )
     }
@@ -486,6 +561,17 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     <p className="text-xs text-muted-foreground animate-pulse">
                         ⏳ {loadingStep}
                     </p>
+                )}
+
+                {/* AI Status Console - Show during extraction as well */}
+                {(aiState.logs.length > 0 || aiState.status !== 'idle') && (
+                    <AIStatusConsole
+                        state={aiState}
+                        isOpen={true}
+                        title="Extraction Console"
+                        maxHeight={200}
+                        className="animate-in fade-in slide-in-from-top-2 duration-300"
+                    />
                 )}
             </div>
 
