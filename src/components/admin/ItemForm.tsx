@@ -34,14 +34,8 @@ const itemSchema = z.object({
     weight: z.string().optional(),
     color: z.string().optional(),
     category: z.string().optional(), // Legacy, sync from category_id
-    rental_price: z.preprocess(
-        (val) => (val === '' ? 0 : Number(val)),
-        z.number().min(0, 'Price must be positive')
-    ),
-    replacement_cost: z.preprocess(
-        (val) => (val === '' ? 0 : Number(val)),
-        z.number().min(0, 'Cost must be positive')
-    ),
+    rental_price: z.coerce.number().min(0, 'Price must be positive'),
+    replacement_cost: z.coerce.number().min(0, 'Cost must be positive'),
     status: z.enum(['active', 'maintenance', 'retired']),
 })
 
@@ -109,7 +103,7 @@ export const ItemForm = ({
         watch,
         reset,
     } = useForm<ItemFormData>({
-        resolver: zodResolver(itemSchema),
+        resolver: zodResolver(itemSchema) as any,
         defaultValues: {
             sku: initialData?.sku ?? item?.sku ?? '',
             name: initialData?.name ?? item?.name ?? '',

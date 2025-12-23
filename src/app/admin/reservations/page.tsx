@@ -76,7 +76,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         : reservations
 
     // Grouping Logic
-    const groups: Record<string, typeof filteredReservations> = {}
+    const groups: Record<string, NonNullable<typeof filteredReservations>> = {}
 
         ; (filteredReservations || []).forEach(r => {
             // If no group_id, treat as unique group using its own ID
@@ -168,13 +168,15 @@ type ReservationGroup = {
     end_date: string
     created_at: string
     group_id: string | null
+    city_region?: string | null
+    country?: string | null
     items?: { name?: string; sku?: string; image_paths?: string[]; rental_price?: number }
-    profiles?: { full_name?: string; email?: string; city_region?: string }
+    profiles?: { full_name?: string; email?: string; company_name?: string }
     shipping?: { status?: string }
     billing_profile_id?: string | null
 }[]
 
-function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGroup[], billingProfiles: { id: string; profile_name?: string }[] }) {
+function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGroup[], billingProfiles: any[] }) {
     if (groups.length === 0) {
         return (
             <div className="p-12 text-center text-slate-400">
@@ -335,7 +337,7 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                                             />
                                             <ArchiveButton
                                                 reservationId={primary.id}
-                                                groupId={primary.group_id}
+                                                groupId={primary.group_id ?? undefined}
                                                 itemCount={group.length}
                                             />
                                         </>
@@ -345,7 +347,7 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                                             <DispatchButton reservationId={primary.id} />
                                             <ArchiveButton
                                                 reservationId={primary.id}
-                                                groupId={primary.group_id}
+                                                groupId={primary.group_id ?? undefined}
                                                 itemCount={group.length}
                                             />
                                         </>
@@ -353,21 +355,21 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                                     {status === 'active' && (
                                         <ArchiveButton
                                             reservationId={primary.id}
-                                            groupId={primary.group_id}
+                                            groupId={primary.group_id ?? undefined}
                                             itemCount={group.length}
                                         />
                                     )}
                                     {status === 'returned' && (
                                         <ArchiveButton
                                             reservationId={primary.id}
-                                            groupId={primary.group_id}
+                                            groupId={primary.group_id ?? undefined}
                                             itemCount={group.length}
                                         />
                                     )}
                                     {status === 'archived' && (
                                         <RestoreButton
                                             reservationId={primary.id}
-                                            groupId={primary.group_id}
+                                            groupId={primary.group_id ?? undefined}
                                             itemCount={group.length}
                                         />
                                     )}

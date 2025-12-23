@@ -52,7 +52,13 @@ export default async function RequestDetailPage(props: Props) {
             .eq('group_id', reservation.group_id)
             .neq('id', reservation.id) // Exclude current
 
-        if (siblings) groupItems = siblings
+        if (siblings) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            groupItems = siblings.map((s: any) => ({
+                ...s,
+                items: Array.isArray(s.items) ? s.items[0] : s.items
+            }))
+        }
     }
 
     // Helper for ApproveButton items
@@ -76,8 +82,19 @@ export default async function RequestDetailPage(props: Props) {
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
 
-    const item = reservation.items as { name?: string; rental_price?: number; sku?: string } | null
-    const customer = reservation.profiles as { full_name?: string; email?: string } | null
+    const item = reservation.items as {
+        name?: string
+        rental_price?: number
+        sku?: string
+        image_paths?: string[]
+        replacement_cost?: number
+    } | null
+
+    const customer = reservation.profiles as {
+        full_name?: string
+        email?: string
+        company_name?: string
+    } | null
     const status = reservation.status
 
     const isDispatchEditable = status === 'confirmed' || status === 'active'
@@ -161,8 +178,8 @@ export default async function RequestDetailPage(props: Props) {
                                         </div>
                                         <div className="text-right">
                                             <div className={`text-xs px-2 py-1 rounded-full ${sib.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
-                                                    sib.status === 'confirmed' ? 'bg-blue-50 text-blue-700' :
-                                                        'bg-gray-50 text-gray-600'
+                                                sib.status === 'confirmed' ? 'bg-blue-50 text-blue-700' :
+                                                    'bg-gray-50 text-gray-600'
                                                 }`}>
                                                 {sib.status}
                                             </div>

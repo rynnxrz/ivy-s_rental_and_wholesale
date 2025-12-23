@@ -35,7 +35,7 @@ export async function* readStreamableValue<T>(stream: ReadableStream | null | un
     if (!stream) return
 
     // If stream is a ReadableStream (which it should be from our custom impl)
-    if (stream instanceof ReadableStream || (stream && typeof stream.getReader === 'function')) {
+    if (stream instanceof ReadableStream || (stream && typeof (stream as any).getReader === 'function')) {
         const reader = stream.getReader()
         const decoder = new TextDecoder()
         const decodeChunk = (chunk: unknown) => {

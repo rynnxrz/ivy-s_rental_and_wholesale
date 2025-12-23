@@ -42,6 +42,7 @@ interface Item {
     color?: string | null
     is_booked?: boolean
     conflict_dates?: string | null
+    priority?: number | null
 }
 
 interface Category {

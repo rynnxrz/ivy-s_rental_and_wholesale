@@ -119,7 +119,7 @@ export async function fetchImageAsBase64(
  * Supports multiple items with thumbnails.
  */
 export async function generateInvoicePdf(params: GenerateInvoiceParams): Promise<Buffer> {
-    // @ts-expect-error react-pdf types may lag React version; render still works in practice
+
     return await renderToBuffer(<InvoicePdf {...params} />);
 }
 

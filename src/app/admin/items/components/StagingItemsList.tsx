@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition, Fragment, useEffect, useRef } from 'react'
+import { useState, useMemo, useTransition, Fragment, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Trash2, Edit2, Package, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, Sparkles, GripVertical, Terminal, RefreshCw, AlertCircle } from 'lucide-react'

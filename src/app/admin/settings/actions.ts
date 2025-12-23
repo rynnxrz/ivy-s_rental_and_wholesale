@@ -276,13 +276,13 @@ export async function getAISettingsAction() {
         .select(fallbackSelect)
         .single()
 
-    if (legacyError) {
+    if (legacyError || !legacyData) {
         console.error('Failed to fetch AI settings (legacy fallback):', legacyError)
         return null
     }
 
     return {
-        ...legacyData,
+        ...(legacyData as any),
         ai_thinking_category: null,
         ai_thinking_subcategory: null,
         ai_thinking_product_list: null,

@@ -7,8 +7,10 @@ import { sendShippingEmail } from '@/lib/email/sendShippingEmail'
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 
+type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceClient>
+
 // Helper to get settings
-async function getAppSettings(supabase: ReturnType<typeof createClient> | ReturnType<typeof createServiceClient>) {
+async function getAppSettings(supabase: SupabaseClientLike) {
     const { data: settings } = await supabase
         .from('app_settings')
         .select('*')
@@ -17,7 +19,7 @@ async function getAppSettings(supabase: ReturnType<typeof createClient> | Return
 }
 
 // Helper to get a specific billing profile
-async function getBillingProfile(supabase: ReturnType<typeof createClient> | ReturnType<typeof createServiceClient>, profileId: string) {
+async function getBillingProfile(supabase: SupabaseClientLike, profileId: string) {
     const { data: profile } = await supabase
         .from('billing_profiles')
         .select('*')
@@ -315,9 +317,16 @@ export async function approveReservation(reservationId: string, profileId: strin
 
     // Use the first reservation for customer details (assumes same customer for group)
     const primaryRes = groupReservations[0]
-    const customer = Array.isArray((primaryRes as { profiles?: unknown }).profiles)
-        ? (primaryRes as { profiles: unknown[] }).profiles[0]
-        : (primaryRes as { profiles?: unknown }).profiles
+    // Define customer shape
+    type DbCustomer = {
+        full_name: string
+        email: string
+        company_name: string
+    }
+    type DbProfileRes = { profiles?: DbCustomer | DbCustomer[] }
+
+    const customerRaw = (primaryRes as DbProfileRes).profiles
+    const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw
 
     // 6. Build Invoice Items List
     const invoiceItems: InvoiceItem[] = []
@@ -325,7 +334,14 @@ export async function approveReservation(reservationId: string, profileId: strin
     const invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
 
     for (const res of groupReservations) {
-        const item = (res as { items?: InvoiceItem }).items
+        // Define shape of item from DB
+        type DbItem = {
+            name: string
+            sku: string
+            rental_price: number
+            image_paths: string[] | null
+        }
+        const item = (res as { items?: DbItem }).items
         const start = new Date(res.start_date)
         const end = new Date(res.end_date)
         const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
@@ -385,8 +401,8 @@ export async function approveReservation(reservationId: string, profileId: strin
         const totalDays = Math.round((new Date(primaryRes.end_date).getTime() - new Date(primaryRes.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
 
         await sendApprovalEmail({
-            toIndices: [customer?.email],
-            customerName: customer?.full_name,
+            toIndices: [customer?.email ?? ''],
+            customerName: customer?.full_name ?? 'Customer',
             itemName: invoiceItems.length > 1 ? `${invoiceItems.length} Items (Group Order)` : invoiceItems[0].name,
             startDate: startStr,
             endDate: endStr,
@@ -483,21 +499,29 @@ export async function markAsShipped(reservationId: string) {
 
     // 5. Send Email with attachments
     const settings = await getAppSettings(supabase)
-    const customer = Array.isArray((reservation as { profiles?: unknown }).profiles)
-        ? (reservation as { profiles: { email?: string; full_name?: string }[] }).profiles[0]
-        : (reservation as { profiles?: { email?: string; full_name?: string } }).profiles
-    const item = (reservation as { items?: { name?: string; rental_price?: number; sku?: string } }).items
+    type DbCustomer = {
+        full_name: string
+        email: string
+    }
+    type DbItem = {
+        name: string
+    }
+
+    const customerRaw = (reservation as { profiles?: DbCustomer | DbCustomer[] }).profiles
+    const customer = (Array.isArray(customerRaw) ? customerRaw[0] : customerRaw) as DbCustomer | undefined
+
+    const item = (reservation as { items?: DbItem }).items as DbItem | undefined
 
     try {
         await sendShippingEmail({
-            toIndices: [customer?.email],
-            customerName: customer?.full_name,
-            itemName: item?.name,
+            toIndices: [customer?.email ?? ''],
+            customerName: customer?.full_name ?? 'Customer',
+            itemName: item?.name ?? 'Item',
             startDate: format(new Date(reservation.start_date), 'MMM dd, yyyy'),
             endDate: format(new Date(reservation.end_date), 'MMM dd, yyyy'),
             reservationId: reservation.id,
             attachments,
-            companyName: settings?.company_name,
+            companyName: settings?.company_name ?? undefined,
             replyTo: settings?.contact_email || undefined,
             customSubject: settings?.email_shipping_subject || undefined,
             customBody: settings?.email_shipping_body || undefined,
