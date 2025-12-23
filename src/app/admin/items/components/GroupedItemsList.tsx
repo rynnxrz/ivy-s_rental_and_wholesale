@@ -4,7 +4,7 @@ import { useState, useMemo, Fragment } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation' // Added useRouter
-import { ChevronDown, ChevronRight, Edit, Package, RefreshCw, AlertTriangle, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Edit, Package, RefreshCw, AlertTriangle, AlertCircle, Sparkles, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
@@ -79,7 +79,8 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         setOpenGroups(newOpenGroups)
     }
 
-    const [activeTab, setActiveTab] = useState<'all' | 'active' | 'maintenance' | 'retired'>('all')
+    const [activeTab, setActiveTab] = useState<'all' | 'active' | 'maintenance' | 'retired' | 'ai-imported'>('all')
+    const [aiFilter, setAiFilter] = useState<'all' | 'ai-only' | 'manual-only'>('all')
 
     const filteredGroups = useMemo(() => {
         // First group all items by name (already done in filteredItems/groupedItems but let's re-use that logic if possible or filter post-grouping)
@@ -98,11 +99,20 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         // This ensures if I select "Active", I only see Active variants. If a product has no active variants, the group disappears.
 
         const filteredItems = initialItems.filter(item => {
-            if (activeTab === 'all') return item.status !== 'retired'
-            if (activeTab === 'active') return item.status === 'active'
-            if (activeTab === 'maintenance') return item.status === 'maintenance'
-            if (activeTab === 'retired') return item.status === 'retired'
-            return true
+            // Status filter
+            let statusMatch = true
+            if (activeTab === 'all') statusMatch = item.status !== 'retired'
+            else if (activeTab === 'active') statusMatch = item.status === 'active'
+            else if (activeTab === 'maintenance') statusMatch = item.status === 'maintenance'
+            else if (activeTab === 'retired') statusMatch = item.status === 'retired'
+            else if (activeTab === 'ai-imported') statusMatch = item.is_ai_generated === true && item.status !== 'retired'
+
+            // AI filter
+            let aiMatch = true
+            if (aiFilter === 'ai-only') aiMatch = item.is_ai_generated === true
+            else if (aiFilter === 'manual-only') aiMatch = item.is_ai_generated !== true
+
+            return statusMatch && aiMatch
         })
 
         // Now Group them
@@ -137,7 +147,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
             if (b.maxPriority !== a.maxPriority) return b.maxPriority - a.maxPriority
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         })
-    }, [initialItems, categories, collections, activeTab])
+    }, [initialItems, categories, collections, activeTab, aiFilter])
 
     const handleSync = async (groupName: string, items: Item[]) => {
         setSyncingGroup(groupName)
@@ -160,8 +170,8 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
 
     return (
         <div className="space-y-6">
-            {/* Tabs */}
-            <div className="border-b border-slate-200">
+            {/* Tabs and Filters */}
+            <div className="flex items-center justify-between border-b border-slate-200">
                 <nav className="flex gap-6">
                     <button
                         onClick={() => setActiveTab('all')}
@@ -199,7 +209,31 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                     >
                         Retired / Deleted
                     </button>
+                    <button
+                        onClick={() => setActiveTab('ai-imported')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${activeTab === 'ai-imported'
+                            ? 'border-purple-600 text-purple-700'
+                            : 'border-transparent text-slate-500 hover:text-purple-600 hover:border-purple-300'
+                            }`}
+                    >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        AI Imported
+                    </button>
                 </nav>
+
+                {/* AI Filter */}
+                <div className="flex items-center gap-2 pb-3">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <select
+                        value={aiFilter}
+                        onChange={(e) => setAiFilter(e.target.value as typeof aiFilter)}
+                        className="text-sm border-0 bg-transparent focus:ring-0 text-muted-foreground cursor-pointer"
+                    >
+                        <option value="all">All Sources</option>
+                        <option value="ai-only">AI Imported</option>
+                        <option value="manual-only">Manual Entry</option>
+                    </select>
+                </div>
             </div>
 
             {/* List */}
@@ -209,7 +243,8 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                     <h3 className="mt-4 text-base font-medium text-slate-900">
                         {activeTab === 'maintenance' ? 'No items currently in maintenance.' :
                             activeTab === 'retired' ? 'No retired items.' :
-                                'No items found.'}
+                                activeTab === 'ai-imported' ? 'No AI imported items found.' :
+                                    'No items found.'}
                     </h3>
                 </div>
             ) : (
@@ -246,6 +281,14 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                         <TableCell className="font-medium">
                                             <div className="flex items-center gap-2">
                                                 <span className={activeTab === 'retired' ? 'text-slate-500' : ''}>{group.name}</span>
+
+                                                {/* AI Generated badge */}
+                                                {group.items.some(i => i.is_ai_generated) && (
+                                                    <Badge variant="secondary" className="h-5 px-1 text-[10px] bg-purple-100 text-purple-700">
+                                                        <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                                                        AI
+                                                    </Badge>
+                                                )}
 
                                                 {/* Only show warnings if NOT in retired tab */}
                                                 {activeTab !== 'retired' && isAdmin && !group.collectionName && (

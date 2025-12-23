@@ -62,6 +62,10 @@ interface ItemFormProps {
     mode: 'create' | 'edit'
     categories: Category[]
     collections: Collection[]
+    isStaging?: boolean
+    onSubmitOverride?: (data: ItemFormData & { image_paths: string[] }) => Promise<{ success: boolean; error?: string }>
+    initialData?: Partial<ItemFormData> & { image_paths?: string[] }
+    onCancel?: () => void
 }
 
 const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
@@ -70,10 +74,19 @@ const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
     { value: 'retired', label: 'Retired' },
 ]
 
-export const ItemForm = ({ item, mode, categories: initialCategories, collections: initialCollections }: ItemFormProps) => {
+export const ItemForm = ({
+    item,
+    mode,
+    categories: initialCategories,
+    collections: initialCollections,
+    isStaging = false,
+    onSubmitOverride,
+    initialData,
+    onCancel
+}: ItemFormProps) => {
     const router = useRouter()
     const [isSubmitting, startSubmitting] = useTransition()
-    const [images, setImages] = useState<string[]>(item?.image_paths ?? [])
+    const [images, setImages] = useState<string[]>(initialData?.image_paths ?? item?.image_paths ?? [])
     const [specs, setSpecs] = useState<ItemSpecs>(
         (item?.specs as ItemSpecs) ?? {}
     )
@@ -99,18 +112,18 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
     } = useForm<ItemFormData>({
         resolver: zodResolver(itemSchema) as any,
         defaultValues: {
-            sku: item?.sku ?? '',
-            name: item?.name ?? '',
-            description: item?.description ?? '',
-            category_id: item?.category_id ?? '',
-            collection_id: item?.collection_id ?? '',
-            material: item?.material ?? '',
-            weight: item?.weight ?? '',
-            color: item?.color ?? '',
-            category: item?.category ?? '',
-            rental_price: item?.rental_price ?? 0,
-            replacement_cost: item?.replacement_cost ?? 0,
-            status: item?.status ?? 'active',
+            sku: initialData?.sku ?? item?.sku ?? '',
+            name: initialData?.name ?? item?.name ?? '',
+            description: initialData?.description ?? item?.description ?? '',
+            category_id: initialData?.category_id ?? item?.category_id ?? '',
+            collection_id: initialData?.collection_id ?? item?.collection_id ?? '',
+            material: initialData?.material ?? item?.material ?? '',
+            weight: initialData?.weight ?? item?.weight ?? '',
+            color: initialData?.color ?? item?.color ?? '',
+            category: initialData?.category ?? item?.category ?? '',
+            rental_price: initialData?.rental_price ?? item?.rental_price ?? 0,
+            replacement_cost: initialData?.replacement_cost ?? item?.replacement_cost ?? 0,
+            status: (initialData?.status as ItemFormData['status']) ?? item?.status ?? 'active',
         },
     })
 
@@ -207,14 +220,30 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                         ...data,
                         image_paths: images,
                         specs,
-                        description: data.description || null,
-                        category_id: data.category_id || null,
-                        collection_id: data.collection_id || null,
-                        material: data.material || null,
-                        weight: data.weight || null,
-                        color: data.color || null,
+                        description: data.description || undefined,
+                        category_id: data.category_id || undefined,
+                        collection_id: data.collection_id || undefined,
+                        material: data.material || undefined,
+                        weight: data.weight || undefined,
+                        color: data.color || undefined,
                         // Ensure category string is synced if category_id represents a known category
-                        category: data.category || (data.category_id ? categories.find(c => c.id === data.category_id)?.name : null)
+                        category: data.category || (data.category_id ? categories.find(c => c.id === data.category_id)?.name : undefined)
+                    }
+
+                    if (isStaging && onSubmitOverride) {
+                        const result = await onSubmitOverride({
+                            ...itemData,
+                            category_id: data.category_id, // Ensure optional fields are passed
+                            collection_id: data.collection_id,
+                            image_paths: images
+                        })
+
+                        if (result.success) {
+                            toast.success("Item updated in staging")
+                        } else {
+                            toast.error(result.error || "Failed to update item")
+                        }
+                        return
                     }
 
                     let result
@@ -503,6 +532,8 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                                     </button>
                                 </div>
                             ))}
+                            {/* Only allow uploads if not in staging mode (or implement staging uploads later) */}
+                            {/* Staging usually has external URLs, but we could allow uploads if needed. keeping enabled for now. */}
                             <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400">
                                 <input
                                     type="file"
@@ -524,48 +555,50 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     </CardContent>
                 </Card>
 
-                {/* Specs */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>Specifications</CardTitle>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={addSpec}
-                        >
-                            <Plus className="mr-1 h-4 w-4" />
-                            Add Spec
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {Object.entries(specs).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2">
-                                <Label className="w-24 shrink-0 text-sm capitalize">
-                                    {key}
-                                </Label>
-                                <Input
-                                    value={value ?? ''}
-                                    onChange={(e) => updateSpec(key, e.target.value)}
-                                    placeholder={`Enter ${key}...`}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeSpec(key)}
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        ))}
-                        {Object.keys(specs).length === 0 && (
-                            <p className="text-sm text-muted-foreground">
-                                No specifications added yet. Click &quot;Add Spec&quot; to add size, carat, etc.
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
+                {/* Specs - Hidden in Staging Mode as staging_items tokens usually don't support custom specs yet */}
+                {!isStaging && (
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <CardTitle>Specifications</CardTitle>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addSpec}
+                            >
+                                <Plus className="mr-1 h-4 w-4" />
+                                Add Spec
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {Object.entries(specs).map(([key, value]) => (
+                                <div key={key} className="flex items-center gap-2">
+                                    <Label className="w-24 shrink-0 text-sm capitalize">
+                                        {key}
+                                    </Label>
+                                    <Input
+                                        value={value ?? ''}
+                                        onChange={(e) => updateSpec(key, e.target.value)}
+                                        placeholder={`Enter ${key}...`}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeSpec(key)}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                            {Object.keys(specs).length === 0 && (
+                                <p className="text-sm text-muted-foreground">
+                                    No specifications added yet. Click &quot;Add Spec&quot; to add size, carat, etc.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             {/* Actions */}
@@ -575,39 +608,58 @@ export const ItemForm = ({ item, mode, categories: initialCategories, collection
                     variant="outline"
                     disabled={isSubmitting}
                     onClick={() => {
+                        if (onCancel) {
+                            onCancel()
+                            return
+                        }
+
                         if (isAddingVariation) {
                             // Confirm before leaving if variants were added
                             if (confirm("Your previously saved variants are safe. Do you want to stop adding more?")) {
                                 router.push('/admin/items')
                             }
                         } else {
-                            router.push('/admin/items')
+                            if (isStaging && onSubmitOverride) {
+                                // Close dialog if in staging mode (handled by parent usually, but this button is type=button, parent needs to handle close)
+                                // Actually, cancel button in StagingItemsList calls onClose. 
+                                // But here we are inside ItemForm. 
+                                // We might need an onCancel prop.
+                                // iterating: StagingItemsList renders this in a Dialog. 
+                                // The Cancel button here just calls router.push which is BAD for a Dialog.
+                                // We should accept an onCancel prop.
+                            } else {
+                                router.push('/admin/items')
+                            }
                         }
                     }}
                 >
                     Cancel
                 </Button>
 
-                {/* Save and Add Variation Button */}
-                <Button
-                    type="submit"
-                    variant="secondary"
-                    disabled={isSubmitting}
-                    onClick={() => setIsCloneAfterSave(true)}
-                    className="gap-2"
-                    title="Save current item and clone it as a new variation"
-                >
-                    {isSubmitting && isCloneAfterSave ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    {isSubmitting && isCloneAfterSave ? 'Processing...' : (isAddingVariation ? 'Save & Add Another Color' : 'Save & Add Variation')}
-                </Button>
+                {/* Save and Add Variation Button - Hidden in Staging */}
+                {!isStaging && (
+                    <Button
+                        type="submit"
+                        variant="secondary"
+                        disabled={isSubmitting}
+                        onClick={() => setIsCloneAfterSave(true)}
+                        className="gap-2"
+                        title="Save current item and clone it as a new variation"
+                    >
+                        {isSubmitting && isCloneAfterSave ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {isSubmitting && isCloneAfterSave ? 'Processing...' : (isAddingVariation ? 'Save & Add Another Color' : 'Save & Add Variation')}
+                    </Button>
+                )}
 
                 <Button type="submit" disabled={isSubmitting} onClick={() => setIsCloneAfterSave(false)}>
                     {isSubmitting && !isCloneAfterSave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isSubmitting && !isCloneAfterSave
                         ? 'Processing...'
-                        : (isAddingVariation || mode === 'create')
-                            ? (isAddingVariation ? 'Save & Finish' : 'Create Product')
-                            : 'Update Item'}
+                        : isStaging
+                            ? 'Save Changes'
+                            : (isAddingVariation || mode === 'create')
+                                ? (isAddingVariation ? 'Save & Finish' : 'Create Product')
+                                : 'Update Item'}
                 </Button>
             </div>
         </form>

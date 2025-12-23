@@ -16,6 +16,8 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
+          ai_import_prompt: string | null
+          ai_model: string | null
           bank_info: string | null
           booking_password: string | null
           company_name: string | null
@@ -34,6 +36,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          ai_import_prompt?: string | null
+          ai_model?: string | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -52,6 +56,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          ai_import_prompt?: string | null
+          ai_model?: string | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -152,6 +158,48 @@ export type Database = {
         }
         Relationships: []
       }
+      import_jobs: {
+        Row: {
+          agent_logs: Json | null
+          category_mapping: Json | null
+          created_at: string
+          current_collection_index: number | null
+          id: string
+          last_raw_scrape: string | null
+          processed_urls: Json | null
+          shop_url: string
+          staging_products: Json | null
+          status: Database["public"]["Enums"]["import_job_status"]
+          updated_at: string
+        }
+        Insert: {
+          agent_logs?: Json | null
+          category_mapping?: Json | null
+          created_at?: string
+          current_collection_index?: number | null
+          id?: string
+          last_raw_scrape?: string | null
+          processed_urls?: Json | null
+          shop_url: string
+          staging_products?: Json | null
+          status?: Database["public"]["Enums"]["import_job_status"]
+          updated_at?: string
+        }
+        Update: {
+          agent_logs?: Json | null
+          category_mapping?: Json | null
+          created_at?: string
+          current_collection_index?: number | null
+          id?: string
+          last_raw_scrape?: string | null
+          processed_urls?: Json | null
+          shop_url?: string
+          staging_products?: Json | null
+          status?: Database["public"]["Enums"]["import_job_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       items: {
         Row: {
           category: string | null
@@ -162,6 +210,9 @@ export type Database = {
           description: string | null
           id: string
           image_paths: string[] | null
+          import_batch_id: string | null
+          is_ai_generated: boolean | null
+          is_ai_imported: boolean | null
           material: string | null
           name: string
           owner_id: string | null
@@ -169,6 +220,7 @@ export type Database = {
           rental_price: number
           replacement_cost: number
           sku: string | null
+          source_url: string | null
           specs: Json | null
           status: string | null
           weight: string | null
@@ -182,6 +234,9 @@ export type Database = {
           description?: string | null
           id?: string
           image_paths?: string[] | null
+          import_batch_id?: string | null
+          is_ai_generated?: boolean | null
+          is_ai_imported?: boolean | null
           material?: string | null
           name: string
           owner_id?: string | null
@@ -189,6 +244,7 @@ export type Database = {
           rental_price: number
           replacement_cost?: number
           sku?: string | null
+          source_url?: string | null
           specs?: Json | null
           status?: string | null
           weight?: string | null
@@ -202,6 +258,9 @@ export type Database = {
           description?: string | null
           id?: string
           image_paths?: string[] | null
+          import_batch_id?: string | null
+          is_ai_generated?: boolean | null
+          is_ai_imported?: boolean | null
           material?: string | null
           name?: string
           owner_id?: string | null
@@ -209,6 +268,7 @@ export type Database = {
           rental_price?: number
           replacement_cost?: number
           sku?: string | null
+          source_url?: string | null
           specs?: Json | null
           status?: string | null
           weight?: string | null
@@ -370,6 +430,164 @@ export type Database = {
           },
         ]
       }
+      staging_imports: {
+        Row: {
+          created_at: string | null
+          current_category: string | null
+          id: string
+          items_scraped: number | null
+          items_total: number | null
+          last_scanned_index: number | null
+          product_urls: string[] | null
+          source_url: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_category?: string | null
+          id?: string
+          items_scraped?: number | null
+          items_total?: number | null
+          last_scanned_index?: number | null
+          product_urls?: string[] | null
+          source_url: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_category?: string | null
+          id?: string
+          items_scraped?: number | null
+          items_total?: number | null
+          last_scanned_index?: number | null
+          product_urls?: string[] | null
+          source_url?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
+      staging_items: {
+        Row: {
+          category_id: string | null
+          collection_id: string | null
+          color: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          image_urls: string[] | null
+          import_batch_id: string | null
+          is_variant: boolean | null
+          material: string | null
+          name: string
+          parent_product_id: string | null
+          rental_price: number | null
+          replacement_cost: number | null
+          review_notes: string | null
+          sku: string | null
+          source_url: string | null
+          status: string | null
+          variant_of_name: string | null
+          weight: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          collection_id?: string | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_urls?: string[] | null
+          import_batch_id?: string | null
+          is_variant?: boolean | null
+          material?: string | null
+          name: string
+          parent_product_id?: string | null
+          rental_price?: number | null
+          replacement_cost?: number | null
+          review_notes?: string | null
+          sku?: string | null
+          source_url?: string | null
+          status?: string | null
+          variant_of_name?: string | null
+          weight?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          collection_id?: string | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_urls?: string[] | null
+          import_batch_id?: string | null
+          is_variant?: boolean | null
+          material?: string | null
+          name?: string
+          parent_product_id?: string | null
+          rental_price?: number | null
+          replacement_cost?: number | null
+          review_notes?: string | null
+          sku?: string | null
+          source_url?: string | null
+          status?: string | null
+          variant_of_name?: string | null
+          weight?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staging_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_items_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_items_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            isOneToOne: false
+            referencedRelation: "staging_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_items_parent_product_id_fkey"
+            columns: ["parent_product_id"]
+            isOneToOne: false
+            referencedRelation: "staging_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staging_products: {
+        Row: {
+          created_at: string | null
+          id: string
+          raw_data: Json | null
+          source_url: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          raw_data?: Json | null
+          source_url?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          raw_data?: Json | null
+          source_url?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -384,6 +602,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      commit_staging_batch: {
+        Args: { p_batch_id: string }
+        Returns: {
+          error_message: string
+          imported_count: number
+        }[]
+      }
       get_available_items: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: {
@@ -395,6 +620,9 @@ export type Database = {
           description: string | null
           id: string
           image_paths: string[] | null
+          import_batch_id: string | null
+          is_ai_generated: boolean | null
+          is_ai_imported: boolean | null
           material: string | null
           name: string
           owner_id: string | null
@@ -402,6 +630,7 @@ export type Database = {
           rental_price: number
           replacement_cost: number
           sku: string | null
+          source_url: string | null
           specs: Json | null
           status: string | null
           weight: string | null
@@ -445,6 +674,7 @@ export type Database = {
       restore_reservation: { Args: { p_reservation_id: string }; Returns: Json }
     }
     Enums: {
+      import_job_status: "pending" | "processing" | "completed" | "failed"
       reservation_status:
         | "pending"
         | "confirmed"
@@ -579,6 +809,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      import_job_status: ["pending", "processing", "completed", "failed"],
       reservation_status: [
         "pending",
         "confirmed",
