@@ -90,10 +90,24 @@ export function useAIWorkflow(): UseAIWorkflowReturn {
             message
         }
 
-        setState(prev => ({
-            ...prev,
-            logs: [...prev.logs, entry]
-        }))
+        // Check if previous log was loading and should be marked as done
+        setState(prev => {
+            const newLogs = [...prev.logs]
+            if (newLogs.length > 0) {
+                const lastIndex = newLogs.length - 1
+                const lastLog = newLogs[lastIndex]
+
+                // If the last log was 'loading', assume it completed successfully as we're moving to a new step
+                if (lastLog.type === 'loading') {
+                    newLogs[lastIndex] = { ...lastLog, type: 'success' }
+                }
+            }
+
+            return {
+                ...prev,
+                logs: [...newLogs, entry]
+            }
+        })
     }, [])
 
     /**

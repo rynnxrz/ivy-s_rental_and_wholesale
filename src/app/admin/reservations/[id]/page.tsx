@@ -38,7 +38,7 @@ export default async function RequestDetailPage(props: Props) {
     }
 
     // Fetch Group Siblings
-    let groupItems: any[] = []
+    let groupItems: { start_date: string; end_date: string; items?: { name?: string; rental_price?: number; image_paths?: string[] }; id: string; status: string }[] = []
     if (reservation.group_id) {
         const { data: siblings } = await supabase
             .from('reservations')
@@ -76,10 +76,8 @@ export default async function RequestDetailPage(props: Props) {
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
 
-    // @ts-ignore
-    const item = reservation.items
-    // @ts-ignore
-    const customer = reservation.profiles
+    const item = reservation.items as { name?: string; rental_price?: number; sku?: string } | null
+    const customer = reservation.profiles as { full_name?: string; email?: string } | null
     const status = reservation.status
 
     const isDispatchEditable = status === 'confirmed' || status === 'active'

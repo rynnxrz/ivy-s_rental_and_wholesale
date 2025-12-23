@@ -335,7 +335,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                             <DialogTitle>Sync Variants</DialogTitle>
                                                             <DialogDescription>
                                                                 This will update all <strong>{group.items.length - 1}</strong> other variants of
-                                                                "<strong>{group.name}</strong>" to match the latest Material and Collection settings.
+                                                                &quot;<strong>{group.name}</strong>&quot; to match the latest Material and Collection settings.
                                                             </DialogDescription>
                                                         </DialogHeader>
                                                         <div className="py-2 text-sm text-slate-600">

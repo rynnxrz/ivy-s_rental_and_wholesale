@@ -76,7 +76,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
         : reservations
 
     // Grouping Logic
-    const groups: Record<string, any[]> = {}
+    const groups: Record<string, typeof filteredReservations> = {}
 
         ; (filteredReservations || []).forEach(r => {
             // If no group_id, treat as unique group using its own ID
@@ -161,7 +161,20 @@ function FilterTab({ label, active, href }: { label: string, active: boolean, hr
     )
 }
 
-function ReservationsTable({ groups, billingProfiles }: { groups: any[][], billingProfiles: any[] }) {
+type ReservationGroup = {
+    id: string
+    status: string
+    start_date: string
+    end_date: string
+    created_at: string
+    group_id: string | null
+    items?: { name?: string; sku?: string; image_paths?: string[]; rental_price?: number }
+    profiles?: { full_name?: string; email?: string; city_region?: string }
+    shipping?: { status?: string }
+    billing_profile_id?: string | null
+}[]
+
+function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGroup[], billingProfiles: { id: string; profile_name?: string }[] }) {
     if (groups.length === 0) {
         return (
             <div className="p-12 text-center text-slate-400">
@@ -404,4 +417,3 @@ function StatusBadge({ status }: { status: string }) {
         </div>
     )
 }
-

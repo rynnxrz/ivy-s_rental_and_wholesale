@@ -26,10 +26,10 @@ export async function GET() {
             message: 'Column verification passed: replacement_cost exists',
             data
         })
-    } catch (e: any) {
+    } catch (e: unknown) {
         return NextResponse.json({
             status: 'fatal_error',
-            message: e.message
+            message: e instanceof Error ? e.message : 'Unknown error'
         }, { status: 500 })
     }
 }

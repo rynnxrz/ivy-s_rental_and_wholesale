@@ -31,28 +31,52 @@ export function createStreamableValue<T>(initialValue?: T) {
 }
 
 // Client-side reader (to be used in client components)
-export async function* readStreamableValue<T>(stream: any): AsyncGenerator<T> {
+export async function* readStreamableValue<T>(stream: ReadableStream | null | undefined): AsyncGenerator<T> {
     if (!stream) return
 
     // If stream is a ReadableStream (which it should be from our custom impl)
     if (stream instanceof ReadableStream || (stream && typeof stream.getReader === 'function')) {
         const reader = stream.getReader()
         const decoder = new TextDecoder()
+        const decodeChunk = (chunk: unknown) => {
+            if (typeof chunk === 'string') return chunk
+            if (chunk instanceof Uint8Array) return decoder.decode(chunk, { stream: true })
+            if (chunk instanceof ArrayBuffer) return decoder.decode(new Uint8Array(chunk), { stream: true })
+            if (ArrayBuffer.isView(chunk)) {
+                const view = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+                return decoder.decode(view, { stream: true })
+            }
+            return ''
+        }
+        let pending = ''
 
         try {
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
 
-                const text = decoder.decode(value, { stream: true })
-                const lines = text.split('\n').filter(line => line.trim() !== '')
+                const text = decodeChunk(value)
+                pending += text
+
+                const lines = pending.split('\n')
+                pending = lines.pop() ?? ''
 
                 for (const line of lines) {
+                    if (!line.trim()) continue
                     try {
                         yield JSON.parse(line) as T
-                    } catch (e) {
+                    } catch {
                         // Ignore parse errors for partial chunks
                     }
+                }
+            }
+
+            // Flush any trailing buffered data
+            if (pending.trim()) {
+                try {
+                    yield JSON.parse(pending) as T
+                } catch {
+                    // Ignore if final chunk is incomplete
                 }
             }
         } finally {

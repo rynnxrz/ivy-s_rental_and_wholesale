@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useCallback } from 'react'
+import { useState, useTransition, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,14 +11,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Loader2, Sparkles, ExternalLink, Check, Package, Search, Settings, Zap } from 'lucide-react'
+import { ArrowLeft, Loader2, Sparkles, ExternalLink, Check, Search, Settings, Zap } from 'lucide-react'
 import {
-    extractCategoriesAction,
     extractCategoriesStreamAction, // NEW: Streaming version
     ExtractedCategory,
     createStagingBatchAction,
-    quickScanAction,
     quickScanStreamAction, // NEW: Streaming version
+    autoCategorizeStagingItemsAction,
     getStagingItemsAction,
     getAvailableModelsAction,
     exploreSubCategoriesAction,
@@ -32,7 +31,7 @@ import { toast } from 'sonner'
 import type { StagingItem } from '@/types'
 import { GEMINI_MODELS } from '@/types'
 import { useAIWorkflow } from '@/hooks/useAIWorkflow'
-import type { AIWorkflowState } from '@/hooks/useAIWorkflow'
+import type { AIWorkflowState, LogEntry } from '@/hooks/useAIWorkflow'
 import { AIStatusConsole } from '@/components/admin/AIStatusConsole'
 
 
@@ -73,6 +72,14 @@ type QuickScanChunk =
     | { type: 'log'; message: string }
     | { type: 'result'; success: boolean; itemsFound: number; error?: string }
 
+type RunHistoryEntry = {
+    id: string
+    url: string
+    finishedAt: Date
+    status: AIWorkflowState['status']
+    logs: LogEntry[]
+}
+
 export function AIImportPanel({ categories, collections, onClose }: AIImportPanelProps) {
     const [url, setUrl] = useState('')
     const [isPending, startTransition] = useTransition()
@@ -86,24 +93,33 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         promptCategory: string | null
         promptSubcategory: string | null
         promptProductList: string | null
+        promptQuickList: string | null
         promptProductDetail: string | null
+        thinkingCategory: string | null
+        thinkingSubcategory: string | null
+        thinkingProductList: string | null
+        thinkingProductDetail: string | null
+        promptHistory?: Record<string, string[]>
     }>({
         selectedModel: 'gemini-2.0-flash',
         promptCategory: null,
         promptSubcategory: null,
         promptProductList: null,
-        promptProductDetail: null
+        promptQuickList: null,
+        promptProductDetail: null,
+        thinkingCategory: null,
+        thinkingSubcategory: null,
+        thinkingProductList: null,
+        thinkingProductDetail: null,
+        promptHistory: {}
     })
 
     // Dynamic model list state
     const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
-    const [isLoadingModels, setIsLoadingModels] = useState(true)
 
     // Fetch available models on mount
     useEffect(() => {
         const fetchModelsAndSettings = async () => {
-            setIsLoadingModels(true)
-
             // Fetch models
             const modelsResult = await getAvailableModelsAction()
             if (modelsResult.success && modelsResult.models.length > 0) {
@@ -125,12 +141,16 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     promptCategory: settings.ai_prompt_category,
                     promptSubcategory: settings.ai_prompt_subcategory,
                     promptProductList: settings.ai_prompt_product_list,
-                    promptProductDetail: settings.ai_prompt_product_detail
+                    promptQuickList: settings.ai_prompt_quick_list,
+                    promptProductDetail: settings.ai_prompt_product_detail,
+                    thinkingCategory: settings.ai_thinking_category,
+                    thinkingSubcategory: settings.ai_thinking_subcategory,
+                    thinkingProductList: settings.ai_thinking_product_list,
+                    thinkingProductDetail: settings.ai_thinking_product_detail,
+                    promptHistory: (settings && 'prompt_history' in settings ? (settings as { prompt_history?: Record<string, string[]> }).prompt_history : {}) || {}
                 })
                 setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
             }
-
-            setIsLoadingModels(false)
         }
         fetchModelsAndSettings()
     }, [])
@@ -141,6 +161,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
     const [batchId, setBatchId] = useState<string | null>(null)
     const [stagingItems, setStagingItems] = useState<StagingItem[]>([])
     const [isScanning, setIsScanning] = useState(false)
+    const [isClassifying, setIsClassifying] = useState(false)
+    const [classifySummary, setClassifySummary] = useState<string | null>(null)
 
     // AI Workflow state (replaces simple loadingStep)
     const {
@@ -151,8 +173,43 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setStatus,
         reset: resetAIWorkflow,
         setUsage,
-        appendToLastLog // NEW: For streaming text
-    } = useAIWorkflow()
+    appendToLastLog // NEW: For streaming text
+} = useAIWorkflow()
+
+    const [consoleOpen, setConsoleOpen] = useState(false)
+    const [currentRunId, setCurrentRunId] = useState<string | null>(null)
+    const [currentRunUrl, setCurrentRunUrl] = useState<string | null>(null)
+    const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>([])
+    const [activeRunId, setActiveRunId] = useState<string | null>(null)
+    const aiStateRef = useRef(aiState)
+
+    useEffect(() => {
+        aiStateRef.current = aiState
+    }, [aiState])
+
+    useEffect(() => {
+        if (!activeRunId && runHistory.length > 0) {
+            setActiveRunId(runHistory[0].id)
+        }
+    }, [runHistory, activeRunId])
+
+    const archiveRun = useCallback((status: AIWorkflowState['status']) => {
+        const id = currentRunId || `run-${Date.now()}`
+        const snapshot: RunHistoryEntry = {
+            id,
+            url: currentRunUrl || url,
+            finishedAt: new Date(),
+            status,
+            logs: [...aiStateRef.current.logs]
+        }
+
+        setRunHistory(prev => {
+            const filtered = prev.filter(r => r.id !== id)
+            return [snapshot, ...filtered].slice(0, 10)
+        })
+        setActiveRunId(id)
+        setConsoleOpen(false)
+    }, [currentRunId, currentRunUrl, url])
 
     // Loading step messages (kept for backward compatibility)
     const [loadingStep, setLoadingStep] = useState<string>('')
@@ -163,8 +220,15 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             return
         }
 
+        setClassifySummary(null)
+
         // Reset and prepare console
         resetAIWorkflow()
+        const newRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        setCurrentRunId(newRunId)
+        setActiveRunId(newRunId)
+        setCurrentRunUrl(url)
+        setConsoleOpen(true)
 
         startTransition(async () => {
             // Extract domain for display
@@ -213,6 +277,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     addLog(`Analysis failed: ${scanError}`, 'error', 'Error')
                     toast.error(scanError || 'Failed to extract categories')
                     setStatus('error')
+                    archiveRun('error')
                     return
                 }
 
@@ -220,6 +285,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     addLog('No categories found on this page', 'warning', 'Discovery')
                     toast.warning('No categories found on this page')
                     setStatus('idle')
+                    archiveRun('idle')
                     return
                 }
 
@@ -253,11 +319,13 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                 setExtractedCategories(mappings)
                 setHasExtracted(true)
                 toast.success(`Found ${categoriesResult.length} categories`)
+                archiveRun('success')
 
             } catch (error) {
                 console.error("Extraction Stream failed:", error)
                 addLog(`Stream error: ${error}`, 'error', 'Error')
                 setStatus('error')
+                archiveRun('error')
             }
         })
     }
@@ -277,6 +345,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             return
         }
 
+        setClassifySummary(null)
+
         // Reset and prepare console for scan
         resetAIWorkflow()
         setStatus('analyzing')
@@ -284,7 +354,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setBatchId(null)
         setViewMode('scanning')
         setIsScanning(true)
-        setLoadingStep(`Scanning ${selectedCategories.length} category pages with AI...`)
+        setLoadingStep(`Speed scanning ${selectedCategories.length} category pages...`)
 
         // Create batch in background
         const { batchId: newBatchId, error } = await createStagingBatchAction(url)
@@ -362,7 +432,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                 addLog('Products ready for review and grouping', 'info', 'Logic')
             }
 
-            toast.success(`Found ${itemsFound} items (quick scan)`)
+            toast.success(`Found ${itemsFound} items (speed scan)`)
 
             // Allow user to read the logs before switching
             await new Promise(resolve => setTimeout(resolve, 2000))
@@ -378,6 +448,30 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             setIsScanning(false)
         }
 
+    }
+
+    const handleAutoCategorize = async () => {
+        if (!batchId) {
+            toast.error('No active batch to categorize')
+            return
+        }
+
+        setIsClassifying(true)
+        setClassifySummary(null)
+
+        const result = await autoCategorizeStagingItemsAction(batchId, selectedModel)
+        setIsClassifying(false)
+
+        if (!result.success) {
+            toast.error(result.error || 'AI 分类失败')
+            return
+        }
+
+        setClassifySummary(`已更新 ${result.updatedCount} 条，未匹配 ${result.unmatched.length} 条`)
+        toast.success(`AI 分类完成：${result.updatedCount} 条已匹配`)
+
+        const { data } = await getStagingItemsAction(batchId)
+        setStagingItems(data || [])
     }
 
     const updateMapping = (index: number, categoryId: string | null) => {
@@ -467,6 +561,27 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
 
     const selectedCount = extractedCategories.filter(c => c.selectedForScan).length
 
+    const displayedConsoleState: AIWorkflowState = (() => {
+        if (activeRunId && activeRunId === currentRunId) {
+            return aiState
+        }
+
+        const fallbackEntry = activeRunId
+            ? runHistory.find(r => r.id === activeRunId)
+            : runHistory[0]
+
+        if (fallbackEntry) {
+            return {
+                status: fallbackEntry.status,
+                logs: fallbackEntry.logs,
+                currentItem: null,
+                usage: undefined
+            }
+        }
+
+        return aiState
+    })()
+
     // Scanning View - Quick scan mode (completes in seconds)
     if (viewMode === 'scanning') {
         return (
@@ -528,12 +643,30 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                         setViewMode('extract')
                         setStagingItems([])
                         setBatchId(null)
+                        setClassifySummary(null)
                     }}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div>
-                        <h2 className="text-xl font-semibold text-slate-900">Scan Results</h2>
-                        <p className="text-sm text-slate-500">Review your scanned items below.</p>
+                        <h2 className="text-xl font-semibold text-slate-900">Speed Scan Results</h2>
+                        <p className="text-sm text-slate-500">Review and classify your scanned items.</p>
+                    </div>
+                    <div className="ml-auto flex items-center gap-3">
+                        {classifySummary && (
+                            <span className="text-xs text-slate-500">{classifySummary}</span>
+                        )}
+                        <Button
+                            onClick={handleAutoCategorize}
+                            disabled={isClassifying || !batchId || stagingItems.length === 0}
+                            className="bg-purple-600 hover:bg-purple-700"
+                        >
+                            {isClassifying ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Sparkles className="mr-2 h-4 w-4" />
+                            )}
+                            AI 分类
+                        </Button>
                     </div>
                 </div>
 
@@ -603,7 +736,12 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                                     promptCategory: settings.ai_prompt_category,
                                     promptSubcategory: settings.ai_prompt_subcategory,
                                     promptProductList: settings.ai_prompt_product_list,
-                                    promptProductDetail: settings.ai_prompt_product_detail
+                                    promptQuickList: settings.ai_prompt_quick_list,
+                                    promptProductDetail: settings.ai_prompt_product_detail,
+                                    thinkingCategory: settings.ai_thinking_category,
+                                    thinkingSubcategory: settings.ai_thinking_subcategory,
+                                    thinkingProductList: settings.ai_thinking_product_list,
+                                    thinkingProductDetail: settings.ai_thinking_product_detail
                                 })
                                 setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
                             }
@@ -643,10 +781,47 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     </p>
                 )}
 
-                {/* AI Status Console - Show during extraction as well */}
-                {(aiState.logs.length > 0 || aiState.status !== 'idle') && (
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConsoleOpen(prev => !prev)}
+                        className="h-9"
+                    >
+                        Extraction Console
+                        {runHistory.length > 0 && (
+                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                                {runHistory.length}
+                            </span>
+                        )}
+                    </Button>
+                    {(aiState.status !== 'idle' || runHistory.length > 0) && (
+                        <Select
+                            value={(activeRunId || currentRunId || runHistory[0]?.id) ?? undefined}
+                            onValueChange={(value) => setActiveRunId(value)}
+                        >
+                            <SelectTrigger className="h-9 w-[260px]">
+                                <SelectValue placeholder="Select run to view logs" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {currentRunId && (
+                                    <SelectItem value={currentRunId}>
+                                        Current run (in progress)
+                                    </SelectItem>
+                                )}
+                                {runHistory.map((run) => (
+                                    <SelectItem key={run.id} value={run.id}>
+                                        {new Date(run.finishedAt).toLocaleTimeString()} – {run.url}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                </div>
+
+                {(consoleOpen || aiState.status !== 'idle') && (
                     <AIStatusConsole
-                        state={aiState}
+                        state={displayedConsoleState}
                         isOpen={true}
                         title="Extraction Console"
                         maxHeight={200}
@@ -664,7 +839,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                         </h3>
                         {selectedCount > 0 && (
                             <span className="text-sm text-muted-foreground">
-                                {selectedCount} selected for deep scan
+                                {selectedCount} selected for speed scan
                             </span>
                         )}
                     </div>
@@ -799,7 +974,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                                 className="bg-purple-600 hover:bg-purple-700"
                             >
                                 <Sparkles className="mr-2 h-4 w-4" />
-                                Scan {selectedCount} {selectedCount === 1 ? 'Category' : 'Categories'}
+                                Speed Scan {selectedCount} {selectedCount === 1 ? 'Category' : 'Categories'}
                             </Button>
                         </div>
                     )}

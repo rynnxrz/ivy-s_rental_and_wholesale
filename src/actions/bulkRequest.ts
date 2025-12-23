@@ -69,7 +69,7 @@ export async function submitBulkRequest(data: BulkRequestData) {
     const organizationDomain = extractOrganizationDomain(email)
 
     // Check existing profile
-    let { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', email)

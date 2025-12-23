@@ -84,12 +84,12 @@ export function BookingForm({ item }: BookingFormProps) {
             }
 
             if (data) {
-                const booked = data.map((r: any) => ({
+                const booked = data.map((r: { start_date: string; end_date: string }) => ({
                     from: new Date(r.start_date),
                     to: new Date(r.end_date)
                 }))
 
-                const buffers = data.map((r: any) => {
+                const buffers = data.map((r: { end_date: string }) => {
                     const endDate = new Date(r.end_date)
                     return {
                         from: addDays(endDate, 1),

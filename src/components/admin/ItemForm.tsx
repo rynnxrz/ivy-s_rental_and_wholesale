@@ -108,9 +108,8 @@ export const ItemForm = ({
         setValue,
         watch,
         reset,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } = useForm<ItemFormData>({
-        resolver: zodResolver(itemSchema) as any,
+        resolver: zodResolver(itemSchema),
         defaultValues: {
             sku: initialData?.sku ?? item?.sku ?? '',
             name: initialData?.name ?? item?.name ?? '',

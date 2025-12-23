@@ -99,7 +99,7 @@ export const DeleteItemButton = ({ itemId, itemName }: DeleteItemButtonProps) =>
                                         Deleting it would lose historical data.
                                     </p>
                                 </div>
-                                <p>Would you like to <strong>Retire</strong> this item instead? It will be moved to the 'Retired / Deleted' tab and hidden from the catalog, but historical data will be preserved.</p>
+                                <p>Would you like to <strong>Retire</strong> this item instead? It will be moved to the &#39;Retired / Deleted&#39; tab and hidden from the catalog, but historical data will be preserved.</p>
                             </div>
                         ) : (
                             `Are you sure you want to delete "${itemName}"? This action cannot be undone.`

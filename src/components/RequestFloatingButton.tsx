@@ -98,7 +98,7 @@ export function RequestFloatingButton() {
                 <SheetHeader className="border-b pb-4">
                     <SheetTitle>Your Request List</SheetTitle>
                     <SheetDescription>
-                        Key items you've selected for your rental inquiry.
+                        Key items you&#39;ve selected for your rental inquiry.
                     </SheetDescription>
                 </SheetHeader>
 

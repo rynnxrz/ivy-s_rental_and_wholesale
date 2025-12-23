@@ -7,10 +7,8 @@ import { sendShippingEmail } from '@/lib/email/sendShippingEmail'
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 
-// ... existing code ...
-
 // Helper to get settings
-async function getAppSettings(supabase: any) {
+async function getAppSettings(supabase: ReturnType<typeof createClient> | ReturnType<typeof createServiceClient>) {
     const { data: settings } = await supabase
         .from('app_settings')
         .select('*')
@@ -19,7 +17,7 @@ async function getAppSettings(supabase: any) {
 }
 
 // Helper to get a specific billing profile
-async function getBillingProfile(supabase: any, profileId: string) {
+async function getBillingProfile(supabase: ReturnType<typeof createClient> | ReturnType<typeof createServiceClient>, profileId: string) {
     const { data: profile } = await supabase
         .from('billing_profiles')
         .select('*')
@@ -317,8 +315,9 @@ export async function approveReservation(reservationId: string, profileId: strin
 
     // Use the first reservation for customer details (assumes same customer for group)
     const primaryRes = groupReservations[0]
-    // @ts-ignore
-    const customer = Array.isArray(primaryRes.profiles) ? primaryRes.profiles[0] : primaryRes.profiles
+    const customer = Array.isArray((primaryRes as { profiles?: unknown }).profiles)
+        ? (primaryRes as { profiles: unknown[] }).profiles[0]
+        : (primaryRes as { profiles?: unknown }).profiles
 
     // 6. Build Invoice Items List
     const invoiceItems: InvoiceItem[] = []
@@ -326,8 +325,7 @@ export async function approveReservation(reservationId: string, profileId: strin
     const invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
 
     for (const res of groupReservations) {
-        // @ts-ignore
-        const item = res.items
+        const item = (res as { items?: InvoiceItem }).items
         const start = new Date(res.start_date)
         const end = new Date(res.end_date)
         const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
@@ -485,10 +483,10 @@ export async function markAsShipped(reservationId: string) {
 
     // 5. Send Email with attachments
     const settings = await getAppSettings(supabase)
-    // @ts-ignore
-    const customer = Array.isArray(reservation.profiles) ? reservation.profiles[0] : reservation.profiles
-    // @ts-ignore
-    const item = reservation.items
+    const customer = Array.isArray((reservation as { profiles?: unknown }).profiles)
+        ? (reservation as { profiles: { email?: string; full_name?: string }[] }).profiles[0]
+        : (reservation as { profiles?: { email?: string; full_name?: string } }).profiles
+    const item = (reservation as { items?: { name?: string; rental_price?: number; sku?: string } }).items
 
     try {
         await sendShippingEmail({
@@ -529,7 +527,12 @@ export async function saveEvidence(
     if (profile?.role !== 'admin') return { error: 'Forbidden' }
 
     // Update
-    const updateData: any = {}
+    const updateData: {
+        dispatch_image_paths?: string[]
+        dispatch_notes?: string
+        return_image_paths?: string[]
+        return_notes?: string
+    } = {}
     if (type === 'dispatch') {
         if (imagePaths) updateData.dispatch_image_paths = imagePaths
         if (notes !== undefined) updateData.dispatch_notes = notes
@@ -643,8 +646,7 @@ export async function restoreReservationGroup(groupId: string) {
         })
 
         if (!available) {
-            // @ts-ignore - items is joined
-            const itemName = res.items?.name || 'Unknown Item'
+            const itemName = (res as { items?: { name?: string } }).items?.name || 'Unknown Item'
             conflictingItems.push(itemName)
         }
     }
@@ -671,4 +673,3 @@ export async function restoreReservationGroup(groupId: string) {
     revalidatePath('/admin/reservations')
     return { success: true, count: reservations.length }
 }
-

@@ -638,7 +638,7 @@ function EmailPreview({ type, subject, body, footer, onClickSubject, onClickBody
                             I
                         </div>
                         <div>
-                            <div className="text-sm font-medium text-gray-900">Ivy's Rental</div>
+                            <div className="text-sm font-medium text-gray-900">Ivy&#39;s Rental</div>
                             {subject && (
                                 <div
                                     onClick={onClickSubject}

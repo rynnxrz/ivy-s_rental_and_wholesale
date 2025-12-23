@@ -94,7 +94,7 @@ export async function createGuestBooking(data: GuestBookingData) {
     const email = data.email.toLowerCase().trim()
     const organizationDomain = extractOrganizationDomain(email)
 
-    let { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', email)

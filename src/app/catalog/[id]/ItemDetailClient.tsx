@@ -17,7 +17,7 @@ interface Item {
     rental_price: number
     replacement_cost: number
     description: string | null
-    specs: Record<string, any> | null
+    specs: Record<string, unknown> | null
     image_paths: string[] | null
     sku: string | null
     status: string

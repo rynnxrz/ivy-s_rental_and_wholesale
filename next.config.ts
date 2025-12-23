@@ -16,10 +16,12 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'ivyjstudio.com',
+        pathname: '/cdn/shop/files/**',
       },
       {
         protocol: 'https',
         hostname: 'cdn.shopify.com',
+        pathname: '/**',
       },
     ],
   },

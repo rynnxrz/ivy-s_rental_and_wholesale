@@ -24,6 +24,7 @@ import {
     DialogTrigger,
     DialogFooter,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
     Select,
     SelectContent,
@@ -45,7 +46,8 @@ import {
     commitStagingItemsAction,
     batchDeepEnrichAction,
     getScanProgressAction,
-    deleteStagingBatchAction
+    deleteStagingBatchAction,
+    renameStagingGroupAction
 } from '@/actions/items'
 
 // dnd-kit imports
@@ -61,6 +63,19 @@ import {
     useSensors,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+
+const sanitizeImageUrl = (url: string | null | undefined) => {
+    if (!url) return null
+    try {
+        const parsed = new URL(url, window.location.origin)
+        if (['http:', 'https:', 'data:', 'blob:'].includes(parsed.protocol)) {
+            return parsed.href
+        }
+        return null
+    } catch {
+        return null
+    }
+}
 
 interface Category {
     id: string
@@ -193,9 +208,9 @@ function DraggableVariantRow({
                 </div>
             </TableCell>
             <TableCell className="py-2">
-                {item.image_urls && item.image_urls[0] ? (
+                {sanitizeImageUrl(item.image_urls && item.image_urls[0]) ? (
                     <Image
-                        src={item.image_urls[0]}
+                        src={sanitizeImageUrl(item.image_urls && item.image_urls[0]) || ''}
                         alt={item.name}
                         width={40}
                         height={40}
@@ -256,6 +271,7 @@ function DroppableGroup({
     onToggle,
     onEdit,
     onRemove,
+    onRename,
     isPending
 }: {
     group: StagingItemGroup
@@ -263,6 +279,7 @@ function DroppableGroup({
     onToggle: () => void
     onEdit: (item: StagingItem) => void
     onRemove: (id: string) => void
+    onRename: (name: string) => void
     isPending: boolean
 }) {
     const { setNodeRef, isOver } = useDroppable({
@@ -298,6 +315,18 @@ function DroppableGroup({
                             <Sparkles className="h-2.5 w-2.5 mr-1" />
                             AI
                         </Badge>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onRename(group.name)
+                            }}
+                            title="Edit parent name"
+                        >
+                            <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
                         {isOver && (
                             <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-blue-100 text-blue-700 border-blue-300 animate-pulse">
                                 Drop to move here
@@ -385,6 +414,9 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
     const [editingItem, setEditingItem] = useState<StagingItem | null>(null)
     const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
     const [activeId, setActiveId] = useState<string | null>(null)
+    const [isRenameOpen, setIsRenameOpen] = useState(false)
+    const [renameTarget, setRenameTarget] = useState<{ oldName: string; newName: string }>({ oldName: '', newName: '' })
+    const [isRenaming, setIsRenaming] = useState(false)
 
     // Scan/Enrichment State
     const [isEnriching, setIsEnriching] = useState(false)
@@ -399,7 +431,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
     )
 
     // Load staging items when batch changes
-    const loadStagingItems = async (batchId: string) => {
+    const loadStagingItems = useCallback(async (batchId: string) => {
         setIsLoading(true)
         try {
             const response = await fetch(`/api/staging-items?batchId=${batchId}`)
@@ -407,30 +439,49 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                 const data = await response.json()
                 setStagingItems(data.items || [])
             } else {
-                // Fallback to server action if API route fails (redundancy)
-                const { getStagingItemsAction } = await import('@/actions/items')
-                const result = await getStagingItemsAction(batchId)
-                setStagingItems(result.data || [])
+                toast.error('Failed to load staging items')
             }
         } catch {
-            const { getStagingItemsAction } = await import('@/actions/items')
-            const result = await getStagingItemsAction(batchId)
-            setStagingItems(result.data || [])
+            toast.error('Failed to load staging items')
         }
         setIsLoading(false)
-    }
+    }, [])
 
     const handleBatchChange = (batchId: string) => {
         setSelectedBatchId(batchId)
         loadStagingItems(batchId)
     }
 
+    const openRenameDialog = (groupName: string) => {
+        setRenameTarget({ oldName: groupName, newName: groupName })
+        setIsRenameOpen(true)
+    }
+
+    const handleRenameGroup = async () => {
+        if (!renameTarget.newName.trim() || !selectedBatchId) {
+            toast.error('Name cannot be empty')
+            return
+        }
+
+        setIsRenaming(true)
+        const result = await renameStagingGroupAction(renameTarget.oldName, renameTarget.newName.trim(), selectedBatchId)
+        if (result.success) {
+            toast.success(`Renamed to "${renameTarget.newName.trim()}"`)
+            await loadStagingItems(selectedBatchId)
+            setIsRenameOpen(false)
+        } else {
+            toast.error(result.error || 'Failed to rename group')
+        }
+        setIsRenaming(false)
+    }
+
+    /* eslint-disable react-hooks/set-state-in-effect */
     // Initial load
     useEffect(() => {
-        if (selectedBatchId) {
-            loadStagingItems(selectedBatchId)
-        }
-    }, [selectedBatchId])
+        if (!selectedBatchId) return
+        void loadStagingItems(selectedBatchId)
+    }, [selectedBatchId, loadStagingItems])
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     const toggleGroup = (groupName: string) => {
         const newOpenGroups = new Set(openGroups)
@@ -813,6 +864,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                                 onToggle={() => toggleGroup(group.name)}
                                                 onEdit={handleEdit}
                                                 onRemove={handleRemove}
+                                                onRename={openRenameDialog}
                                                 isPending={isPending}
                                             />
                                         ))}
@@ -824,9 +876,9 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                 {activeItem ? (
                                     <div className="bg-white/90 backdrop-blur shadow-2xl rounded-lg p-3 border-2 border-blue-500 flex items-center gap-4 w-[400px]">
                                         <GripVertical className="h-5 w-5 text-blue-500" />
-                                        {activeItem.image_urls && activeItem.image_urls[0] ? (
+                                        {sanitizeImageUrl(activeItem.image_urls && activeItem.image_urls[0]) ? (
                                             <Image
-                                                src={activeItem.image_urls[0]}
+                                                src={sanitizeImageUrl(activeItem.image_urls && activeItem.image_urls[0]) || ''}
                                                 alt={activeItem.name}
                                                 width={48}
                                                 height={48}
@@ -848,6 +900,35 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                     )}
                 </>
             )}
+
+            {/* Rename Parent Dialog */}
+            <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Edit parent name</DialogTitle>
+                        <DialogDescription>
+                            更新分组名称，不会改变各变体的单独名称。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <label className="text-sm font-medium text-slate-700">New name</label>
+                        <Input
+                            value={renameTarget.newName}
+                            onChange={(e) => setRenameTarget(prev => ({ ...prev, newName: e.target.value }))}
+                            placeholder="Enter parent name"
+                        />
+                    </div>
+                    <DialogFooter className="mt-4">
+                        <Button variant="outline" onClick={() => setIsRenameOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleRenameGroup} disabled={isRenaming}>
+                            {isRenaming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Save
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Edit Dialog - Reusing ItemForm in Staging Mode */}
             <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>

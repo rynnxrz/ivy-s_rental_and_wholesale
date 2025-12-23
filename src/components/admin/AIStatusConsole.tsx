@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Bot, Loader2, Check, AlertTriangle, XCircle, Info, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LogEntry, AIWorkflowState } from '@/hooks/useAIWorkflow'
@@ -23,16 +23,16 @@ export interface AIStatusConsoleProps {
 }
 
 /**
- * Tag color mappings for visual distinction
+ * Tag color mappings for visual distinction (Light Theme)
  */
 const TAG_COLORS: Record<string, string> = {
-    Fetch: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    Gemini: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    Discovery: 'bg-green-500/20 text-green-300 border-green-500/30',
-    Logic: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    System: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-    Error: 'bg-red-500/20 text-red-300 border-red-500/30',
-    Thinking: 'bg-indigo-500/30 text-indigo-300 border-indigo-500/50',
+    Fetch: 'bg-blue-100 text-blue-700 border-blue-200',
+    Gemini: 'bg-purple-100 text-purple-700 border-purple-200',
+    Discovery: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    Logic: 'bg-amber-100 text-amber-700 border-amber-200',
+    System: 'bg-slate-100 text-slate-700 border-slate-200',
+    Error: 'bg-red-100 text-red-700 border-red-200',
+    Thinking: 'bg-indigo-50 text-indigo-700 border-indigo-200',
 }
 
 /**
@@ -41,13 +41,13 @@ const TAG_COLORS: Record<string, string> = {
 function LogIcon({ type }: { type: LogEntry['type'] }) {
     switch (type) {
         case 'loading':
-            return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+            return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
         case 'success':
-            return <Check className="h-3.5 w-3.5 text-green-400" />
+            return <Check className="h-3.5 w-3.5 text-green-500" />
         case 'warning':
-            return <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+            return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
         case 'error':
-            return <XCircle className="h-3.5 w-3.5 text-red-400" />
+            return <XCircle className="h-3.5 w-3.5 text-red-500" />
         case 'info':
         default:
             return <Info className="h-3.5 w-3.5 text-slate-400" />
@@ -67,6 +67,28 @@ function formatTimestamp(date: Date): string {
 }
 
 /**
+ * Parsed log message with support for bold headers
+ */
+function LogMessage({ text }: { text: string }) {
+    // Check if message starts with bold header like "**Title** Content"
+    const headerMatch = text.match(/^\*\*([^*]+)\*\*([\s\S]*)/)
+
+    if (headerMatch) {
+        const [, title, content] = headerMatch
+        return (
+            <span className="flex flex-col gap-1 w-full">
+                <span className="font-semibold block">{title}</span>
+                <span className="whitespace-pre-wrap block text-slate-500/90 leading-relaxed">
+                    {content.trim()}
+                </span>
+            </span>
+        )
+    }
+
+    return <span className="whitespace-pre-wrap block">{text}</span>
+}
+
+/**
  * Get tag color class, with fallback for unknown tags
  */
 function getTagColor(tag: string): string {
@@ -74,27 +96,7 @@ function getTagColor(tag: string): string {
 }
 
 /**
- * A terminal-style console for displaying AI workflow logs.
- * 
- * Features:
- * - Dark background resembling a terminal
- * - Auto-scrolling to latest log
- * - Timestamped log entries with status icons
- * - Colored tag badges for easy categorization
- * - Current processing item display in header
- * 
- * @example
- * ```tsx
- * const { state, addLog } = useAIWorkflow()
- * 
- * return (
- *   <AIStatusConsole
- *     state={state}
- *     isOpen={isScanning}
- *     title="AI Console"
- *   />
- * )
- * ```
+ * A clean, light-themed console for displaying AI workflow logs.
  */
 export function AIStatusConsole({
     state,
@@ -126,37 +128,35 @@ export function AIStatusConsole({
                 setIsCollapsed(true)
             }, 1500)
             return () => clearTimeout(timer)
-        } else if (state.status === 'analyzing' || state.status === 'idle') {
-            setIsCollapsed(false)
         }
     }, [state.status])
 
     if (!isOpen) return null
 
     return (
-        <Card className={cn('overflow-hidden border-slate-700 transition-all duration-300 ease-in-out', className)}>
+        <Card className={cn('overflow-hidden border-border shadow-sm transition-all duration-300 ease-in-out py-0 gap-0', className)}>
             {/* Header */}
             <div
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className="py-3 px-4 bg-slate-800 border-b border-slate-700 cursor-pointer hover:bg-slate-750 transition-colors flex items-center justify-between group"
+                className="py-3 px-4 bg-muted/40 border-b cursor-pointer hover:bg-muted/60 transition-colors flex items-center justify-between group"
             >
                 <div className="flex items-center gap-3">
                     <div className={cn("p-1.5 rounded-md transition-colors",
-                        state.status === 'success' ? "bg-green-500/10 text-green-400" : "bg-slate-700 text-slate-400"
+                        state.status === 'success' ? "bg-green-100 text-green-600" : "bg-white border shadow-sm text-slate-500"
                     )}>
                         {state.status === 'success' ? <Check className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                     </div>
                     <div>
-                        <CardTitle className="text-sm font-medium text-slate-200 flex items-center gap-2">
+                        <CardTitle className="text-sm font-medium text-slate-700 flex items-center gap-2">
                             {title}
                         </CardTitle>
                         {isCollapsed && state.status === 'success' && (
-                            <p className="text-xs text-green-400 font-medium mt-0.5 animate-in fade-in">
+                            <p className="text-xs text-green-600 font-medium mt-0.5 animate-in fade-in">
                                 Analysis complete
                             </p>
                         )}
                         {isCollapsed && state.status !== 'success' && state.currentItem && (
-                            <p className="text-xs text-slate-400 mt-0.5 max-w-[300px] truncate">
+                            <p className="text-xs text-slate-500 mt-0.5 max-w-[300px] truncate">
                                 {state.currentItem}
                             </p>
                         )}
@@ -165,7 +165,7 @@ export function AIStatusConsole({
 
                 <div className="flex items-center gap-3">
                     {!isCollapsed && state.currentItem && (
-                        <span className="text-xs text-slate-400 flex items-center gap-1.5 mr-2">
+                        <span className="text-xs text-slate-500 flex items-center gap-1.5 mr-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
@@ -180,7 +180,7 @@ export function AIStatusConsole({
                 </div>
             </div>
 
-            {/* Terminal Content */}
+            {/* Console Content */}
             <div
                 className={cn(
                     "transition-[max-height,opacity] duration-300 ease-in-out",
@@ -191,11 +191,11 @@ export function AIStatusConsole({
                 <CardContent className="p-0">
                     <div
                         ref={scrollRef}
-                        className="bg-slate-900 font-mono text-xs overflow-y-auto custom-scrollbar"
+                        className="bg-white/50 font-mono text-xs overflow-y-auto custom-scrollbar"
                         style={{ maxHeight: `${maxHeight}px`, minHeight: '120px' }}
                     >
                         {state.logs.length === 0 ? (
-                            <div className="flex items-center justify-center h-[120px] text-slate-500">
+                            <div className="flex items-center justify-center h-[120px] text-slate-400">
                                 <span>Waiting for AI operations...</span>
                             </div>
                         ) : (
@@ -206,12 +206,12 @@ export function AIStatusConsole({
                                         className="flex items-start gap-3 leading-relaxed animate-in fade-in slide-in-from-bottom-1 duration-200 group/log"
                                     >
                                         {/* Timestamp */}
-                                        <span className="text-slate-600 font-medium shrink-0 text-[10px] pt-1 w-[42px]">
+                                        <span className="text-slate-400 font-medium shrink-0 text-[10px] pt-1 w-[42px]">
                                             {formatTimestamp(log.timestamp)}
                                         </span>
 
                                         {/* Status Icon */}
-                                        <div className="shrink-0 pt-0.5">
+                                        <div className="shrink-0 pt-0.5 opacity-80">
                                             <LogIcon type={log.type} />
                                         </div>
 
@@ -228,27 +228,27 @@ export function AIStatusConsole({
                                         {/* Message */}
                                         <span
                                             className={cn(
-                                                'text-slate-300 text-[11px]',
-                                                log.type === 'error' && 'text-red-300',
-                                                log.type === 'warning' && 'text-amber-300',
-                                                log.type === 'success' && 'text-green-300',
-                                                log.type === 'loading' && 'text-blue-200'
+                                                'text-slate-600 text-[11px]',
+                                                log.type === 'error' && 'text-red-600',
+                                                log.type === 'warning' && 'text-amber-600',
+                                                log.type === 'success' && 'text-slate-700',
+                                                log.type === 'loading' && 'text-slate-600'
                                             )}
                                         >
-                                            {log.message}
+                                            <LogMessage text={log.message} />
                                         </span>
                                     </div>
                                 ))}
                                 {/* Computation Report */}
                                 {state.usage && (
-                                    <div className="mt-4 pt-3 border-t border-slate-800/50 text-[10px] font-mono text-slate-500 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+                                    <div className="mt-4 pt-3 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-700 animate-pulse"></div>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse"></div>
                                             <span>[System] Computation complete.</span>
                                         </div>
                                         <div className="flex gap-3">
-                                            <span>Reasoned through <span className="text-indigo-400 font-semibold">{state.usage.thinkingTokenCount || 0}</span> tokens</span>
-                                            <span className="text-slate-600">Total: {state.usage.totalTokenCount || 0}</span>
+                                            <span>Reasoned through <span className="text-indigo-500 font-semibold">{state.usage.thinkingTokenCount || 0}</span> tokens</span>
+                                            <span className="text-slate-500">Total: {state.usage.totalTokenCount || 0}</span>
                                         </div>
                                     </div>
                                 )}

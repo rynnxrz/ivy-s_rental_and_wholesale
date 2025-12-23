@@ -21,7 +21,7 @@ export async function syncItemVariants(itemName: string, updates: { collection_i
     }
 
     // Filter out undefined values (allow null)
-    const payload: any = {}
+    const payload: { collection_id?: string | null; material?: string | null } = {}
     if (updates.collection_id !== undefined) payload.collection_id = updates.collection_id
     if (updates.material !== undefined) payload.material = updates.material
 

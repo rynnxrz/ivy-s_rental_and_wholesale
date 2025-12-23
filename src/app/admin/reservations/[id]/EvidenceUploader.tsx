@@ -98,8 +98,19 @@ export default function EvidenceUploader({
     }
 
     const getImageUrl = (path: string) => {
-        if (path.startsWith('http')) return path
-        return supabase.storage.from('evidence').getPublicUrl(path).data.publicUrl
+        try {
+            const resolved = path.startsWith('http')
+                ? new URL(path)
+                : new URL(supabase.storage.from('evidence').getPublicUrl(path).data.publicUrl)
+
+            if (!['http:', 'https:'].includes(resolved.protocol)) {
+                return ''
+            }
+
+            return resolved.href
+        } catch {
+            return ''
+        }
     }
 
     return (
@@ -112,11 +123,17 @@ export default function EvidenceUploader({
                 {images.map((path, idx) => (
                     <div key={idx} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100 border">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={getImageUrl(path)}
-                            alt="Evidence"
-                            className="w-full h-full object-cover"
-                        />
+                        {getImageUrl(path) ? (
+                            <img
+                                src={getImageUrl(path)}
+                                alt="Evidence"
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-500 text-xs">
+                                Invalid image URL
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -179,7 +196,7 @@ export default function EvidenceUploader({
             {readOnly && notes && (
                 <div className="mt-4 p-3 bg-gray-50 rounded text-sm text-gray-700">
                     <span className="font-semibold block text-xs text-gray-400 uppercase tracking-wider mb-1">Notes</span>
-                    {notes}
+                    <p className="whitespace-pre-wrap break-words">{notes}</p>
                 </div>
             )}
         </div>

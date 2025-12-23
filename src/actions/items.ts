@@ -3,7 +3,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ItemInsert, ItemUpdate } from '@/types'
-import { GEMINI_MODELS } from '@/types'
 
 const slugify = (value: string, prefix: string) => {
     const base = value
@@ -208,6 +207,7 @@ export interface AvailableModel {
     description: string
     inputTokenLimit?: number
     outputTokenLimit?: number
+    thinkingLevels?: string[]
 }
 
 /**
@@ -235,13 +235,22 @@ export async function getAvailableModelsAction(): Promise<{
                 const supportsGeneration = model.supportedActions?.includes('generateContent')
 
                 if (supportsGeneration !== false) {
+                    const thinkingLevels: string[] = []
+                    const rawLevels =
+                        (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).thinkingLevels ??
+                        (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).supportedThinkingLevels
+                    if (Array.isArray(rawLevels)) {
+                        thinkingLevels.push(...rawLevels.map(level => String(level)))
+                    }
+
                     models.push({
                         id,
                         name: model.name,
                         displayName: model.displayName || id,
                         description: model.description || '',
                         inputTokenLimit: model.inputTokenLimit,
-                        outputTokenLimit: model.outputTokenLimit
+                        outputTokenLimit: model.outputTokenLimit,
+                        thinkingLevels
                     })
                 }
             }
@@ -270,6 +279,44 @@ export async function getAvailableModelsAction(): Promise<{
             error: error instanceof Error ? error.message : 'Failed to fetch models',
             models: []
         }
+    }
+}
+
+// ============================================================
+// Thinking Levels per Model
+// ============================================================
+
+function inferThinkingLevels(modelId: string): string[] {
+    const id = modelId.toLowerCase()
+    if (id.includes('gemini-3') && id.includes('flash')) {
+        return ['minimal', 'low', 'medium', 'high']
+    }
+    if (id.includes('gemini-3') && id.includes('pro')) {
+        return ['low', 'high']
+    }
+    return []
+}
+
+export async function getModelThinkingLevelsAction(modelId: string): Promise<{
+    success: boolean
+    levels: string[]
+    error?: string | null
+}> {
+    try {
+        const ai = getGeminiClient()
+        const model = await ai.models.get({ model: modelId })
+        const rawLevels =
+            (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).thinkingLevels ??
+            (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).supportedThinkingLevels
+
+        const levels = Array.isArray(rawLevels)
+            ? rawLevels.map(level => String(level))
+            : inferThinkingLevels(modelId)
+
+        return { success: true, levels }
+    } catch (error) {
+        console.error('Failed to fetch thinking levels:', error)
+        return { success: false, levels: inferThinkingLevels(modelId), error: (error as Error).message }
     }
 }
 
@@ -911,8 +958,9 @@ export async function extractCategoriesStreamAction(sourceUrl: string, modelId?:
                     const parts = chunk.candidates?.[0]?.content?.parts || []
 
                     for (const part of parts) {
-                        const isThought = (part as any).thought === true
-                        const text = part.text || ''
+                        const partWithThought = part as { thought?: unknown; text?: string }
+                        const isThought = partWithThought.thought === true
+                        const text = partWithThought.text || ''
 
                         if (text) {
                             stream.update({
@@ -950,7 +998,8 @@ export async function extractCategoriesStreamAction(sourceUrl: string, modelId?:
                     })
 
                     stream.update({ type: 'result', success: true, categories, sourceUrl })
-                } catch (e) {
+                } catch (err) {
+                    console.error('Category parse error:', err)
                     stream.update({ type: 'result', success: false, error: 'Failed to parse JSON result' })
                 }
 
@@ -1188,14 +1237,25 @@ ${DEFAULT_PROMPT_PRODUCT_DETAIL.replace('HTML:', '')}`
     }
 
     try {
-        const items = JSON.parse(jsonStr)
+        const parsed = JSON.parse(jsonStr)
+        if (!Array.isArray(parsed)) return []
+
         // Add source URL to each item
-        return items.map((item: any) => ({
-            ...item,
-            source_url: url,
-            // Ensure array
-            image_urls: Array.isArray(item.image_urls) ? item.image_urls.map((u: string) => new URL(u, url).href) : []
-        }))
+        return parsed.map((item) => {
+            const imageUrls = Array.isArray((item as { image_urls?: unknown }).image_urls)
+                ? (item as { image_urls?: unknown }).image_urls as unknown[]
+                : []
+
+            const normalizedImages = imageUrls
+                .map(img => (typeof img === 'string' ? new URL(img, url).href : null))
+                .filter((img): img is string => Boolean(img))
+
+            return {
+                ...(item as Record<string, unknown>),
+                source_url: url,
+                image_urls: normalizedImages
+            }
+        }) as ScrapedItem[]
     } catch {
         return []
     }
@@ -1587,6 +1647,44 @@ export async function updateStagingItemAction(
 }
 
 /**
+ * Renames a staging group by updating variant_of_name for all matching items in the batch.
+ * Group key logic matches UI: variant_of_name || name.
+ */
+export async function renameStagingGroupAction(oldName: string, newName: string, batchId: string) {
+    const supabase = await createClient()
+
+    // Find all items whose group key matches the old name
+    const { data: items, error: fetchError } = await supabase
+        .from('staging_items')
+        .select('id, name, variant_of_name')
+        .eq('import_batch_id', batchId)
+
+    if (fetchError) {
+        return { success: false, error: fetchError.message, updatedCount: 0 }
+    }
+
+    const targetIds = (items || [])
+        .filter(item => (item.variant_of_name || item.name) === oldName)
+        .map(item => item.id)
+
+    if (targetIds.length === 0) {
+        return { success: true, error: null, updatedCount: 0 }
+    }
+
+    const { error: updateError } = await supabase
+        .from('staging_items')
+        .update({ variant_of_name: newName })
+        .in('id', targetIds)
+
+    if (updateError) {
+        return { success: false, error: updateError.message, updatedCount: 0 }
+    }
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null, updatedCount: targetIds.length }
+}
+
+/**
  * Deletes a staging import batch and all its items.
  */
 export async function deleteStagingBatchAction(batchId: string) {
@@ -1806,7 +1904,7 @@ export async function quickScanAction(
     const supabase = await createClient()
     let totalItemsFound = 0
 
-    console.log('\n🚀 [Quick Scan] Starting index-only scan...')
+        console.log('\n🚀 [Speed Scan] Starting index-only scan (no categorization)...')
 
     try {
         // Get AI settings
@@ -1831,7 +1929,7 @@ export async function quickScanAction(
         for (const category of input.categories) {
             if (!category.url) continue
 
-            console.log(`\n📋 [Quick Scan] Processing: ${category.name}`)
+            console.log(`\n📋 [Speed Scan] Processing: ${category.name}`)
             console.log('   ├─ Target URL:', category.url)
             console.log('   └─ Mode: Google Search Tool (no manual fetch)')
 
@@ -1889,8 +1987,9 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
                         image_urls: absoluteThumbnail ? [absoluteThumbnail] : [],
                         color: product.color,
                         source_url: absoluteUrl,
-                        category_id: category.categoryId,
-                        collection_id: category.collectionId,
+                        // Defer categorization to a separate AI step
+                        category_id: null,
+                        collection_id: null,
                         status: 'pending',
                         needs_enrichment: true,
                         // Leave these empty - will be filled by deepEnrichAction
@@ -1917,7 +2016,7 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
             .eq('id', batchId)
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-        console.log(`\n✅ [Quick Scan] Completed in ${elapsed}s - Found ${totalItemsFound} products\n`)
+        console.log(`\n✅ [Speed Scan] Completed in ${elapsed}s - Found ${totalItemsFound} products\n`)
 
         return {
             success: true,
@@ -1956,7 +2055,7 @@ export async function quickScanStreamAction(
                 const { data: settings } = await supabase.from('app_settings').select('ai_prompt_quick_list').single()
 
                 await supabase.from('staging_imports')
-                    .update({ status: 'scanning', current_category: 'Quick scanning...' })
+                    .update({ status: 'scanning', current_category: 'Speed scanning...' })
                     .eq('id', batchId)
 
                 for (const category of input.categories) {
@@ -1994,8 +2093,9 @@ Please clearly describe your thinking process as you analyze the page, for examp
                     for await (const chunk of response) {
                         const parts = chunk.candidates?.[0]?.content?.parts || []
                         for (const part of parts) {
-                            const isThought = (part as any).thought === true
-                            const text = part.text || ''
+                            const partWithThought = part as { thought?: unknown; text?: string }
+                            const isThought = partWithThought.thought === true
+                            const text = partWithThought.text || ''
 
                             if (text) {
                                 stream.update({ type: 'chunk', isThought, text, categoryName: category.name })
@@ -2030,8 +2130,9 @@ Please clearly describe your thinking process as you analyze the page, for examp
                             image_urls: absoluteThumbnail ? [absoluteThumbnail] : [],
                             color: product.color,
                             source_url: absoluteUrl,
-                            category_id: category.categoryId,
-                            collection_id: category.collectionId,
+                            // Categorization happens in a follow-up step
+                            category_id: null,
+                            collection_id: null,
                             status: 'pending',
                             needs_enrichment: true,
                             description: null, material: null, weight: null, sku: null, replacement_cost: null
@@ -2064,6 +2165,125 @@ Please clearly describe your thinking process as you analyze the page, for examp
         })()
 
     return { output: stream.value }
+}
+
+// ============================================================
+// Post-Scan AI Categorization
+// ============================================================
+
+type CategorizeSuggestion = {
+    id: string
+    categoryName: string | null
+}
+
+export async function autoCategorizeStagingItemsAction(
+    batchId: string,
+    modelId: string = 'gemini-2.0-flash'
+): Promise<{ success: boolean; error: string | null; updatedCount: number; unmatched: string[] }> {
+    const supabase = await createClient()
+
+    const [{ data: items, error: itemsError }, { data: categories, error: categoriesError }] = await Promise.all([
+        supabase
+            .from('staging_items')
+            .select('id, name, description, color, material, source_url')
+            .eq('import_batch_id', batchId)
+            .eq('status', 'pending'),
+        supabase
+            .from('categories')
+            .select('id, name')
+    ])
+
+    if (itemsError) {
+        return { success: false, error: itemsError.message, updatedCount: 0, unmatched: [] }
+    }
+    if (categoriesError) {
+        return { success: false, error: categoriesError.message, updatedCount: 0, unmatched: [] }
+    }
+
+    if (!items || items.length === 0) {
+        return { success: false, error: 'No staging items to categorize', updatedCount: 0, unmatched: [] }
+    }
+    if (!categories || categories.length === 0) {
+        return { success: false, error: 'No categories available for matching', updatedCount: 0, unmatched: [] }
+    }
+
+    const ai = getGeminiClient()
+    const nameToId = new Map(categories.map(c => [c.name.toLowerCase(), c.id]))
+
+    const MAX_ITEMS_PER_CALL = 30
+    const suggestions: CategorizeSuggestion[] = []
+
+    for (let i = 0; i < items.length; i += MAX_ITEMS_PER_CALL) {
+        const chunk = items.slice(i, i + MAX_ITEMS_PER_CALL)
+        const prompt = `You will map products to one of these categories (or null if no match):
+${categories.map(c => `- ${c.name}`).join('\n')}
+
+Rules:
+- Pick the closest category name from the list.
+- If unsure, use null.
+- Return ONLY JSON array, no markdown fences.
+
+Products:
+${chunk.map(item => `{"id": "${item.id}", "name": "${item.name}", "details": "${(item.description || '').slice(0, 120)}", "color": "${item.color || ''}", "material": "${item.material || ''}", "url": "${item.source_url || ''}"}`).join('\n')}
+
+Expected JSON format:
+[{"id": "<product-id>", "categoryName": "<category-name-from-list-or-null>"}]`
+
+        const result = await ai.models.generateContent({
+            model: modelId,
+            contents: prompt
+        })
+
+        const responseText = result.text || '[]'
+        const match = responseText.match(/```(?:json)?\s*([\s\S]*?)```/)
+        const jsonPayload = match ? match[1].trim() : responseText.trim()
+
+        try {
+            const parsed = JSON.parse(jsonPayload)
+            if (Array.isArray(parsed)) {
+                parsed.forEach(p => {
+                    suggestions.push({
+                        id: String(p.id),
+                        categoryName: p.categoryName ? String(p.categoryName) : null
+                    })
+                })
+            }
+        } catch (e) {
+            console.error('Failed to parse categorize response', e)
+            continue
+        }
+    }
+
+    let updatedCount = 0
+    const unmatched: string[] = []
+
+    for (const suggestion of suggestions) {
+        if (!suggestion.categoryName) {
+            unmatched.push(suggestion.id)
+            continue
+        }
+
+        const categoryId = nameToId.get(suggestion.categoryName.toLowerCase())
+        if (!categoryId) {
+            unmatched.push(suggestion.id)
+            continue
+        }
+
+        const { error } = await supabase
+            .from('staging_items')
+            .update({ category_id: categoryId })
+            .eq('id', suggestion.id)
+
+        if (!error) {
+            updatedCount++
+        } else {
+            unmatched.push(suggestion.id)
+        }
+    }
+
+    revalidatePath('/admin/items')
+
+    return { success: true, error: null, updatedCount, unmatched }
 }
 
 /**

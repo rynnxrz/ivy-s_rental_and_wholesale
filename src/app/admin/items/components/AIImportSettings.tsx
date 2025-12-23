@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, RotateCcw, Copy, Check, Send, Trash2, MessageSquare, Bot, User } from 'lucide-react'
 import { toast } from 'sonner'
-import { AvailableModel, getDefaultPromptsAction, testAIChatAction } from '@/actions/items'
+import { AvailableModel, getDefaultPromptsAction, testAIChatAction, getModelThinkingLevelsAction } from '@/actions/items'
 import { saveAISettingsAction, restoreDefaultAISettingsAction } from '@/app/admin/settings/actions'
 
 interface AIImportSettingsProps {
@@ -35,7 +35,12 @@ interface AIImportSettingsProps {
         promptCategory: string | null
         promptSubcategory: string | null
         promptProductList: string | null
+        promptQuickList: string | null
         promptProductDetail: string | null
+        thinkingCategory: string | null
+        thinkingSubcategory: string | null
+        thinkingProductList: string | null
+        thinkingProductDetail: string | null
     }
 }
 
@@ -49,14 +54,24 @@ export function AIImportSettings({
     const [prompts, setPrompts] = useState({
         category: initialSettings.promptCategory || '',
         subcategory: initialSettings.promptSubcategory || '',
-        productList: initialSettings.promptProductList || '',
+        productList: initialSettings.promptQuickList || initialSettings.promptProductList || '',
+        quickList: initialSettings.promptQuickList || initialSettings.promptProductList || '',
         productDetail: initialSettings.promptProductDetail || ''
     })
+    const [thinkingLevels, setThinkingLevels] = useState({
+        category: initialSettings.thinkingCategory || '',
+        subcategory: initialSettings.thinkingSubcategory || '',
+        productList: initialSettings.thinkingProductList || '',
+        productDetail: initialSettings.thinkingProductDetail || ''
+    })
+    const [modelThinkingOptions, setModelThinkingOptions] = useState<string[]>([])
+    const [isLoadingThinking, setIsLoadingThinking] = useState(false)
     const [isSaving, startTransition] = useTransition()
     const [defaultPrompts, setDefaultPrompts] = useState<{
         category: string
         subcategory: string
         productList: string
+        quickList: string
         productDetail: string
     } | null>(null)
     const [copiedKey, setCopiedKey] = useState<string | null>(null)
@@ -101,16 +116,8 @@ export function AIImportSettings({
         setChatInput('')
     }
 
-    // Sync prompts with initialSettings when they change (e.g., after settings are fetched)
-    useEffect(() => {
-        setSelectedModel(initialSettings.selectedModel || 'gemini-2.0-flash')
-        setPrompts({
-            category: initialSettings.promptCategory || '',
-            subcategory: initialSettings.promptSubcategory || '',
-            productList: initialSettings.promptProductList || '',
-            productDetail: initialSettings.promptProductDetail || ''
-        })
-    }, [initialSettings])
+    // Note: local state is initialized from initialSettings once. If the parent updates
+    // initialSettings later, we intentionally keep the user's in-progress edits intact.
 
     // Load default prompts when opened
     useEffect(() => {
@@ -119,14 +126,36 @@ export function AIImportSettings({
         }
     }, [open, defaultPrompts])
 
+    useEffect(() => {
+        const fetchThinking = async () => {
+            if (!open) return
+            setIsLoadingThinking(true)
+            setModelThinkingOptions([])
+            const result = await getModelThinkingLevelsAction(selectedModel)
+            if (result.success) {
+                setModelThinkingOptions(result.levels)
+            } else {
+                setModelThinkingOptions(result.levels || [])
+            }
+            setIsLoadingThinking(false)
+        }
+        fetchThinking()
+    }, [open, selectedModel])
+
     const handleSave = () => {
         startTransition(async () => {
             const result = await saveAISettingsAction({
                 ai_selected_model: selectedModel,
                 ai_prompt_category: prompts.category || null,
                 ai_prompt_subcategory: prompts.subcategory || null,
-                ai_prompt_product_list: prompts.productList || null,
-                ai_prompt_product_detail: prompts.productDetail || null
+                // Product list prompt is deprecated; reuse speed-scan prompt for backward compatibility
+                ai_prompt_product_list: prompts.quickList || null,
+                ai_prompt_quick_list: prompts.quickList || null,
+                ai_prompt_product_detail: prompts.productDetail || null,
+                ai_thinking_category: thinkingLevels.category || null,
+                ai_thinking_subcategory: thinkingLevels.subcategory || null,
+                ai_thinking_product_list: thinkingLevels.productList || null,
+                ai_thinking_product_detail: thinkingLevels.productDetail || null
             })
 
             if (result.success) {
@@ -172,9 +201,47 @@ export function AIImportSettings({
         </div>
     )
 
+    const renderThinkingSelector = (
+        key: keyof typeof thinkingLevels,
+        label: string
+    ) => (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <Label>{label}</Label>
+                {isLoadingThinking && <span className="text-xs text-muted-foreground">Loading...</span>}
+            </div>
+            <Select
+                value={thinkingLevels[key] || '__default'}
+                onValueChange={(value) =>
+                    setThinkingLevels(prev => ({ ...prev, [key]: value === '__default' ? '' : value }))
+                }
+                disabled={isLoadingThinking || modelThinkingOptions.length === 0}
+            >
+                <SelectTrigger>
+                    <SelectValue placeholder={modelThinkingOptions.length === 0 ? 'Model did not expose levels' : 'Use model default'} />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="__default">
+                        Use model default
+                    </SelectItem>
+                    {modelThinkingOptions.map(level => (
+                        <SelectItem key={level} value={level}>
+                            {level}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+                {modelThinkingOptions.length > 0
+                    ? 'Options fetched from the selected model.'
+                    : 'This model did not return explicit thinking levels from the API.'}
+            </p>
+        </div>
+    )
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
+            <DialogContent className="w-[96vw] md:w-[92vw] max-w-6xl md:max-w-7xl h-[92vh] md:h-[90vh] flex flex-col">
                 <DialogHeader className="flex-none">
                     <DialogTitle>AI Configuration</DialogTitle>
                     <DialogDescription>
@@ -182,7 +249,7 @@ export function AIImportSettings({
                     </DialogDescription>
                 </DialogHeader>
 
-                <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0 w-full mt-4">
+                <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0 w-full mt-4 gap-3">
                     <TabsList className="grid w-full grid-cols-4 flex-none">
                         <TabsTrigger value="general">Model</TabsTrigger>
                         <TabsTrigger value="extraction">Extraction</TabsTrigger>
@@ -243,7 +310,7 @@ export function AIImportSettings({
                                 </div>
 
                                 {/* Chat Messages */}
-                                <div className="flex-1 min-h-[200px] max-h-[300px] overflow-y-auto border rounded-lg bg-muted/30 p-3 space-y-3">
+                                <div className="flex-1 min-h-[240px] overflow-y-auto border rounded-lg bg-muted/30 p-3 space-y-3">
                                     {chatMessages.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm">
                                             <Bot className="h-8 w-8 mb-2 opacity-50" />
@@ -345,6 +412,7 @@ export function AIImportSettings({
                                         onChange={(e) => setPrompts(p => ({ ...p, category: e.target.value }))}
                                         className="flex-1 min-h-[250px] font-mono text-xs"
                                     />
+                                    {renderThinkingSelector('category', 'Thinking level for category extraction')}
                                 </div>
                                 <div className="space-y-2 pt-8">
                                     {defaultPrompts && renderDefaultPrompt('category', defaultPrompts.category)}
@@ -371,6 +439,7 @@ export function AIImportSettings({
                                         onChange={(e) => setPrompts(p => ({ ...p, subcategory: e.target.value }))}
                                         className="flex-1 min-h-[200px] font-mono text-xs"
                                     />
+                                    {renderThinkingSelector('subcategory', 'Thinking level for sub-category exploration')}
                                 </div>
                                 <div className="space-y-2 pt-8">
                                     {defaultPrompts && renderDefaultPrompt('subcategory', defaultPrompts.subcategory)}
@@ -378,17 +447,17 @@ export function AIImportSettings({
                             </div>
                         </TabsContent>
 
-                        {/* Products: Product Link Extraction */}
+                        {/* Products: Speed Scan Prompt */}
                         <TabsContent value="products" className="space-y-6 py-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                                 <div className="space-y-2 flex flex-col">
                                     <div className="flex items-center justify-between">
-                                        <Label>Product List Extraction Prompt</Label>
+                                        <Label>Speed Scan Prompt (Listing only)</Label>
                                         <Button
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 px-2 text-xs"
-                                            onClick={() => handleRestoreDefault('productList')}
+                                            onClick={() => handleRestoreDefault('quickList')}
                                         >
                                             <RotateCcw className="mr-1 h-3 w-3" />
                                             Restore Default
@@ -396,13 +465,16 @@ export function AIImportSettings({
                                     </div>
                                     <Textarea
                                         placeholder="System default (Leave empty to use default)"
-                                        value={prompts.productList}
-                                        onChange={(e) => setPrompts(p => ({ ...p, productList: e.target.value }))}
-                                        className="flex-1 min-h-[300px] font-mono text-xs"
+                                        value={prompts.quickList}
+                                        onChange={(e) => setPrompts(p => ({ ...p, quickList: e.target.value }))}
+                                        className="flex-1 min-h-[260px] font-mono text-xs"
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                        Used for the Speed Scan (listing-only) step. AI visits the listing page and returns products with URLs, prices, thumbnails, colors.
+                                    </p>
                                 </div>
                                 <div className="space-y-2 pt-8">
-                                    {defaultPrompts && renderDefaultPrompt('productList', defaultPrompts.productList)}
+                                    {defaultPrompts && renderDefaultPrompt('quickList', defaultPrompts.quickList)}
                                 </div>
                             </div>
                         </TabsContent>
@@ -429,6 +501,7 @@ export function AIImportSettings({
                                         onChange={(e) => setPrompts(p => ({ ...p, productDetail: e.target.value }))}
                                         className="flex-1 min-h-[400px] font-mono text-xs"
                                     />
+                                    {renderThinkingSelector('productDetail', 'Thinking level for detail parsing')}
                                 </div>
                                 <div className="space-y-2 pt-8">
                                     {defaultPrompts && renderDefaultPrompt('productDetail', defaultPrompts.productDetail)}

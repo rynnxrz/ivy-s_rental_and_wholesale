@@ -157,7 +157,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
             if (error) throw error
 
             // Map data to Item interface
-            const mappedItems: Item[] = (data || []).map((i: any) => ({
+            const mappedItems: Item[] = (data || []).map((i: Item) => ({
                 id: i.id,
                 name: i.name,
                 category: i.category,
@@ -173,9 +173,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
             }))
 
             setItems(mappedItems)
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Fetch error:", err, JSON.stringify(err, null, 2))
-            toast.error(err.message || "Failed to check availability")
+            const message = err instanceof Error ? err.message : 'Failed to check availability'
+            toast.error(message)
             // Fallback to active items if RPC fails? Better to show error.
         } finally {
             setIsLoading(false)

@@ -24,6 +24,9 @@ export default function ImageUpload({ onUpload, bucket = 'rental_items', folder 
             }
 
             const file = event.target.files[0]
+            if (!file.type.startsWith('image/')) {
+                throw new Error('Please upload an image file.')
+            }
             const fileExt = file.name.split('.').pop()
             const fileName = `${folder}/${uuidv4()}.${fileExt}`
             const filePath = `${fileName}`
@@ -44,8 +47,9 @@ export default function ImageUpload({ onUpload, bucket = 'rental_items', folder 
 
             onUpload(data.publicUrl)
 
-        } catch (error: any) {
-            alert('Error uploading image: ' + error.message)
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error'
+            alert('Error uploading image: ' + message)
             setPreview(null)
         } finally {
             setUploading(false)

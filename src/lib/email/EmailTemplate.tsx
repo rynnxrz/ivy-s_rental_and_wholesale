@@ -93,7 +93,7 @@ export const EmailTemplate: React.FC<Readonly<EmailTemplateProps>> = ({
             ) : (
                 <p style={{ marginTop: '20px' }}>
                     Best regards,<br />
-                    Ivy's Rental & Wholesale
+                    Ivy&#39;s Rental & Wholesale
                 </p>
             )}
         </div>
