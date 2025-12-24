@@ -39,23 +39,16 @@ export default async function ArchivePage() {
     }) || []
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <header className="bg-white border-b py-12 px-4 text-center">
-                <h1 className="text-3xl font-light tracking-[0.2em] uppercase">Archive</h1>
-                <p className="text-xs text-gray-400 mt-2 tracking-wide uppercase">Full Collection Overview</p>
-            </header>
-
-            <Suspense fallback={
-                <div className="min-h-[50vh] flex items-center justify-center">
-                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
-                </div>
-            }>
-                <ArchiveClient
-                    initialItems={validItems}
-                    categories={categories || []}
-                    collections={visibleCollections || []}
-                />
-            </Suspense>
-        </div>
+        <Suspense fallback={
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-300 border-r-gray-900"></div>
+            </div>
+        }>
+            <ArchiveClient
+                initialItems={validItems}
+                categories={categories || []}
+                collections={visibleCollections || []}
+            />
+        </Suspense>
     )
 }

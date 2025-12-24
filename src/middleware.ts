@@ -4,6 +4,19 @@ import { updateSession } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
     console.log('[Middleware] Executing for path:', request.nextUrl.pathname)
+
+    // Block direct access to wholesale mode without the auth cookie
+    const mode = request.nextUrl.searchParams.get('mode')
+    const isWholesaleCatalog = request.nextUrl.pathname.startsWith('/catalog') && mode === 'wholesale'
+    const hasWholesaleCookie = request.cookies.get('wholesale_authenticated')?.value === 'true'
+
+    if (isWholesaleCatalog && !hasWholesaleCookie) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/wholesale'
+        url.search = ''
+        return NextResponse.redirect(url)
+    }
+
     return await updateSession(request)
 }
 
