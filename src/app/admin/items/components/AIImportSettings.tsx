@@ -21,10 +21,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2, RotateCcw, Copy, Check, Send, Trash2, MessageSquare, Bot, User } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Loader2, RotateCcw, Copy, Check, Send, Trash2, MessageSquare, Bot, User, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { AvailableModel, getDefaultPromptsAction, testAIChatAction, getModelThinkingLevelsAction } from '@/actions/items'
+import { AvailableModel, getDefaultPromptsAction, testAIChatAction, getModelThinkingLevelsAction, testSpeedScanAction } from '@/actions/items'
 import { saveAISettingsAction, restoreDefaultAISettingsAction } from '@/app/admin/settings/actions'
+import { readStreamableValue } from '@/lib/ai-stream'
 
 interface AIImportSettingsProps {
     open: boolean
@@ -41,6 +43,8 @@ interface AIImportSettingsProps {
         thinkingSubcategory: string | null
         thinkingProductList: string | null
         thinkingProductDetail: string | null
+        maxOutputTokens: number | null
+        useSystemInstruction: boolean
     }
 }
 
@@ -64,6 +68,8 @@ export function AIImportSettings({
         productList: initialSettings.thinkingProductList || '',
         productDetail: initialSettings.thinkingProductDetail || ''
     })
+    const [maxOutputTokens, setMaxOutputTokens] = useState<number | null>(initialSettings.maxOutputTokens)
+    const [useSystemInstruction, setUseSystemInstruction] = useState(initialSettings.useSystemInstruction ?? false)
     const [modelThinkingOptions, setModelThinkingOptions] = useState<string[]>([])
     const [isLoadingThinking, setIsLoadingThinking] = useState(false)
     const [isSaving, startTransition] = useTransition()
@@ -81,6 +87,24 @@ export function AIImportSettings({
     const [chatInput, setChatInput] = useState('')
     const [isChatting, setIsChatting] = useState(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
+
+    // Speed Scan test state
+    const [testScanUrl, setTestScanUrl] = useState('')
+    const [isTestingSpeedScan, setIsTestingSpeedScan] = useState(false)
+    const [speedScanLogs, setSpeedScanLogs] = useState<Array<{ message: string; elapsed: number; isThought?: boolean }>>([])
+    const [speedScanResult, setSpeedScanResult] = useState<{
+        success: boolean
+        count?: number
+        duration?: number
+        samples?: string[]
+        error?: string
+    } | null>(null)
+    const speedScanLogRef = useRef<HTMLDivElement>(null)
+
+    // Auto-scroll speed scan logs
+    useEffect(() => {
+        speedScanLogRef.current?.scrollTo({ top: speedScanLogRef.current.scrollHeight, behavior: 'smooth' })
+    }, [speedScanLogs])
 
     // Auto-scroll to bottom when new messages appear
     useEffect(() => {
@@ -116,8 +140,83 @@ export function AIImportSettings({
         setChatInput('')
     }
 
+    type SpeedScanChunk =
+        | { type: 'log'; message: string; elapsed: number }
+        | { type: 'chunk'; text: string; isThought: boolean; elapsed: number }
+        | { type: 'result'; success: boolean; count?: number; duration?: number; samples?: string[]; error?: string }
+
+    const handleTestSpeedScan = async () => {
+        if (!testScanUrl.trim()) return
+
+        setIsTestingSpeedScan(true)
+        setSpeedScanResult(null)
+        setSpeedScanLogs([])
+
+        try {
+            const { output } = await testSpeedScanAction(testScanUrl, selectedModel)
+
+            let currentThought = ''
+
+            for await (const chunk of readStreamableValue<SpeedScanChunk>(output)) {
+                if (chunk.type === 'log') {
+                    setSpeedScanLogs(prev => [...prev, { message: chunk.message, elapsed: chunk.elapsed }])
+                } else if (chunk.type === 'chunk') {
+                    if (chunk.isThought) {
+                        // Accumulate thought text and update last thought log
+                        currentThought += chunk.text
+                        setSpeedScanLogs(prev => {
+                            const last = prev[prev.length - 1]
+                            if (last?.isThought) {
+                                return [...prev.slice(0, -1), { message: currentThought, elapsed: chunk.elapsed, isThought: true }]
+                            } else {
+                                return [...prev, { message: currentThought, elapsed: chunk.elapsed, isThought: true }]
+                            }
+                        })
+                    }
+                } else if (chunk.type === 'result') {
+                    setSpeedScanResult({
+                        success: chunk.success,
+                        count: chunk.count,
+                        duration: chunk.duration,
+                        samples: chunk.samples,
+                        error: chunk.error
+                    })
+                }
+            }
+        } catch (error) {
+            setSpeedScanResult({
+                success: false,
+                error: error instanceof Error ? error.message : 'Test failed'
+            })
+        } finally {
+            setIsTestingSpeedScan(false)
+        }
+    }
+
     // Note: local state is initialized from initialSettings once. If the parent updates
     // initialSettings later, we intentionally keep the user's in-progress edits intact.
+    // HOWEVER, when dialog re-opens, we should sync to latest settings.
+    useEffect(() => {
+        if (open) {
+            // Sync state with latest initialSettings when dialog opens
+            setSelectedModel(initialSettings.selectedModel || 'gemini-2.0-flash')
+            setPrompts({
+                category: initialSettings.promptCategory || '',
+                subcategory: initialSettings.promptSubcategory || '',
+                productList: initialSettings.promptQuickList || initialSettings.promptProductList || '',
+                quickList: initialSettings.promptQuickList || initialSettings.promptProductList || '',
+                productDetail: initialSettings.promptProductDetail || ''
+            })
+            setThinkingLevels({
+                category: initialSettings.thinkingCategory || '',
+                subcategory: initialSettings.thinkingSubcategory || '',
+                productList: initialSettings.thinkingProductList || '',
+                productDetail: initialSettings.thinkingProductDetail || ''
+            })
+            setMaxOutputTokens(initialSettings.maxOutputTokens)
+            setUseSystemInstruction(initialSettings.useSystemInstruction ?? false)
+        }
+    }, [open, initialSettings])
 
     // Load default prompts when opened
     useEffect(() => {
@@ -155,7 +254,9 @@ export function AIImportSettings({
                 ai_thinking_category: thinkingLevels.category || null,
                 ai_thinking_subcategory: thinkingLevels.subcategory || null,
                 ai_thinking_product_list: thinkingLevels.productList || null,
-                ai_thinking_product_detail: thinkingLevels.productDetail || null
+                ai_thinking_product_detail: thinkingLevels.productDetail || null,
+                ai_max_output_tokens: maxOutputTokens ?? null,
+                ai_use_system_instruction: useSystemInstruction
             })
 
             if (result.success) {
@@ -284,6 +385,20 @@ export function AIImportSettings({
                                 <p className="text-sm text-muted-foreground">
                                     Select the Google Gemini model to use for scraping. Newer models (2.0) are generally faster and more accurate.
                                 </p>
+                            </div>
+
+                            {/* System Instruction Toggle */}
+                            <div className="flex items-center justify-between py-4 px-4 bg-muted/50 rounded-lg border">
+                                <div className="space-y-0.5">
+                                    <Label className="text-sm font-medium">Base System Instruction</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Enable to apply base persona and guidelines to all AI functions (extraction, categorization, etc.)
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={useSystemInstruction}
+                                    onCheckedChange={setUseSystemInstruction}
+                                />
                             </div>
 
                             {/* Test Chat Section */}
@@ -448,8 +563,8 @@ export function AIImportSettings({
                         </TabsContent>
 
                         {/* Products: Speed Scan Prompt */}
-                        <TabsContent value="products" className="space-y-6 py-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                        <TabsContent value="products" className="space-y-6 py-4 h-full flex flex-col">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2 flex flex-col">
                                     <div className="flex items-center justify-between">
                                         <Label>Speed Scan Prompt (Listing only)</Label>
@@ -467,15 +582,143 @@ export function AIImportSettings({
                                         placeholder="System default (Leave empty to use default)"
                                         value={prompts.quickList}
                                         onChange={(e) => setPrompts(p => ({ ...p, quickList: e.target.value }))}
-                                        className="flex-1 min-h-[260px] font-mono text-xs"
+                                        className="flex-1 min-h-[200px] font-mono text-xs"
                                     />
-                                    <p className="text-xs text-muted-foreground">
+                                    {renderThinkingSelector('productList', 'Thinking level for speed scan')}
+
+                                    {/* Max Output Tokens */}
+                                    <div className="space-y-2 mt-4">
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-sm">Max Output Tokens</Label>
+                                            {(() => {
+                                                const currentModel = availableModels.find(m => m.id === selectedModel)
+                                                if (currentModel?.outputTokenLimit) {
+                                                    return (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            (Model limit: {currentModel.outputTokenLimit.toLocaleString()})
+                                                        </span>
+                                                    )
+                                                }
+                                                return null
+                                            })()}
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <Input
+                                                type="number"
+                                                placeholder="Default (model max)"
+                                                value={maxOutputTokens ?? ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value
+                                                    setMaxOutputTokens(val ? parseInt(val, 10) : null)
+                                                }}
+                                                className="w-40"
+                                            />
+                                            {maxOutputTokens && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 px-2 text-xs"
+                                                    onClick={() => setMaxOutputTokens(null)}
+                                                >
+                                                    <RotateCcw className="mr-1 h-3 w-3" />
+                                                    Reset
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Limits the maximum tokens in the AI response. Leave empty to use the model's default max.
+                                        </p>
+                                    </div>
+
+                                    <p className="text-xs text-muted-foreground mt-4">
                                         Used for the Speed Scan (listing-only) step. AI visits the listing page and returns products with URLs, prices, thumbnails, colors.
                                     </p>
                                 </div>
                                 <div className="space-y-2 pt-8">
                                     {defaultPrompts && renderDefaultPrompt('quickList', defaultPrompts.quickList)}
                                 </div>
+                            </div>
+
+                            {/* Speed Scan Test Section */}
+                            <div className="border-t pt-6 mt-auto">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Zap className="h-4 w-4 text-amber-500" />
+                                    <Label className="text-sm font-medium">Test Speed Scan</Label>
+                                    <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded-full">
+                                        {selectedModel}
+                                    </span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Input
+                                        placeholder="https://example.com/collections/category"
+                                        value={testScanUrl}
+                                        onChange={(e) => setTestScanUrl(e.target.value)}
+                                        disabled={isTestingSpeedScan}
+                                        className="flex-1"
+                                    />
+                                    <Button
+                                        onClick={handleTestSpeedScan}
+                                        disabled={!testScanUrl.trim() || isTestingSpeedScan}
+                                        variant="outline"
+                                    >
+                                        {isTestingSpeedScan ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Zap className="mr-2 h-4 w-4" />
+                                        )}
+                                        {isTestingSpeedScan ? 'Testing...' : 'Run Test'}
+                                    </Button>
+                                </div>
+
+                                {/* Thinking Chain Console */}
+                                {(speedScanLogs.length > 0 || isTestingSpeedScan) && (
+                                    <div
+                                        ref={speedScanLogRef}
+                                        className="mt-3 bg-slate-900 rounded-lg p-3 max-h-[200px] overflow-y-auto font-mono text-xs"
+                                    >
+                                        {speedScanLogs.map((log, idx) => (
+                                            <div key={idx} className="flex gap-2 py-0.5">
+                                                <span className="text-slate-500 shrink-0 w-14 text-right">
+                                                    [{(log.elapsed / 1000).toFixed(1)}s]
+                                                </span>
+                                                <span className={log.isThought ? 'text-purple-400' : 'text-slate-300'}>
+                                                    {log.isThought && <span className="text-purple-500 mr-1">💭</span>}
+                                                    {log.message}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {isTestingSpeedScan && (
+                                            <div className="flex gap-2 py-0.5 text-slate-500">
+                                                <span className="shrink-0 w-14 text-right">...</span>
+                                                <span className="animate-pulse">Processing...</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Result Summary */}
+                                {speedScanResult && (
+                                    <div className={`mt-3 p-3 rounded-lg text-sm ${speedScanResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                        {speedScanResult.success ? (
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 text-green-700 font-medium">
+                                                    <Check className="h-4 w-4" />
+                                                    Found {speedScanResult.count} products in {((speedScanResult.duration || 0) / 1000).toFixed(2)}s
+                                                </div>
+                                                {speedScanResult.samples && speedScanResult.samples.length > 0 && (
+                                                    <div className="text-xs text-green-600 mt-2">
+                                                        <span className="font-medium">Sample:</span> {speedScanResult.samples.slice(0, 3).join(', ')}
+                                                        {speedScanResult.samples.length > 3 && ` +${speedScanResult.samples.length - 3} more`}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="text-red-700">
+                                                ❌ {speedScanResult.error}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </TabsContent>
 

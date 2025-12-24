@@ -146,6 +146,8 @@ export async function saveAISettingsAction(settings: {
     ai_thinking_subcategory?: string | null
     ai_thinking_product_list?: string | null
     ai_thinking_product_detail?: string | null
+    ai_max_output_tokens?: number | null
+    ai_use_system_instruction?: boolean
 }) {
     console.log('\n📝 [AI Settings] Saving AI Configuration...')
     console.log('   ├─ Model:', settings.ai_selected_model)
@@ -157,7 +159,9 @@ export async function saveAISettingsAction(settings: {
     console.log('   ├─ Thinking (Category):', settings.ai_thinking_category || 'default')
     console.log('   ├─ Thinking (Subcategory):', settings.ai_thinking_subcategory || 'default')
     console.log('   ├─ Thinking (Product List):', settings.ai_thinking_product_list || 'default')
-    console.log('   └─ Thinking (Product Detail):', settings.ai_thinking_product_detail || 'default')
+    console.log('   ├─ Thinking (Product Detail):', settings.ai_thinking_product_detail || 'default')
+    console.log('   ├─ Max Output Tokens:', settings.ai_max_output_tokens || 'default')
+    console.log('   └─ Use System Instruction:', settings.ai_use_system_instruction ? '✓ Enabled' : '○ Disabled')
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -251,7 +255,7 @@ export async function getAISettingsAction() {
     const baseSelect =
         'ai_selected_model, ai_prompt_category, ai_prompt_subcategory, ai_prompt_product_list, ai_prompt_quick_list, ai_prompt_product_detail'
     const fullSelect =
-        `${baseSelect}, ai_thinking_category, ai_thinking_subcategory, ai_thinking_product_list, ai_thinking_product_detail, prompt_history`
+        `${baseSelect}, ai_thinking_category, ai_thinking_subcategory, ai_thinking_product_list, ai_thinking_product_detail, ai_max_output_tokens, ai_use_system_instruction, prompt_history`
 
     const { data, error } = await supabase
         .from('app_settings')
@@ -263,13 +267,14 @@ export async function getAISettingsAction() {
     // Fallback for environments that have not yet added ai_thinking_* or prompt_history columns (so prompts still load)
     const missingThinking = error.message?.includes('ai_thinking_')
     const missingPromptHistory = error.message?.includes('prompt_history')
-    const needsFallback = missingThinking || missingPromptHistory || error.message?.includes('schema cache')
+    const missingMaxTokens = error.message?.includes('ai_max_output_tokens')
+    const needsFallback = missingThinking || missingPromptHistory || missingMaxTokens || error.message?.includes('schema cache')
     if (!needsFallback) {
         console.error('Failed to fetch AI settings:', error)
         return null
     }
 
-    console.warn('[AI Settings] Falling back to legacy column set (missing ai_thinking_* or prompt_history)')
+    console.warn('[AI Settings] Falling back to legacy column set (missing ai_thinking_* or prompt_history or ai_max_output_tokens)')
     const fallbackSelect = missingPromptHistory ? baseSelect : `${baseSelect}, prompt_history`
     const { data: legacyData, error: legacyError } = await supabase
         .from('app_settings')
@@ -287,6 +292,8 @@ export async function getAISettingsAction() {
         ai_thinking_subcategory: null,
         ai_thinking_product_list: null,
         ai_thinking_product_detail: null,
+        ai_max_output_tokens: null,
+        ai_use_system_instruction: false,
         prompt_history: missingPromptHistory ? {} : (legacyData as { prompt_history?: Record<string, string[]> }).prompt_history
     }
 }

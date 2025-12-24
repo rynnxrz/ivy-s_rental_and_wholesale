@@ -99,6 +99,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         thinkingSubcategory: string | null
         thinkingProductList: string | null
         thinkingProductDetail: string | null
+        maxOutputTokens: number | null
+        useSystemInstruction: boolean
         promptHistory?: Record<string, string[]>
     }>({
         selectedModel: 'gemini-2.0-flash',
@@ -111,6 +113,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         thinkingSubcategory: null,
         thinkingProductList: null,
         thinkingProductDetail: null,
+        maxOutputTokens: null,
+        useSystemInstruction: false,
         promptHistory: {}
     })
 
@@ -147,6 +151,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     thinkingSubcategory: settings.ai_thinking_subcategory,
                     thinkingProductList: settings.ai_thinking_product_list,
                     thinkingProductDetail: settings.ai_thinking_product_detail,
+                    maxOutputTokens: settings.ai_max_output_tokens ?? null,
+                    useSystemInstruction: settings.ai_use_system_instruction ?? false,
                     promptHistory: (settings && 'prompt_history' in settings ? (settings as { prompt_history?: Record<string, string[]> }).prompt_history : {}) || {}
                 })
                 setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
@@ -173,8 +179,8 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setStatus,
         reset: resetAIWorkflow,
         setUsage,
-    appendToLastLog // NEW: For streaming text
-} = useAIWorkflow()
+        appendToLastLog // NEW: For streaming text
+    } = useAIWorkflow()
 
     const [consoleOpen, setConsoleOpen] = useState(false)
     const [currentRunId, setCurrentRunId] = useState<string | null>(null)
@@ -741,7 +747,9 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                                     thinkingCategory: settings.ai_thinking_category,
                                     thinkingSubcategory: settings.ai_thinking_subcategory,
                                     thinkingProductList: settings.ai_thinking_product_list,
-                                    thinkingProductDetail: settings.ai_thinking_product_detail
+                                    thinkingProductDetail: settings.ai_thinking_product_detail,
+                                    maxOutputTokens: settings.ai_max_output_tokens ?? null,
+                                    useSystemInstruction: settings.ai_use_system_instruction ?? false
                                 })
                                 setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
                             }
