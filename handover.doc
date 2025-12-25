@@ -1,0 +1,92 @@
+# IVYJSTUDIO MVP 交接文档
+
+**日期:** 2025-12-25
+**版本:** v1.1 (Post-MVP Enhanced) 
+485106dd7b7cc0fc6523c4d6a4502b2072303582
+**目标:** B2B 高级珠宝租赁与批发管理系统
+
+---
+
+## 1. 技术栈 (Tech Stack)
+*   **框架:** Next.js 16 (App Router) + React 19
+*   **样式:** Tailwind CSS v4 + Shadcn UI (Radix)
+*   **数据库/后端:** Supabase (Postgres, Auth, Storage, Edge Functions)
+*   **AI 引擎:** Google Gemini (Streaming + Search Grounding)
+*   **部署:** Vercel
+*   **服务:** Resend (邮件), Cloudflare (DNS/CDN), Microsoft Clarity (用户行为分析)
+
+---
+
+## 2. 核心功能交付 (Completed Features)
+
+### A. 前台门户 (Portal)
+1.  **三路分流架构**:
+    *   **Rental**: 基于日期的租赁画册，含实时库存冲突检测。
+    *   **Wholesale**: 批发专区，全场 6 折，起订量 $2,000 校验。
+        *   *新增*: 独立的批发商登录鉴权 (`WholesaleAuthMiddleware`)。
+    *   **Archive**: 品牌归档展示，无交易功能。
+        *   *新增*: 多色变体展示 (Color Display)，移动端筛选器优化 (Mobile Sheet UI)，移除不必要的购物车按钮。
+2.  **用户体验与性能 (UX & Performance)**:
+    *   **智能交互**: 引入 React `useTransition` 优化表单提交体验，`TopLoader` 提供导航加载反馈。
+    *   **骨架屏 (Skeletons)**: 全面覆盖 Catalog, Wholesale, Archive 的数据加载状态。
+    *   **移动端适配**:
+        *   全新的 Mobile Date Picker 与 Filter Drawer。
+        *   吸底式预定栏 (Sticky Booking Bar) 与安全区适配。
+    *   **卡片设计**: 重构 Item Cards，增加 Total Price 显示与快捷移除操作。
+3.  **购物袋系统**:
+    *   **业务隔离**: Rental 和 Wholesale 购物车数据互不干扰。
+    *   **静默添加**: 导航栏右上角常驻，支持原位撤销 (Undo)。
+4.  **详情页**:
+    *   1:1 正方形留白构图，支持多图画廊。
+
+### B. 后台管理 (Admin Dashboard)
+1.  **AI 智能导入 (AI Import Ecosystem)**:
+    *   **完整工作流**: Scan (URL/Text) -> AI Analysis (Gemini) -> Staging (Review) -> Inventory。
+    *   **核心特性**:
+        *   **Real-time Streaming**: 终端风格组件 (`AIStatusConsole`) 实时展示 AI 思考链 (Thinking Chain) 与每步耗时。
+        *   **Grounding**: 强制启用 Google Search Grounding，确保提取信息的真实性，减少幻觉。
+        *   **Batch Management**: 基于 `staging_imports` 表及其关联表，支持整批次的提交与回滚。
+        *   **Dynamic Models**: 动态获取 Google AI 可用模型列表 (e.g., Flash vs Pro)，支持按需切换。
+    *   **配置**: 支持管理员自定义 `System Instructions` 与各环节 Prompts。
+2.  **商品管理 (Inventory)**:
+    *   **母子变体**: 支持 "Save & Add Variation" 快速录入多色变体。
+    *   **分组视图**: 列表页按设计名折叠/展开。
+    *   **生命周期**: Active / Maintenance / Retired。
+3.  **订单管理 (Reservations)**:
+    *   **聚合视图**: 订单列表按 Group ID 聚合展示，大幅优化视觉体验。
+    *   **批量操作**: 支持整单批准、归档，以及新增的 **批量恢复 (Restoration)** 功能。
+    *   **物流集成**: 支持录入 Tracking Number 并自动生成查询链接。
+4.  **通讯中心 (Communications)**:
+    *   **邮件模板**: 可视化编辑 (Approval/Shipping/Invoice)。
+    *   **PDF Invoice**: 自动生成带商品缩略图、多行表格、银行信息的 PDF 账单，支持新增的 **Invoice Email Types**。
+    *   **真实测试**: 支持发送包含模拟数据的测试邮件。
+
+---
+
+## 3. 开发规范与维护 (Maintenance)
+
+### 数据库架构与安全
+*   **Schema 变更**:
+    *   新增 `staging_imports`, `staging_items` 表支持 AI 导入暂存业务。
+    *   新增 `app_settings` 表用于 AI 配置 (Max Output Tokens, Temperature 等) 的持久化。
+*   **系统可靠性**:
+    *   **Atomic Operations (RPC)**: 实现 `commit_staging_batch` 事务，确保批量入库的原子性。
+    *   **Security**:
+        *   关键 RPC 强制设置 `search_path` 防止注入。
+        *   后台批量写操作显式使用 `Service Role Client` 绕过复杂 RLS，同时对 Staging 表启用严格的 RLS 策略。
+*   **常规维护**:
+    *   Schema 变更后**必须**运行同步命令：
+    ```bash
+    npm run update-types
+    ```
+
+### 关键配置 (Environment Variables)
+*   `NEXT_PUBLIC_SUPABASE_URL` / `ANON_KEY`: 前端连接。
+*   `SUPABASE_SERVICE_ROLE_KEY`: 后台管理员操作。
+*   `RESEND_API_KEY`: 邮件服务。
+*   `GOOGLE_GENERATIVE_AI_API_KEY`: **新增**，用于 Gemini AI 服务调用。
+
+### 图像存储
+*   **Bucket**: `rental_items`
+*   **Path**: `/items/{filename}`
+*   **规范**: 建议上传正方形白底图，系统会自动适配 `object-contain`。
