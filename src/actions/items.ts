@@ -3,6 +3,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ItemInsert, ItemUpdate } from '@/types'
+import { requireAdmin } from '@/lib/auth/guards'
 
 const slugify = (value: string, prefix: string) => {
     const base = value
@@ -46,6 +47,7 @@ export async function getItem(id: string) {
 }
 
 export async function createItem(item: ItemInsert) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -63,6 +65,7 @@ export async function createItem(item: ItemInsert) {
 }
 
 export async function updateItem(id: string, item: ItemUpdate) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -82,6 +85,7 @@ export async function updateItem(id: string, item: ItemUpdate) {
 }
 
 export async function deleteItem(id: string) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { error } = await supabase
@@ -101,6 +105,7 @@ export async function deleteItem(id: string) {
 }
 
 export async function archiveItem(id: string) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { error } = await supabase
@@ -117,6 +122,7 @@ export async function archiveItem(id: string) {
 }
 
 export async function uploadItemImage(formData: FormData) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const file = formData.get('file') as File
@@ -144,6 +150,7 @@ export async function uploadItemImage(formData: FormData) {
 }
 
 export async function createCategory(name: string) {
+    await requireAdmin()
     const supabase = createServiceClient()
     const slug = slugify(name, 'category')
 
@@ -163,6 +170,7 @@ export async function createCategory(name: string) {
 }
 
 export async function createCollection(name: string) {
+    await requireAdmin()
     const supabase = createServiceClient()
     const slug = slugify(name, 'collection')
 
@@ -408,6 +416,7 @@ export async function testAIChatAction(
     modelId: string = 'gemini-2.0-flash',
     history: Array<{ role: 'user' | 'assistant'; content: string }> = []
 ): Promise<{ success: boolean; response: string; error: string | null }> {
+    await requireAdmin()
     if (!message.trim()) {
         return { success: false, response: '', error: 'Message cannot be empty' }
     }
@@ -796,6 +805,7 @@ export async function getDefaultPromptsAction() {
  * @returns Extracted category names and URLs for mapping with type hints
  */
 export async function extractCategoriesAction(sourceUrl: string, modelId?: string): Promise<ExtractCategoriesResult> {
+    await requireAdmin()
     // 1. Validate URL
     if (!sourceUrl || !sourceUrl.startsWith('http')) {
         return { success: false, error: 'Invalid URL provided', categories: [], sourceUrl }
@@ -912,6 +922,7 @@ export async function extractCategoriesAction(sourceUrl: string, modelId?: strin
  * Streaming version of extractCategoriesAction
  */
 export async function extractCategoriesStreamAction(sourceUrl: string, modelId?: string) {
+    await requireAdmin()
     const stream = createStreamableValue()
 
         // Run async logic detached from the return
@@ -1054,6 +1065,7 @@ export async function exploreSubCategoriesAction(
     parentName: string,
     modelId?: string
 ): Promise<{ success: boolean; error: string | null; subCategories: ExtractedCategory[] }> {
+    await requireAdmin()
     if (!categoryUrl || !categoryUrl.startsWith('http')) {
         return { success: false, error: 'Invalid URL provided', subCategories: [] }
     }
@@ -1356,6 +1368,7 @@ export async function scanCategoriesAction(
     batchId: string,
     modelId: string = 'gemini-2.0-flash'
 ): Promise<ScanResult & { needsContinue?: boolean }> {
+    await requireAdmin()
     const supabase = await createClient()
     let totalItemsScraped = 0
 
@@ -1522,6 +1535,7 @@ export async function scanCategoriesAction(
  * Creates a new staging import batch and returns the batch ID.
  */
 export async function createStagingBatchAction(sourceUrl: string): Promise<{ batchId: string | null; error: string | null }> {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -1629,6 +1643,7 @@ export async function getImportBatchesAction() {
  * Removes a staging item (soft delete by marking as rejected).
  */
 export async function removeStagingItemAction(id: string) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { error } = await supabase
@@ -1663,6 +1678,7 @@ export async function updateStagingItemAction(
         variant_of_name?: string | null  // For drag-and-drop group reassignment
     }
 ) {
+    await requireAdmin()
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -1685,6 +1701,7 @@ export async function updateStagingItemAction(
  * Group key logic matches UI: variant_of_name || name.
  */
 export async function renameStagingGroupAction(oldName: string, newName: string, batchId: string) {
+    await requireAdmin()
     const supabase = await createClient()
 
     // Find all items whose group key matches the old name
@@ -1722,6 +1739,7 @@ export async function renameStagingGroupAction(oldName: string, newName: string,
  * Deletes a staging import batch and all its items.
  */
 export async function deleteStagingBatchAction(batchId: string) {
+    await requireAdmin()
     const supabase = await createClient()
 
     // 1. Delete items first (cascade should handle this usually, but safe to be explicit)
@@ -1754,6 +1772,7 @@ export async function deleteStagingBatchAction(batchId: string) {
  * - Uses atomic database transaction via RPC
  */
 export async function commitStagingItemsAction(batchId: string) {
+    await requireAdmin()
     const supabase = await createClient()
     const serviceClient = await createServiceClient()
 
@@ -1934,6 +1953,7 @@ export async function quickScanAction(
     batchId: string,
     modelId: string = 'gemini-2.0-flash'
 ): Promise<QuickScanResult> {
+    await requireAdmin()
     const startTime = Date.now()
     const supabase = await createClient()
     let totalItemsFound = 0
@@ -2082,6 +2102,7 @@ export async function quickScanStreamAction(
     batchId: string,
     modelId: string = 'gemini-2.0-flash'
 ) {
+    await requireAdmin()
     const stream = createStreamableValue()
 
         ; (async () => {
@@ -2241,6 +2262,7 @@ export async function autoCategorizeStagingItemsAction(
     batchId: string,
     modelId: string = 'gemini-2.0-flash'
 ): Promise<{ success: boolean; error: string | null; updatedCount: number; unmatched: string[] }> {
+    await requireAdmin()
     const supabase = await createClient()
 
     const [{ data: items, error: itemsError }, { data: categories, error: categoriesError }] = await Promise.all([
@@ -2362,6 +2384,7 @@ Expected JSON format:
 export async function deepEnrichAction(
     stagingItemId: string
 ): Promise<{ success: boolean; error: string | null }> {
+    await requireAdmin()
     const supabase = await createClient()
 
     // Get the staging item
@@ -2476,6 +2499,7 @@ export async function deepEnrichAction(
 export async function batchDeepEnrichAction(
     batchId: string
 ): Promise<{ success: boolean; error: string | null; enrichedCount: number; failedCount: number; total: number }> {
+    await requireAdmin()
     const supabase = await createClient()
 
     // Get all pending items that need enrichment
@@ -2592,6 +2616,7 @@ export async function testSpeedScanAction(
     url: string,
     modelId: string = 'gemini-2.0-flash'
 ) {
+    await requireAdmin()
     const stream = createStreamableValue()
 
         ; (async () => {

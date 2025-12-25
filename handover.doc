@@ -61,6 +61,36 @@
     *   **PDF Invoice**: 自动生成带商品缩略图、多行表格、银行信息的 PDF 账单，支持新增的 **Invoice Email Types**。
     *   **真实测试**: 支持发送包含模拟数据的测试邮件。
 
+### C. 系统配置 (Settings Dashboard)
+系统配置面板位于 `/admin/settings`，包含四个核心 Tab：
+
+1.  **Billing Profiles (账单主体)**:
+    *   支持创建/编辑多个账单主体 (公司抬头、银行信息)。
+    *   可设置默认 Profile，用于自动填充 Invoice。
+2.  **Communications (通讯配置)**:
+    *   **邮件模板编辑**: Approval、Shipping、Invoice 三类邮件的 Subject/Body/Footer 可视化编辑。
+    *   **变量插入**: 支持 `{{customerName}}`, `{{itemName}}`, `{{startDate}}`, `{{reservationId}}` 等占位符。
+    *   **实时预览**: 左侧编辑，右侧即时渲染邮件/PDF 效果。
+    *   **测试发送**: 可向指定邮箱发送包含模拟数据的测试邮件。
+3.  **Taxonomy (分类与系列)**:
+    *   **Categories/Collections CRUD**: 新增、删除、显示/隐藏切换。
+    *   **关联校验**: 删除前检查是否有商品关联，防止误删。
+4.  **System (核心系统参数)**:
+    *   **Turnaround Buffer**: 订单周转缓冲天数 (同一商品两笔订单间的最小间隔)。
+    *   **Booking Password**: 租赁预约表单的访问密码 (空值表示开放访问)。
+    *   **Contact Email**: 邮件回复地址 (Reply-To)。
+
+### D. AI 配置 (AI Configuration Dialog)
+AI 配置弹窗 (`AIImportSettings`) 可从商品导入面板打开，提供以下高级设置：
+
+1.  **模型选择**: 动态拉取 Google AI 可用模型列表，支持 Flash/Pro 等模型切换。
+2.  **Thinking Levels**: 针对不同环节 (Category/Subcategory/ProductList/ProductDetail) 独立设置思考深度 (Low/Medium/High)。
+3.  **Custom Prompts**: 自定义各环节的 AI 提示词，支持恢复默认。
+4.  **Max Output Tokens**: AI 单次响应的最大 Token 数。
+5.  **System Instruction 开关**: 是否启用全局 AI 人设指令。
+6.  **Test Chat**: 与当前选中模型进行实时对话，验证配置效果。
+7.  **Speed Scan Test**: 使用测试 URL 测试快速扫描流程，实时输出思考链与耗时。
+
 ---
 
 ## 3. 开发规范与维护 (Maintenance)
