@@ -50,6 +50,14 @@ You are building **Ivy's Rental & Wholesale**, a B2B Management System for high-
 - **UI Convention:** Items with the same `name` are grouped as variants.
 - **AI Import Rule:** When grouping variants, AI MUST insert them with identical `name` values.
 
+## UI & Language (User-Centric)
+- **No Jargon:** Avoid developer-centric terms like "ad-hoc", "endpoint", "callback", "null".
+- **Simple English:** Use plain, business-oriented language. 
+  - ❌ "Create Ad-hoc Charge" -> ✅ "Add Manual Charge" or "Extra Fee"
+  - ❌ "Execute Sync" -> ✅ "Update List"
+  - ❌ "Invalid Payload" -> ✅ "Please check the information you entered"
+- **Clarity over Sophistication:** Prioritize terms that a business owner (like Ivy) or a jewelry customer understands instantly.
+
 ---
 
 # 3. Business Logic

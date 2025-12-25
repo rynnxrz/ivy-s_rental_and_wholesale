@@ -97,7 +97,7 @@ export default function NewInvoicePage() {
                 <div>
                     <h1 className="text-3xl font-semibold text-slate-900">New Invoice</h1>
                     <p className="text-sm text-slate-500 mt-1">
-                        Create a manual invoice for services or ad-hoc charges
+                        Create a manual invoice for services or custom one-off charges
                     </p>
                 </div>
             </div>
