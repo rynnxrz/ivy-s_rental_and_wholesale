@@ -89,7 +89,7 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
-        return 'https://placehold.co/600x400?text=No+Image'
+        return 'https://placehold.co/600x400.png?text=No+Image'
     }
 
     return (

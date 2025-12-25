@@ -11,7 +11,8 @@ import {
     Users,
     Settings,
     LogOut,
-    Menu // Import Menu icon
+    Menu, // Import Menu icon
+    FileText // Invoice icon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -28,6 +29,7 @@ const navItems = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/items', label: 'Items', icon: Package },
     { href: '/admin/reservations', label: 'Reservations', icon: Calendar },
+    { href: '/admin/invoices', label: 'Invoices', icon: FileText },
     { href: '/admin/customers', label: 'Customers', icon: Users },
 ]
 

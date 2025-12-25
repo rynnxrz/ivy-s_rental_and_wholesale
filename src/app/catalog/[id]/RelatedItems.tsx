@@ -27,7 +27,7 @@ export async function RelatedItems({ collectionId, currentId, isArchiveMode }: P
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
-        return 'https://placehold.co/800x600?text=No+Image'
+        return 'https://placehold.co/800x600.png?text=No+Image'
     }
 
     return (

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     console.log('[Middleware] Executing for path:', request.nextUrl.pathname)
 
     // Block direct access to wholesale mode without the auth cookie

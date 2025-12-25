@@ -17,7 +17,19 @@ export type Database = {
       app_settings: {
         Row: {
           ai_import_prompt: string | null
+          ai_max_output_tokens: number | null
           ai_model: string | null
+          ai_prompt_category: string | null
+          ai_prompt_product_detail: string | null
+          ai_prompt_product_list: string | null
+          ai_prompt_quick_list: string | null
+          ai_prompt_subcategory: string | null
+          ai_selected_model: string | null
+          ai_thinking_category: string | null
+          ai_thinking_product_detail: string | null
+          ai_thinking_product_list: string | null
+          ai_thinking_subcategory: string | null
+          ai_use_system_instruction: boolean | null
           bank_info: string | null
           booking_password: string | null
           company_name: string | null
@@ -32,12 +44,25 @@ export type Database = {
           invoice_default_notes: string | null
           invoice_footer_text: string | null
           invoice_notes_default: string | null
+          prompt_history: Json | null
           turnaround_buffer: number | null
           updated_at: string | null
         }
         Insert: {
           ai_import_prompt?: string | null
+          ai_max_output_tokens?: number | null
           ai_model?: string | null
+          ai_prompt_category?: string | null
+          ai_prompt_product_detail?: string | null
+          ai_prompt_product_list?: string | null
+          ai_prompt_quick_list?: string | null
+          ai_prompt_subcategory?: string | null
+          ai_selected_model?: string | null
+          ai_thinking_category?: string | null
+          ai_thinking_product_detail?: string | null
+          ai_thinking_product_list?: string | null
+          ai_thinking_subcategory?: string | null
+          ai_use_system_instruction?: boolean | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -52,12 +77,25 @@ export type Database = {
           invoice_default_notes?: string | null
           invoice_footer_text?: string | null
           invoice_notes_default?: string | null
+          prompt_history?: Json | null
           turnaround_buffer?: number | null
           updated_at?: string | null
         }
         Update: {
           ai_import_prompt?: string | null
+          ai_max_output_tokens?: number | null
           ai_model?: string | null
+          ai_prompt_category?: string | null
+          ai_prompt_product_detail?: string | null
+          ai_prompt_product_list?: string | null
+          ai_prompt_quick_list?: string | null
+          ai_prompt_subcategory?: string | null
+          ai_selected_model?: string | null
+          ai_thinking_category?: string | null
+          ai_thinking_product_detail?: string | null
+          ai_thinking_product_list?: string | null
+          ai_thinking_subcategory?: string | null
+          ai_use_system_instruction?: boolean | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -72,6 +110,7 @@ export type Database = {
           invoice_default_notes?: string | null
           invoice_footer_text?: string | null
           invoice_notes_default?: string | null
+          prompt_history?: Json | null
           turnaround_buffer?: number | null
           updated_at?: string | null
         }
@@ -199,6 +238,142 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      invoice_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          invoice_id: string
+          item_id: string | null
+          name: string
+          quantity: number
+          total: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          invoice_id: string
+          item_id?: string | null
+          name: string
+          quantity?: number
+          total: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          invoice_id?: string
+          item_id?: string | null
+          name?: string
+          quantity?: number
+          total?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          billing_address: Json | null
+          billing_profile_id: string | null
+          category: Database["public"]["Enums"]["invoice_category"]
+          created_at: string
+          currency: string
+          customer_email: string | null
+          customer_id: string | null
+          customer_name: string
+          due_date: string | null
+          id: string
+          invoice_number: string
+          issue_date: string
+          notes: string | null
+          reservation_id: string | null
+          signed_file_path: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          billing_address?: Json | null
+          billing_profile_id?: string | null
+          category: Database["public"]["Enums"]["invoice_category"]
+          created_at?: string
+          currency?: string
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name: string
+          due_date?: string | null
+          id?: string
+          invoice_number: string
+          issue_date?: string
+          notes?: string | null
+          reservation_id?: string | null
+          signed_file_path?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          billing_address?: Json | null
+          billing_profile_id?: string | null
+          category?: Database["public"]["Enums"]["invoice_category"]
+          created_at?: string
+          currency?: string
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name?: string
+          due_date?: string | null
+          id?: string
+          invoice_number?: string
+          issue_date?: string
+          notes?: string | null
+          reservation_id?: string | null
+          signed_file_path?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_billing_profile_id_fkey"
+            columns: ["billing_profile_id"]
+            isOneToOne: false
+            referencedRelation: "billing_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       items: {
         Row: {
@@ -473,12 +648,14 @@ export type Database = {
           color: string | null
           created_at: string | null
           description: string | null
+          enriched_at: string | null
           id: string
           image_urls: string[] | null
           import_batch_id: string | null
           is_variant: boolean | null
           material: string | null
           name: string
+          needs_enrichment: boolean | null
           parent_product_id: string | null
           rental_price: number | null
           replacement_cost: number | null
@@ -495,12 +672,14 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           description?: string | null
+          enriched_at?: string | null
           id?: string
           image_urls?: string[] | null
           import_batch_id?: string | null
           is_variant?: boolean | null
           material?: string | null
           name: string
+          needs_enrichment?: boolean | null
           parent_product_id?: string | null
           rental_price?: number | null
           replacement_cost?: number | null
@@ -517,12 +696,14 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           description?: string | null
+          enriched_at?: string | null
           id?: string
           image_urls?: string[] | null
           import_batch_id?: string | null
           is_variant?: boolean | null
           material?: string | null
           name?: string
+          needs_enrichment?: boolean | null
           parent_product_id?: string | null
           rental_price?: number | null
           replacement_cost?: number | null
@@ -609,6 +790,10 @@ export type Database = {
           imported_count: number
         }[]
       }
+      generate_invoice_number: {
+        Args: { p_category: Database["public"]["Enums"]["invoice_category"] }
+        Returns: string
+      }
       get_available_items: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: {
@@ -675,6 +860,8 @@ export type Database = {
     }
     Enums: {
       import_job_status: "pending" | "processing" | "completed" | "failed"
+      invoice_category: "RENTAL" | "WHOLESALE" | "MANUAL"
+      invoice_status: "DRAFT" | "SENT" | "PAID" | "VOID" | "OVERDUE"
       reservation_status:
         | "pending"
         | "confirmed"
@@ -810,6 +997,8 @@ export const Constants = {
   public: {
     Enums: {
       import_job_status: ["pending", "processing", "completed", "failed"],
+      invoice_category: ["RENTAL", "WHOLESALE", "MANUAL"],
+      invoice_status: ["DRAFT", "SENT", "PAID", "VOID", "OVERDUE"],
       reservation_status: [
         "pending",
         "confirmed",

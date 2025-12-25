@@ -57,7 +57,7 @@ export function RequestFloatingButton() {
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
-        return 'https://placehold.co/100x100?text=No+Img'
+        return 'https://placehold.co/100x100.png?text=No+Img'
     }
 
     // Bounce animation on item add

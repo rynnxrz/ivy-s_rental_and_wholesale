@@ -1,0 +1,281 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { format } from 'date-fns'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table'
+import { Plus, FileText, Download, Pencil, Trash2 } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
+
+interface PageProps {
+    searchParams: Promise<{ filter?: string }>
+}
+
+type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'VOID' | 'OVERDUE'
+
+interface Invoice {
+    id: string
+    invoice_number: string
+    category: string
+    customer_name: string
+    customer_email: string | null
+    total_amount: number
+    issue_date: string
+    due_date: string | null
+    status: InvoiceStatus
+    created_at: string
+    invoice_items?: { id: string; name: string; quantity: number }[]
+    reservation?: { id: string; group_id: string | null } | null
+}
+
+export default async function InvoicesPage({ searchParams }: PageProps) {
+    const resolvedParams = await searchParams
+    const filter = resolvedParams.filter || 'all'
+
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) redirect('/login')
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') redirect('/')
+
+    // Build query
+    let query = supabase
+        .from('invoices')
+        .select(`
+            *,
+            invoice_items (id, name, quantity),
+            reservation:reservations (id, group_id)
+        `)
+        .order('created_at', { ascending: false })
+
+    // Apply filters
+    if (filter === 'unpaid') {
+        query = query.in('status', ['DRAFT', 'SENT', 'OVERDUE'])
+    } else if (filter === 'paid') {
+        query = query.eq('status', 'PAID')
+    }
+
+    const { data: invoices, error } = await query
+
+    if (error) {
+        console.error('Error fetching invoices full:', error)
+        return (
+            <div className="text-red-500">
+                <h3 className="font-bold">Error loading invoices</h3>
+                <pre className="bg-slate-100 p-2 rounded text-xs mt-2 overflow-auto">
+                    {JSON.stringify(error, null, 2)}
+                </pre>
+                <div className="mt-2 text-sm">
+                    <p><strong>Message:</strong> {(error as any)?.message}</p>
+                    <p><strong>Code:</strong> {(error as any)?.code}</p>
+                    <p><strong>Details:</strong> {(error as any)?.details}</p>
+                    <p><strong>Hint:</strong> {(error as any)?.hint}</p>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-semibold text-slate-900">Invoices</h1>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Manage invoices for rentals, wholesale, and services
+                    </p>
+                </div>
+
+                <Link href="/admin/invoices/new">
+                    <Button className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        New Invoice
+                    </Button>
+                </Link>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex p-1 bg-slate-100 rounded-lg w-fit">
+                <FilterTab label="All Invoices" active={filter === 'all'} href="/admin/invoices?filter=all" />
+                <FilterTab label="Unpaid" active={filter === 'unpaid'} href="/admin/invoices?filter=unpaid" />
+                <FilterTab label="Paid" active={filter === 'paid'} href="/admin/invoices?filter=paid" />
+            </div>
+
+            {/* Table */}
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <InvoicesTable invoices={(invoices as Invoice[]) || []} />
+            </div>
+        </div>
+    )
+}
+
+function FilterTab({ label, active, href }: { label: string; active: boolean; href: string }) {
+    return (
+        <Link
+            href={href}
+            className={`
+                px-4 py-2 text-sm font-medium rounded-md transition-all
+                ${active
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                }
+            `}
+        >
+            {label}
+        </Link>
+    )
+}
+
+function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
+    if (invoices.length === 0) {
+        return (
+            <div className="p-12 text-center text-slate-400">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No invoices found.</p>
+                <Link href="/admin/invoices/new" className="text-blue-600 hover:underline mt-2 inline-block">
+                    Create your first invoice
+                </Link>
+            </div>
+        )
+    }
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow className="bg-slate-50">
+                    <TableHead className="w-48">Invoice #</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {invoices.map((invoice) => (
+                    <TableRow key={invoice.id} className="group">
+                        <TableCell>
+                            <Link
+                                href={`/admin/invoices/${invoice.id}`}
+                                className="font-mono text-sm hover:text-blue-600 transition-colors"
+                            >
+                                {invoice.invoice_number}
+                            </Link>
+                            <div className="text-xs text-slate-400 mt-1">
+                                {getCategoryLabel(invoice.category)}
+                            </div>
+                        </TableCell>
+                        <TableCell>
+                            <StatusBadge status={invoice.status} />
+                        </TableCell>
+                        <TableCell>
+                            <div className="font-medium text-slate-900 text-sm">
+                                {invoice.customer_name}
+                            </div>
+                            {invoice.customer_email && (
+                                <div className="text-xs text-slate-400">
+                                    {invoice.customer_email}
+                                </div>
+                            )}
+                        </TableCell>
+                        <TableCell>
+                            <ItemsSummary items={invoice.invoice_items || []} />
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-slate-900">
+                            ${invoice.total_amount.toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                            <div className="text-sm text-slate-700">
+                                {format(new Date(invoice.issue_date), 'MMM dd, yyyy')}
+                            </div>
+                            {invoice.due_date && (
+                                <div className="text-xs text-slate-400">
+                                    Due: {format(new Date(invoice.due_date), 'MMM dd')}
+                                </div>
+                            )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                            <div className="flex gap-1 justify-end opacity-60 group-hover:opacity-100 transition-opacity">
+                                <Link href={`/admin/invoices/${invoice.id}`}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit">
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                </Link>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Download PDF">
+                                    <Download className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    )
+}
+
+function StatusBadge({ status }: { status: InvoiceStatus }) {
+    const styles: Record<InvoiceStatus, string> = {
+        DRAFT: 'bg-slate-100 text-slate-700 border-slate-200',
+        SENT: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        PAID: 'bg-green-100 text-green-800 border-green-200',
+        VOID: 'bg-purple-100 text-purple-700 border-purple-200',
+        OVERDUE: 'bg-red-100 text-red-800 border-red-200',
+    }
+
+    const labels: Record<InvoiceStatus, string> = {
+        DRAFT: 'Draft',
+        SENT: 'Sent',
+        PAID: 'Paid',
+        VOID: 'Void',
+        OVERDUE: 'Overdue',
+    }
+
+    return (
+        <Badge variant="outline" className={`${styles[status]} text-xs`}>
+            {labels[status]}
+        </Badge>
+    )
+}
+
+function getCategoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+        RENTAL: 'Rental',
+        WHOLESALE: 'Wholesale',
+        MANUAL: 'Manual',
+    }
+    return labels[category] || category
+}
+
+function ItemsSummary({ items }: { items: { id: string; name: string; quantity: number }[] }) {
+    if (items.length === 0) {
+        return <span className="text-slate-400 text-sm">No items</span>
+    }
+
+    const firstItem = items[0]
+    const remaining = items.length - 1
+
+    return (
+        <div className="text-sm">
+            <span className="text-slate-700">{firstItem.name}</span>
+            {remaining > 0 && (
+                <span className="text-slate-400"> + {remaining} more</span>
+            )}
+        </div>
+    )
+}

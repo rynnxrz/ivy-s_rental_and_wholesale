@@ -44,7 +44,7 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
-        return 'https://placehold.co/800x600?text=No+Image'
+        return 'https://placehold.co/800x600.png?text=No+Image'
     }
 
     const currentImage = selectedImage || getImageUrl(item.image_paths)
