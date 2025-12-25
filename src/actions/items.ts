@@ -549,11 +549,19 @@ async function migrateExternalImage(
             return imageUrl
         }
 
+        // SSRF Protection: Block private/internal IP addresses
+        const { isPublicUrl } = await import('@/lib/security/url-validator')
+        if (!isPublicUrl(imageUrl)) {
+            console.warn(`[Security] Blocked potentially dangerous image URL: ${imageUrl}`)
+            return imageUrl
+        }
+
         // Fetch image
         const response = await fetch(imageUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
+            },
+            redirect: 'error', // Prevent redirect-based SSRF bypass
         })
 
         if (!response.ok) {

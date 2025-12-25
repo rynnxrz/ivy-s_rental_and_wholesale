@@ -25,6 +25,36 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          // Prevent clickjacking - deny embedding in iframes
+          { key: 'X-Frame-Options', value: 'DENY' },
+          // Prevent MIME type sniffing
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          // Control referrer information
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Enforce HTTPS for 1 year
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+          // Content Security Policy
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.clarity.ms",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' https://bfizqdyngujjdmaaoggg.supabase.co https://placehold.co https://ivyjstudio.com https://cdn.shopify.com data: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://www.clarity.ms",
+              "frame-ancestors 'none'",
+            ].join('; ')
+          },
+        ],
+      },
+    ]
+  },
 };
 
 export default nextConfig;

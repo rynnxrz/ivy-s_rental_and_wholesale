@@ -3,8 +3,6 @@ import type { NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 export async function proxy(request: NextRequest) {
-    console.log('[Middleware] Executing for path:', request.nextUrl.pathname)
-
     // Block direct access to wholesale mode without the auth cookie
     const mode = request.nextUrl.searchParams.get('mode')
     const isWholesaleCatalog = request.nextUrl.pathname.startsWith('/catalog') && mode === 'wholesale'
