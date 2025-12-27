@@ -83,7 +83,8 @@ export function ApproveButton({
     // Calculate total from all items
     const totalAmount = invoiceItems.reduce((sum, item) => sum + (item.rentalPrice * item.days), 0)
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-    const invoiceIdDisplay = `INV-${reservationId.slice(0, 8).toUpperCase()}`
+    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const invoiceIdDisplay = `INV-R-${dateStr}-####`
 
     const handleApprove = async () => {
         if (!selectedProfileId) {

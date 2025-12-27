@@ -3,6 +3,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth/guards'
+import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
+import { format } from 'date-fns'
 
 // ============================================================
 // Invoice Types (until types are regenerated from Supabase)
@@ -547,4 +549,92 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
 
     revalidatePath('/admin/invoices')
     return { success: true, error: null }
+}
+
+/**
+ * Generates regular PDF for download.
+ * Returns base64 string.
+ */
+export async function downloadInvoicePdf(invoiceId: string) {
+    await requireAdmin()
+    const supabase = await createClient()
+
+    // 1. Fetch Invoice
+    const { data: invoice, error } = await supabase
+        .from('invoices')
+        .select(`
+            *,
+            invoice_items (*),
+            billing_profiles (*)
+        `)
+        .eq('id', invoiceId)
+        .single()
+
+    if (error || !invoice) {
+        return { success: false, error: 'Invoice not found' }
+    }
+
+    // 2. Prepare items with images
+    const serviceClient = createServiceClient()
+    const invoiceItems: InvoiceItem[] = []
+
+    for (const item of invoice.invoice_items) {
+        let imageBase64: string | undefined
+
+        // If it was linked to a rental item, try to fetch its image
+        if (item.item_id) {
+            const { data: rentalItem } = await supabase
+                .from('items')
+                .select('image_paths')
+                .eq('id', item.item_id)
+                .single()
+
+            if (rentalItem?.image_paths?.[0]) {
+                try {
+                    imageBase64 = await fetchImageAsBase64(serviceClient, 'rental_items', rentalItem.image_paths[0])
+                } catch (e) {
+                    console.warn(`Failed to fetch image for item ${item.item_id}`)
+                }
+            }
+        }
+
+        invoiceItems.push({
+            name: item.name,
+            sku: '', // TODO: Fetch SKU if needed
+            rentalPrice: item.unit_price,
+            days: item.quantity,
+            startDate: '', // Not stored on invoice_items directly unless we parse description
+            endDate: '',
+            imageBase64
+        })
+    }
+
+    // 3. Prepare Billing Profile
+    const billingProfile = invoice.billing_profiles || {
+        company_header: "Ivy's Rental",
+        contact_email: 'contact@ivysrental.com',
+        bank_info: '',
+    }
+
+    // 4. Generate PDF
+    try {
+        const buffer = await generateInvoicePdf({
+            invoiceId: invoice.invoice_number,
+            date: format(new Date(invoice.issue_date), 'MMM dd, yyyy'),
+            customerName: invoice.customer_name,
+            customerEmail: invoice.customer_email || '',
+            // Handle address JSONB safely
+            customerAddress: invoice.billing_address ? Object.values(invoice.billing_address).map(v => String(v)) : [],
+            items: invoiceItems,
+            companyName: billingProfile.company_header,
+            companyEmail: billingProfile.contact_email,
+            bankInfo: billingProfile.bank_info,
+            notes: invoice.notes || undefined,
+        })
+
+        return { success: true, data: buffer.toString('base64') }
+    } catch (e) {
+        console.error('PDF Generation failed:', e)
+        return { success: false, error: 'Failed to generate PDF' }
+    }
 }

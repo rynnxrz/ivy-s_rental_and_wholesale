@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, XCircle, Send, Download, Pencil, Loader2 } from 'lucide-react'
-import { markInvoiceAsPaid, updateInvoiceStatus, voidInvoice } from '@/actions/invoice'
+import { markInvoiceAsPaid, updateInvoiceStatus, voidInvoice, downloadInvoicePdf } from '@/actions/invoice'
 
 type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'VOID' | 'OVERDUE'
 
@@ -53,8 +53,34 @@ export function InvoiceActions({ invoiceId, status }: InvoiceActionsProps) {
     }
 
     const handleDownloadPdf = () => {
-        // TODO: Implement PDF download
-        alert('PDF download coming soon!')
+        setLoadingAction('download')
+        startTransition(async () => {
+            const result = await downloadInvoicePdf(invoiceId)
+
+            if (result.success && result.data) {
+                // Convert base64 to blob
+                const byteCharacters = atob(result.data)
+                const byteNumbers = new Array(byteCharacters.length)
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                }
+                const byteArray = new Uint8Array(byteNumbers)
+                const blob = new Blob([byteArray], { type: 'application/pdf' })
+
+                // Create download link
+                const url = window.URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `invoice-${invoiceId}.pdf` // e.g. invoice-INV-R-20251227-0001.pdf
+                document.body.appendChild(a)
+                a.click()
+                window.URL.revokeObjectURL(url)
+                document.body.removeChild(a)
+            } else {
+                alert('Failed to download PDF: ' + (result.error || 'Unknown error'))
+            }
+            setLoadingAction(null)
+        })
     }
 
     return (
@@ -131,7 +157,11 @@ export function InvoiceActions({ invoiceId, status }: InvoiceActionsProps) {
                 onClick={handleDownloadPdf}
                 className="gap-2"
             >
-                <Download className="h-4 w-4" />
+                {loadingAction === 'download' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                    <Download className="h-4 w-4" />
+                )}
                 PDF
             </Button>
 

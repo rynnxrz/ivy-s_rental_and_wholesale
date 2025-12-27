@@ -6,6 +6,7 @@ import { sendApprovalEmail } from '@/lib/email/sendApprovalEmail'
 import { sendShippingEmail } from '@/lib/email/sendShippingEmail'
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
+import { generateInvoiceFromReservation, updateInvoiceStatus } from '@/actions/invoice'
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceClient>
 
@@ -331,7 +332,20 @@ export async function approveReservation(reservationId: string, profileId: strin
     // 6. Build Invoice Items List
     const invoiceItems: InvoiceItem[] = []
     const serviceClient = createServiceClient()
-    const invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
+
+    // Generate Invoice Record in DB to get the correct Invoice Number
+    const invoiceResult = await generateInvoiceFromReservation(reservationId, profileId)
+    let invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
+
+    if (invoiceResult.success && invoiceResult.data) {
+        invoiceId = invoiceResult.data.invoice_number
+        // Mark as SENT since we are emailing it immediately
+        await updateInvoiceStatus(invoiceResult.data.id, 'SENT')
+    } else {
+        console.error('Failed to generate invoice record:', invoiceResult.error)
+        // We continue with the fallback ID so the email still goes out, 
+        // but this should be investigated.
+    }
 
     for (const res of groupReservations) {
         // Define shape of item from DB
