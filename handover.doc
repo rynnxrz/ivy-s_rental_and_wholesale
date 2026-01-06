@@ -1,7 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2025-12-25
-**版本:** v1.1 (Post-MVP Enhanced) 
+**日期:** 2026-01-06
+**版本:** v1.2 (Reliability & Integrity Patch) 
 485106dd7b7cc0fc6523c4d6a4502b2072303582
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
@@ -53,8 +53,12 @@
     *   **分组视图**: 列表页按设计名折叠/展开。
     *   **生命周期**: Active / Maintenance / Retired。
 3.  **订单管理 (Reservations)**:
-    *   **聚合视图**: 订单列表按 Group ID 聚合展示，大幅优化视觉体验。
     *   **批量操作**: 支持整单批准、归档，以及新增的 **批量恢复 (Restoration)** 功能。
+    *   **系统可靠性 (Reliability)**: 
+        *   **幂等提交 (Idempotency)**: 引入 Request Fingerprinting，防止网络重试导致的重复订单。
+        *   **紧急备份 (Emergency Backups)**: 提交失败时自动暂存原始 Payload 至 `emergency_backups` 表。
+        *   **代码导入 (Import from Code)**: 支持管理员通过用户提供的“恢复码” (Base64/JSON) 手动补录订单。
+    *   **错误审计 (Error Auditing)**: 新增 `/admin/errors` 面板，实时监控邮件发送、数据校验等后台失败，支持管理员手动触发重试。
     *   **物流集成**: 支持录入 Tracking Number 并自动生成查询链接。
 4.  **通讯中心 (Communications)**:
     *   **邮件模板**: 可视化编辑 (Approval/Shipping/Invoice)。
@@ -101,6 +105,9 @@ AI 配置弹窗 (`AIImportSettings`) 可从商品导入面板打开，提供以�
     *   新增 `app_settings` 表用于 AI 配置 (Max Output Tokens, Temperature 等) 的持久化。
 *   **系统可靠性**:
     *   **Atomic Operations (RPC)**: 实现 `commit_staging_batch` 事务，确保批量入库的原子性。
+    *   **Error Handling**:
+        *   新增 `system_errors` 表追踪异步任务失败。
+        *   新增 `emergency_backups` 表作为最后一层数据防线。
     *   **Security**:
         *   关键 RPC 强制设置 `search_path` 防止注入。
         *   后台批量写操作显式使用 `Service Role Client` 绕过复杂 RLS，同时对 Staging 表启用严格的 RLS 策略。
