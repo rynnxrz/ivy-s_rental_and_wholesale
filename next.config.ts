@@ -31,7 +31,10 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: [
           // Prevent clickjacking - deny embedding in iframes
-          { key: 'X-Frame-Options', value: 'DENY' },
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOW-FROM https://shipbyx.com',
+          },
           // Prevent MIME type sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Control referrer information
@@ -48,7 +51,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' https://bfizqdyngujjdmaaoggg.supabase.co https://placehold.co https://ivyjstudio.com https://cdn.shopify.com data: blob:",
               "font-src 'self' data:",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://www.clarity.ms",
-              "frame-ancestors 'none'",
+              "frame-ancestors 'self' http://localhost:5173 https://shipbyx.com",
             ].join('; ')
           },
         ],
