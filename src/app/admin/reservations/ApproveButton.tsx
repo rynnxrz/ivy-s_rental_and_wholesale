@@ -102,13 +102,19 @@ export function ApproveButton({
                             description: 'This item is already booked for the selected dates.'
                         })
                     } else {
+                        // Handle specific warning for email failure
+                        if (result.error === 'DATABASE_UPDATED_BUT_EMAIL_FAILED') {
+                            toast.warning('Approved, but email failed.', {
+                                description: 'The invoice was saved but could not be emailed. Please check System Errors.'
+                            })
+                            setOpen(false)
+                            setNotes('')
+                            router.refresh()
+                            return
+                        }
+
                         toast.error(result.error)
                     }
-                } else if (result.warning) {
-                    toast.warning(`Success with warning: ${result.warning}`)
-                    setOpen(false)
-                    setNotes('')
-                    router.refresh()
                 } else {
                     toast.success('Reservation Approved', {
                         description: 'Invoice sent to customer.'

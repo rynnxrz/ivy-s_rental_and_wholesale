@@ -1,10 +1,35 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import { Package, Calendar, Users, TrendingUp } from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
-export default function AdminDashboard() {
+import { SystemStatusWidget } from './SystemStatusWidget'
+import { EmergencyBackupsPanel } from './EmergencyBackupsPanel'
+
+export default async function AdminDashboard() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) redirect('/login')
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') redirect('/')
+
+    const { data: backups } = await supabase
+        .from('emergency_backups')
+        .select('id, fingerprint, created_at, payload')
+        .order('created_at', { ascending: false })
+        .limit(10)
+
     return (
         <div className="space-y-6">
+            <SystemStatusWidget />
             <AdminPageHeader
                 title="Dashboard"
                 description="Welcome back! Here's an overview of your rental business."
@@ -56,6 +81,16 @@ export default function AdminDashboard() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Card className="border-amber-200">
+                <CardHeader>
+                    <CardTitle>Emergency Backups</CardTitle>
+                    <CardDescription>Shadow records captured when submissions fail.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <EmergencyBackupsPanel backups={backups || []} />
+                </CardContent>
+            </Card>
 
             {/* Placeholder for future content */}
             <Card>

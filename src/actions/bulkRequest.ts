@@ -1,6 +1,6 @@
 'use server'
 
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 const PUBLIC_EMAIL_DOMAINS = new Set([
@@ -10,6 +10,7 @@ const PUBLIC_EMAIL_DOMAINS = new Set([
 
 interface BulkRequestData {
     items: string[] // List of Item IDs
+    items_detail?: { id: string; name: string }[]
     email: string
     full_name: string
     company_name?: string
@@ -23,6 +24,7 @@ interface BulkRequestData {
     address_line1: string
     address_line2?: string
     postcode: string
+    fingerprint?: string
 }
 
 function extractOrganizationDomain(email: string): string | null {
@@ -38,11 +40,7 @@ function isValidEmail(email: string): boolean {
 }
 
 export async function submitBulkRequest(data: BulkRequestData) {
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        return { error: 'Server configuration error.' }
-    }
-
-    const supabase = createServiceClient()
+    const supabase = await createClient()
 
     // 1. Validation
     if (!data.items || data.items.length === 0) return { error: 'No items selected.' }
@@ -113,6 +111,21 @@ export async function submitBulkRequest(data: BulkRequestData) {
         profileId = newId
     }
 
+    const requestFingerprint = data.fingerprint || `REQ-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    const attemptEmergencyBackup = async () => {
+        try {
+            const { error: backupError } = await supabase.rpc('save_emergency_backup', {
+                payload: { ...data, fingerprint: requestFingerprint },
+                fingerprint: requestFingerprint
+            })
+            return !backupError
+        } catch (backupErr) {
+            console.error('Emergency backup RPC failed:', backupErr)
+            return false
+        }
+    }
+
     // 4. Batch Insert Reservations
     const groupId = crypto.randomUUID()
     const reservationsToInsert = data.items.map(itemId => ({
@@ -132,16 +145,48 @@ export async function submitBulkRequest(data: BulkRequestData) {
         city_region: data.city_region,
         address_line1: data.address_line1,
         address_line2: data.address_line2 || null,
-        postcode: data.postcode
+        postcode: data.postcode,
+        fingerprint: `${requestFingerprint}-${itemId}` // Unique per item-request
     }))
 
-    const { error: insertError } = await supabase
-        .from('reservations')
-        .insert(reservationsToInsert)
+    try {
+        const { error: insertError } = await supabase
+            .from('reservations')
+            .insert(reservationsToInsert)
 
-    if (insertError) {
-        console.error('Batch insert failed:', insertError)
-        return { error: 'Failed to submit request. Please try again.' }
+        if (insertError) {
+            // Idempotency Check: Code 23505 is unique_violation
+            if (insertError.code === '23505') {
+                console.log('Duplicate request ignored (idempotency)', requestFingerprint)
+                return { success: true }
+            }
+
+            console.error('Batch insert failed:', insertError)
+            const backupSaved = await attemptEmergencyBackup()
+
+            // Log to system_errors
+            try {
+                await supabase.from('system_errors').insert({
+                    error_type: 'REQUEST_SUBMISSION_FAILED',
+                    payload: { error: insertError, data: { ...data, access_password: '[REDACTED]' } },
+                    resolved: false
+                })
+            } catch (logErr) {
+                console.error('Failed to log system error:', logErr)
+            }
+
+            if (backupSaved) {
+                return { success: false, recoveryStatus: 'BACKUP_SAVED' as const }
+            }
+            return { success: false, recoveryStatus: 'BACKUP_FAILED' as const, error: 'Failed to submit request. Please try again.' }
+        }
+    } catch (err) {
+        console.error('Reservation insert threw:', err)
+        const backupSaved = await attemptEmergencyBackup()
+        if (backupSaved) {
+            return { success: false, recoveryStatus: 'BACKUP_SAVED' as const }
+        }
+        return { success: false, recoveryStatus: 'BACKUP_FAILED' as const, error: 'Failed to submit request. Please try again.' }
     }
 
     // 5. Revalidate

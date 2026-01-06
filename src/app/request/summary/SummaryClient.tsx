@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useRequestStore } from "@/store/request"
 import { useRouter } from "next/navigation"
-import { format, parse } from "date-fns"
+import { format } from "date-fns"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,63 +25,51 @@ import {
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { COUNTRIES } from "@/lib/constants/countries"
-import { Loader2, ArrowLeft, Calendar } from "lucide-react"
+import { Loader2, ArrowLeft, Calendar, QrCode } from "lucide-react"
 import { submitBulkRequest } from "@/actions/bulkRequest"
 import { toast } from "sonner"
+import { Copy } from "lucide-react"
+import { SITE_CONFIG } from "@/config/site"
 
 export function SummaryClient() {
-    const { items, dateRange, clearRequest } = useRequestStore()
+    const { items, dateRange, clearRequest, contactInfo, setContactInfo } = useRequestStore()
     const router = useRouter()
-    const [isMounted, setIsMounted] = React.useState(false) // Hydration fix
     const [isSubmitting, startSubmitTransition] = React.useTransition()
+    const [hasCopied, setHasCopied] = React.useState(false)
 
-    // Form state
-    const [email, setEmail] = React.useState('')
-    const [fullName, setFullName] = React.useState('')
-    const [companyName, setCompanyName] = React.useState('')
-    const [notes, setNotes] = React.useState('')
-    const [accessPassword, setAccessPassword] = React.useState('')
-
-    // Address State
-    const [country, setCountry] = React.useState('')
-    const [cityRegion, setCityRegion] = React.useState('')
-    const [addressLine1, setAddressLine1] = React.useState('')
-    const [addressLine2, setAddressLine2] = React.useState('')
-    const [postcode, setPostcode] = React.useState('')
+    // Fail-safe State
     const [openCountry, setOpenCountry] = React.useState(false)
-
-    React.useEffect(() => {
-        setIsMounted(true)
-    }, [])
-
-    // Redirect if empty (only after mount logic)
-    React.useEffect(() => {
-        if (isMounted && items.length === 0) {
-            router.replace('/catalog')
+    const [recoveryStatus, setRecoveryStatus] = React.useState<'BACKUP_SAVED' | 'BACKUP_FAILED' | null>(null)
+    // Initialize fingerprint lazily so it persists across renders but only generates once per mount
+    const [fingerprint] = React.useState(() => {
+        if (typeof window !== 'undefined') {
+            let fp = sessionStorage.getItem('current_request_fingerprint')
+            if (!fp) {
+                fp = `REQ-${Date.now()}-${Math.random().toString(36).slice(2)}`
+                sessionStorage.setItem('current_request_fingerprint', fp)
+            }
+            return fp
         }
-    }, [isMounted, items, router])
+        return ''
+    })
 
-    if (!isMounted) return null // Or skeleton
-
-    const hasDates = dateRange.from && dateRange.to
-    const fromDate = hasDates ? parse(dateRange.from!, 'yyyy-MM-dd', new Date()) : null
-    const toDate = hasDates ? parse(dateRange.to!, 'yyyy-MM-dd', new Date()) : null
-
-    const days = (fromDate && toDate)
-        ? Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)))
-        : 0
-
+    // Derived State
+    const fromDate = dateRange.from ? new Date(dateRange.from) : null
+    const toDate = dateRange.to ? new Date(dateRange.to) : null
+    const hasDates = !!(fromDate && toDate)
+    const days = hasDates ? Math.round((toDate!.getTime() - fromDate!.getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0
     const totalEstimate = items.reduce((sum, item) => sum + (item.rental_price * days), 0)
+    const showEmergencyPanel = recoveryStatus !== null
+
+    React.useEffect(() => {
+        setHasCopied(false)
+    }, [recoveryStatus])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!hasDates) {
-            toast.error("Dates are missing. Please restart your request.")
-            return
-        }
 
-        if (!country || !cityRegion || !addressLine1 || !postcode) {
-            toast.error("Please fill in all required location and address fields.")
+        if (!hasDates) {
+            toast.error("Please select dates first")
             return
         }
 
@@ -90,33 +78,97 @@ export function SummaryClient() {
                 try {
                     const result = await submitBulkRequest({
                         items: items.map(i => i.id),
-                        email,
-                        full_name: fullName,
-                        company_name: companyName,
-                        notes,
+                        items_detail: items.map(i => ({ id: i.id, name: i.name })),
+                        email: contactInfo.email,
+                        full_name: contactInfo.full_name,
                         start_date: dateRange.from!,
                         end_date: dateRange.to!,
-                        access_password: accessPassword,
-                        country,
-                        city_region: cityRegion,
-                        address_line1: addressLine1,
-                        address_line2: addressLine2,
-                        postcode
+                        company_name: contactInfo.company_name,
+                        address_line1: contactInfo.address_line1,
+                        address_line2: contactInfo.address_line2,
+                        city_region: contactInfo.city_region,
+                        country: contactInfo.country,
+                        postcode: contactInfo.postcode,
+                        access_password: contactInfo.access_password,
+                        notes: contactInfo.notes,
+                        fingerprint
                     })
+
+                    if (result.success === false) {
+                        setRecoveryStatus(result.recoveryStatus ?? 'BACKUP_FAILED')
+                        toast.error(result.error || 'Submission failed. Backup options are ready below.')
+                        return
+                    }
 
                     if (result.error) {
                         toast.error(result.error)
-                    } else {
+                        return
+                    }
+
+                    if (result.success) {
                         toast.success('Request submitted successfully')
+                        sessionStorage.removeItem('current_request_fingerprint')
+                        setRecoveryStatus(null)
                         clearRequest()
                         router.push('/request/success')
                     }
                 } catch (err) {
                     console.error('Submission error:', err)
-                    toast.error('An unexpected error occurred.')
+                    setRecoveryStatus('BACKUP_FAILED')
+                    toast.error('An unexpected error occurred. Backup options are ready below.')
                 }
             })()
         })
+    }
+
+    const getSubmissionData = () => ({
+        items: items.map(i => ({ id: i.id, name: i.name, price: i.rental_price })),
+        customer: {
+            full_name: contactInfo.full_name,
+            email: contactInfo.email,
+            company_name: contactInfo.company_name,
+            address: {
+                line1: contactInfo.address_line1,
+                line2: contactInfo.address_line2,
+                city: contactInfo.city_region,
+                country: contactInfo.country,
+                postcode: contactInfo.postcode
+            }
+        },
+        dates: {
+            from: dateRange.from,
+            to: dateRange.to,
+            days
+        },
+        notes: contactInfo.notes,
+        total_estimate: totalEstimate,
+        fingerprint
+    })
+
+    const handleCopyToClipboard = () => {
+        const data = getSubmissionData()
+        const jsonString = JSON.stringify(data, null, 2)
+        const base64Json = btoa(unescape(encodeURIComponent(jsonString)))
+        const itemNames = items.map(i => i.name).join(', ')
+        const dateStr = hasDates ? `${format(fromDate!, 'MMM d')} - ${format(toDate!, 'MMM d')}` : 'Dates not set'
+        const summary = [
+            'My rental request failed, please review these details:',
+            `Name: ${contactInfo.full_name}`,
+            `Email: ${contactInfo.email}`,
+            `Dates: ${dateStr}`,
+            `Items: ${itemNames || 'None'}`,
+            '',
+            '--- CODE (Base64, do not edit) ---',
+            base64Json
+        ].join('\n')
+
+        navigator.clipboard.writeText(summary)
+            .then(() => {
+                setHasCopied(true)
+                toast.success('Details copied to clipboard.')
+                setTimeout(() => setHasCopied(false), 3000)
+            })
+            .catch(() => toast.error('Failed to copy summary'))
     }
 
     const getImageUrl = (images: string[] | null) => {
@@ -204,14 +256,15 @@ export function SummaryClient() {
                     {/* Right Column: Form */}
                     <div className="lg:col-span-5">
                         <div className="bg-white p-8 rounded-sm shadow-sm border border-gray-100 sticky top-8">
+
                             <h2 className="text-xl font-light text-gray-900 mb-6">Contact Information</h2>
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div className="space-y-2">
                                     <Label htmlFor="fullName">Full Name</Label>
                                     <Input
                                         id="fullName"
-                                        value={fullName}
-                                        onChange={e => setFullName(e.target.value)}
+                                        value={contactInfo.full_name}
+                                        onChange={e => setContactInfo({ full_name: e.target.value })}
                                         required
                                         placeholder="Jane Doe"
                                     />
@@ -222,8 +275,8 @@ export function SummaryClient() {
                                     <Input
                                         id="email"
                                         type="email"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
+                                        value={contactInfo.email}
+                                        onChange={e => setContactInfo({ email: e.target.value })}
                                         required
                                         placeholder="jane@company.com"
                                     />
@@ -233,8 +286,8 @@ export function SummaryClient() {
                                     <Label htmlFor="company">Company (Optional)</Label>
                                     <Input
                                         id="company"
-                                        value={companyName}
-                                        onChange={e => setCompanyName(e.target.value)}
+                                        value={contactInfo.company_name}
+                                        onChange={e => setContactInfo({ company_name: e.target.value })}
                                         placeholder="Company Ltd."
                                     />
                                 </div>
@@ -255,8 +308,8 @@ export function SummaryClient() {
                                                             aria-label="Select country or region"
                                                             className="w-full justify-between font-normal text-left h-12 min-h-[44px] px-3 py-2 border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
-                                                            {country
-                                                                ? COUNTRIES.find((c) => c === country)
+                                                            {contactInfo.country
+                                                                ? COUNTRIES.find((c) => c === contactInfo.country)
                                                                 : "Select country..."}
                                                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                         </Button>
@@ -272,14 +325,14 @@ export function SummaryClient() {
                                                                             key={c}
                                                                             value={c}
                                                                             onSelect={(currentValue: string) => {
-                                                                                setCountry(currentValue === country ? "" : currentValue)
+                                                                                setContactInfo({ country: currentValue === contactInfo.country ? "" : currentValue })
                                                                                 setOpenCountry(false)
                                                                             }}
                                                                         >
                                                                             <Check
                                                                                 className={cn(
                                                                                     "mr-2 h-4 w-4",
-                                                                                    country === c ? "opacity-100" : "opacity-0"
+                                                                                    contactInfo.country === c ? "opacity-100" : "opacity-0"
                                                                                 )}
                                                                             />
                                                                             {c}
@@ -295,8 +348,8 @@ export function SummaryClient() {
                                                 <Label htmlFor="cityRegion">City / Town</Label>
                                                 <Input
                                                     id="cityRegion"
-                                                    value={cityRegion}
-                                                    onChange={e => setCityRegion(e.target.value)}
+                                                    value={contactInfo.city_region}
+                                                    onChange={e => setContactInfo({ city_region: e.target.value })}
                                                     required
                                                     placeholder="City"
                                                 />
@@ -305,8 +358,8 @@ export function SummaryClient() {
                                                 <Label htmlFor="addressLine1">Street Address</Label>
                                                 <Input
                                                     id="addressLine1"
-                                                    value={addressLine1}
-                                                    onChange={e => setAddressLine1(e.target.value)}
+                                                    value={contactInfo.address_line1}
+                                                    onChange={e => setContactInfo({ address_line1: e.target.value })}
                                                     required
                                                     placeholder="Street address, P.O. box, company name, c/o"
                                                 />
@@ -315,8 +368,8 @@ export function SummaryClient() {
                                                 <Label htmlFor="addressLine2">Apt, Suite, etc. (Optional)</Label>
                                                 <Input
                                                     id="addressLine2"
-                                                    value={addressLine2}
-                                                    onChange={e => setAddressLine2(e.target.value)}
+                                                    value={contactInfo.address_line2}
+                                                    onChange={e => setContactInfo({ address_line2: e.target.value })}
                                                     placeholder="Apartment, suite, unit, building, floor, etc."
                                                 />
                                             </div>
@@ -324,8 +377,8 @@ export function SummaryClient() {
                                                 <Label htmlFor="postcode">Postcode / ZIP</Label>
                                                 <Input
                                                     id="postcode"
-                                                    value={postcode}
-                                                    onChange={e => setPostcode(e.target.value)}
+                                                    value={contactInfo.postcode}
+                                                    onChange={e => setContactInfo({ postcode: e.target.value })}
                                                     required
                                                     placeholder="ZIP code"
                                                 />
@@ -337,8 +390,8 @@ export function SummaryClient() {
                                         <Label htmlFor="notes">Notes (Optional)</Label>
                                         <Textarea
                                             id="notes"
-                                            value={notes}
-                                            onChange={e => setNotes(e.target.value)}
+                                            value={contactInfo.notes}
+                                            onChange={e => setContactInfo({ notes: e.target.value })}
                                             placeholder="Any special requests or instructions..."
                                             className="resize-none h-24"
                                         />
@@ -351,8 +404,8 @@ export function SummaryClient() {
                                         <Input
                                             id="accessPassword"
                                             type="password"
-                                            value={accessPassword}
-                                            onChange={e => setAccessPassword(e.target.value)}
+                                            value={contactInfo.access_password}
+                                            onChange={e => setContactInfo({ access_password: e.target.value })}
                                             placeholder="Enter if required"
                                         />
                                         <p className="text-xs text-gray-500">
@@ -376,10 +429,117 @@ export function SummaryClient() {
                                         'Submit Request'
                                     )}
                                 </Button>
+
+                                {showEmergencyPanel && (
+                                    <div
+                                        className={`mt-6 rounded-lg border-2 p-5 animate-in fade-in slide-in-from-top-4 ${recoveryStatus === 'BACKUP_SAVED'
+                                            ? 'border-blue-300 bg-blue-50/50'
+                                            : 'border-red-300 bg-red-50/50'
+                                            }`}
+                                    >
+                                        <div className="space-y-4">
+                                            {/* Title */}
+                                            <h3 className="text-lg font-semibold text-gray-900">
+                                                Request submission failed
+                                            </h3>
+
+                                            {/* Status-based description */}
+                                            {recoveryStatus === 'BACKUP_SAVED' ? (
+                                                <p className="text-sm text-gray-700 leading-relaxed">
+                                                    We&apos;ve saved a copy of your request in our backup system. <strong>Ivy</strong> will review it soon, but you can still send it manually to be safe.
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-gray-700 leading-relaxed">
+                                                        We encountered a technical issue on our end. <strong>Ivy has not received your request.</strong>
+                                                    </p>
+                                                    <p className="text-sm text-gray-600 leading-relaxed">
+                                                        To ensure you don&apos;t lose your selection, please <strong>send your request summary to Ivy manually</strong> via email or message:
+                                                    </p>
+                                                </>
+                                            )}
+
+                                            {/* Contact Options */}
+                                            <div className="flex items-start gap-4 p-3 bg-white rounded-md border border-gray-200">
+                                                {/* Left: Email */}
+                                                <div className="flex-1 space-y-1">
+                                                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <a
+                                                            href={`mailto:${SITE_CONFIG.contact_email}`}
+                                                            className="text-sm font-medium text-blue-600 hover:underline"
+                                                        >
+                                                            {SITE_CONFIG.contact_email}
+                                                        </a>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(SITE_CONFIG.contact_email)
+                                                                toast.success('Email copied')
+                                                            }}
+                                                            className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                                            aria-label="Copy email address"
+                                                        >
+                                                            <Copy className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {/* Right: QR Code Placeholder */}
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <div className="h-14 w-14 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                                                        <QrCode className="h-7 w-7 text-gray-400" />
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-500">Scan to Message</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Copy Request Button */}
+                                            <Button
+                                                onClick={handleCopyToClipboard}
+                                                type="button"
+                                                className={`w-full uppercase tracking-widest ${hasCopied
+                                                        ? 'bg-green-600 hover:bg-green-700'
+                                                        : recoveryStatus === 'BACKUP_SAVED'
+                                                            ? 'bg-blue-600 hover:bg-blue-700'
+                                                            : 'bg-red-600 hover:bg-red-700'
+                                                    } text-white`}
+                                            >
+                                                {hasCopied ? (
+                                                    <>
+                                                        <Check className="mr-2 h-4 w-4" />
+                                                        Details Copied
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy className="mr-2 h-4 w-4" />
+                                                        Copy Request Summary
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </form>
                         </div>
                     </div>
                 </div>
+            </div>
+            {/* LocalStorage Clear Button (Offline UX) */}
+            <div className="mt-12 text-center border-t border-gray-100 pt-8">
+                <p className="text-xs text-gray-400 mb-2">Form data is saved locally for 24 hours.</p>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-400 hover:text-red-500 hover:bg-red-50"
+                    onClick={() => {
+                        if (confirm('Are you sure you want to clear all form data?')) {
+                            clearRequest()
+                            toast.success('Form data cleared')
+                        }
+                    }}
+                >
+                    Clear Form Data
+                </Button>
             </div>
         </main>
     )

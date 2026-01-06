@@ -431,9 +431,17 @@ export async function approveReservation(reservationId: string, profileId: strin
             customFooter: settings?.email_footer || undefined
         })
 
-    } catch (e) {
+    } catch (e: any) {
         console.error('Email/PDF error:', e)
-        return { success: true, warning: 'Approved but email/PDF failed' }
+        // M3: Log to system_errors
+        await supabase.from('system_errors').insert({
+            error_type: 'EMAIL_PDF_GENERATION_FAILED',
+            payload: { reservationId, error: e.message || String(e) },
+            resolved: false
+        })
+
+        // M1: Strict Error String
+        return { success: true, error: 'DATABASE_UPDATED_BUT_EMAIL_FAILED' }
     }
 
     revalidatePath('/admin/reservations')
@@ -567,8 +575,18 @@ export async function markAsShipped(reservationId: string) {
             customBody: settings?.email_shipping_body || undefined,
             customFooter: settings?.email_shipping_footer || undefined,
         })
-    } catch (e) {
+    } catch (e: any) {
         console.error('Shipping email failed:', e)
+        // Log to system_errors
+        try {
+            await supabase.from('system_errors').insert({
+                error_type: 'SHIPPING_EMAIL_FAILED',
+                payload: { reservationId: reservation.group_id ?? reservation.id, error: e.message || String(e) },
+                resolved: false
+            })
+        } catch (logErr) {
+            console.error('Failed to log system error:', logErr)
+        }
         return { success: true, warning: 'Dispatched but email failed' }
     }
 

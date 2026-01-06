@@ -17,6 +17,8 @@ import {
     TableRow,
 } from '@/components/ui/table'
 import { FileCheck } from 'lucide-react'
+import { ImportRequestButton } from './ImportRequestButton'
+import { RealtimeReservationsListener } from './RealtimeReservationsListener'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,9 +107,13 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
 
     return (
         <div className="space-y-6">
+            <RealtimeReservationsListener />
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-semibold text-slate-900">Reservations</h1>
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-3xl font-semibold text-slate-900">Reservations</h1>
+                        <ImportRequestButton />
+                    </div>
                     {customerEmail && (
                         <p className="text-sm text-slate-500 mt-1">
                             Filtered by: <span className="font-medium">{customerEmail}</span>
