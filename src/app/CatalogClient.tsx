@@ -1,4 +1,5 @@
 "use client"
+import useSWR from 'swr'
 
 import * as React from "react"
 import { format, parse } from "date-fns"
@@ -139,26 +140,38 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     const [isLoading, setIsLoading] = React.useState(false)
     const [showUnavailable, setShowUnavailable] = React.useState(false)
 
-    // Fetch items from Supabase (Availability Check)
-    const fetchItems = React.useCallback(async () => {
-        // Only fetch if we have committed dates (or if we really want to refresh active items)
-        if (!committedDate?.from || !committedDate?.to) return
+    // SWR Fetcher for Supabase RPC
+    const fetcher = async ({ url, args }: { url: string, args: any }) => {
+        const supabase = createClient()
+        const { data, error } = await supabase.rpc(url, args)
+        if (error) throw error
+        return data
+    }
 
-        setIsLoading(true)
-        try {
-            const supabase = createClient()
-
-            // Use V2 RPC to support "Include Booked" feature
-            const { data, error } = await supabase.rpc('get_available_items_v2', {
+    // SWR Key Generation
+    const swrKey = React.useMemo(() => {
+        if (!committedDate?.from || !committedDate?.to) return null
+        return {
+            url: 'get_available_items_v2',
+            args: {
                 p_start_date: format(committedDate.from, 'yyyy-MM-dd'),
                 p_end_date: format(committedDate.to, 'yyyy-MM-dd'),
                 p_include_booked: showUnavailable
-            })
+            }
+        }
+    }, [committedDate, showUnavailable])
 
-            if (error) throw error
+    // Use SWR
+    const { data: swrData, error: swrError, isLoading: isSwrLoading } = useSWR(swrKey, fetcher, {
+        keepPreviousData: true,
+        revalidateOnFocus: false,
+        dedupingInterval: 60000, // Cache for 1 minute
+    })
 
-            // Map data to Item interface
-            const mappedItems: Item[] = (data || []).map((i: Item) => ({
+    // Update items when SWR data changes
+    React.useEffect(() => {
+        if (swrData) {
+            const mappedItems: Item[] = (swrData || []).map((i: Item) => ({
                 id: i.id,
                 name: i.name,
                 category: i.category,
@@ -170,26 +183,24 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                 collection_id: i.collection_id,
                 is_booked: i.is_booked,
                 conflict_dates: i.conflict_dates,
-                priority: i.priority // Ensure priority is preserved if needed for sorting
+                priority: i.priority
             }))
-
             setItems(mappedItems)
-        } catch (err: unknown) {
-            console.error("Fetch error:", err, JSON.stringify(err, null, 2))
-            const message = err instanceof Error ? err.message : 'Failed to check availability'
-            toast.error(message)
-            // Fallback to active items if RPC fails? Better to show error.
-        } finally {
-            setIsLoading(false)
         }
-    }, [committedDate, showUnavailable])
+    }, [swrData])
 
-    // Effect: Fetch when dates or settings change
+    // Update loading state
     React.useEffect(() => {
-        if (committedDate) {
-            fetchItems()
+        setIsLoading(isSwrLoading)
+    }, [isSwrLoading])
+
+    // Error handling
+    React.useEffect(() => {
+        if (swrError) {
+            console.error("Fetch error:", swrError)
+            toast.error('Failed to check availability')
         }
-    }, [fetchItems])
+    }, [swrError])
 
     // (Client-side filtering logic is defined below at 'filteredItems')
 

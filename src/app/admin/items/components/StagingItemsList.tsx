@@ -1,4 +1,5 @@
 'use client'
+import useSWR from 'swr'
 
 import { useState, useMemo, useTransition, Fragment, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
@@ -430,26 +431,37 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
         })
     )
 
-    // Load staging items when batch changes
-    const loadStagingItems = useCallback(async (batchId: string) => {
-        setIsLoading(true)
-        try {
-            const response = await fetch(`/api/staging-items?batchId=${batchId}`)
-            if (response.ok) {
-                const data = await response.json()
-                setStagingItems(data.items || [])
-            } else {
-                toast.error('Failed to load staging items')
-            }
-        } catch {
-            toast.error('Failed to load staging items')
+    // SWR Fetcher
+    const fetcher = async (url: string) => {
+        const res = await fetch(url)
+        if (!res.ok) throw new Error('Failed to load')
+        return res.json()
+    }
+
+    const { data: swrData, error: swrError, isLoading: isSwrLoading, mutate } = useSWR(
+        selectedBatchId ? `/api/staging-items?batchId=${selectedBatchId}` : null,
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            dedupingInterval: 5000
         }
-        setIsLoading(false)
-    }, [])
+    )
+
+    // Sync SWR data to local state for Drag & Drop
+    useEffect(() => {
+        if (swrData?.items) {
+            setStagingItems(swrData.items)
+        }
+    }, [swrData])
+
+    // Loading state sync
+    useEffect(() => {
+        setIsLoading(isSwrLoading)
+    }, [isSwrLoading])
 
     const handleBatchChange = (batchId: string) => {
         setSelectedBatchId(batchId)
-        loadStagingItems(batchId)
+        // SWR handles fetching automatically when key changes
     }
 
     const openRenameDialog = (groupName: string) => {
@@ -467,7 +479,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
         const result = await renameStagingGroupAction(renameTarget.oldName, renameTarget.newName.trim(), selectedBatchId)
         if (result.success) {
             toast.success(`Renamed to "${renameTarget.newName.trim()}"`)
-            await loadStagingItems(selectedBatchId)
+            await mutate() // Refresh SWR
             setIsRenameOpen(false)
         } else {
             toast.error(result.error || 'Failed to rename group')
@@ -477,10 +489,9 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
 
     /* eslint-disable react-hooks/set-state-in-effect */
     // Initial load
-    useEffect(() => {
-        if (!selectedBatchId) return
-        void loadStagingItems(selectedBatchId)
-    }, [selectedBatchId, loadStagingItems])
+    /* eslint-disable react-hooks/set-state-in-effect */
+    // Initial load handled by SWR
+    /* eslint-enable react-hooks/set-state-in-effect */
     /* eslint-enable react-hooks/set-state-in-effect */
 
     const toggleGroup = (groupName: string) => {

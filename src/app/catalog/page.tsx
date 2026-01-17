@@ -1,37 +1,45 @@
 import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { createServiceClient } from '@/lib/supabase/server'
 import { CatalogClient } from '../CatalogClient'
 
-// Force dynamic rendering to ensure we always get latest items
+// Force dynamic rendering to ensure we always get latest items (shell), but verify data is cached
 export const dynamic = 'force-dynamic'
 
-export default async function CatalogPage() {
-    const supabase = await createClient()
+// Cached Data Fetcher
+const getCachedCatalogData = unstable_cache(
+    async () => {
+        const supabase = createServiceClient()
+        return Promise.all([
+            supabase
+                .from('items')
+                .select('*')
+                .eq('status', 'active')
+                .order('priority', { ascending: false })
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('categories')
+                .select('*')
+                .eq('hidden_in_portal', false)
+                .order('name'),
+            supabase
+                .from('collections')
+                .select('*')
+                .eq('hidden_in_portal', false)
+                .order('name')
+        ])
+    },
+    ['catalog-data-v1'],
+    { revalidate: 60, tags: ['catalog'] }
+)
 
-    // Parallel filters fetch
-    // Parallel filters fetch
+export default async function CatalogPage() {
+    // Parallel filters fetch (Cached)
     const [
         { data: allItems, error: itemsError },
         { data: visibleCategories, error: catsError },
         { data: visibleCollections, error: colsError }
-    ] = await Promise.all([
-        supabase
-            .from('items')
-            .select('*')
-            .eq('status', 'active')
-            .order('priority', { ascending: false })
-            .order('created_at', { ascending: false }),
-        supabase
-            .from('categories')
-            .select('*')
-            .eq('hidden_in_portal', false)
-            .order('name'),
-        supabase
-            .from('collections')
-            .select('*')
-            .eq('hidden_in_portal', false)
-            .order('name')
-    ])
+    ] = await getCachedCatalogData()
 
     if (itemsError) {
         console.error('Error fetching items:', itemsError)
