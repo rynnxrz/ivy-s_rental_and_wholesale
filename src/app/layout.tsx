@@ -21,6 +21,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <NextTopLoader
           color="#0f172a"
           initialPosition={0.1}

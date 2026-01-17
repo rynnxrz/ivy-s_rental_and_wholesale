@@ -177,7 +177,7 @@ export function SummaryClient() {
     }
 
     return (
-        <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8" aria-label="Request summary">
+        <main id="main-content" tabIndex={-1} className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8" aria-label="Request summary">
             <div className="max-w-6xl mx-auto">
                 <Button
                     variant="ghost"

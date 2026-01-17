@@ -372,7 +372,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     }
 
     return (
-        <main className="min-h-screen bg-white" aria-label="Jewelry catalog">
+        <main id="main-content" tabIndex={-1} className="min-h-screen bg-white" aria-label="Jewelry catalog">
             <style dangerouslySetInnerHTML={{
                 __html: `
                 @keyframes shake {
@@ -589,13 +589,13 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                 <aside className="hidden md:block w-full md:w-56 flex-shrink-0 pt-2 border-r border-slate-50 pr-2" aria-label="Catalog filters">
                     {/* 1. Rental Dates */}
                     <div style={{ animation: isDateShakeError ? 'shake 0.82s cubic-bezier(.36,.07,.19,.97) both' : 'none' }}>
-                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold text-slate-600 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Rental Dates
                             {hasCommittedDate && (
                                 <button
                                     type="button"
                                     onClick={handleReset}
-                                    className="text-[11px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
+                                    className="text-[11px] text-slate-600 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
                                 >
                                     Reset
                                 </button>
@@ -618,11 +618,11 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     >
                                         <span className={cn(
                                             "block text-[10px] uppercase tracking-wider font-bold transition-colors",
-                                            isCalendarOpen && activeDateInput === 'from' ? "text-slate-900" : "text-slate-400"
+                                            isCalendarOpen && activeDateInput === 'from' ? "text-slate-900" : "text-slate-600"
                                         )}>Start</span>
                                         <span className={cn(
                                             "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
-                                            (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-400"
+                                            (isCalendarOpen ? draftDate?.from : committedDate?.from) ? "text-slate-900" : "text-slate-600"
                                         )}>
                                             {(isCalendarOpen ? draftDate?.from : committedDate?.from)
                                                 ? format((isCalendarOpen ? draftDate!.from! : committedDate!.from!), "MMM d, yyyy")
@@ -644,11 +644,11 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     >
                                         <span className={cn(
                                             "block text-[10px] uppercase tracking-wider font-bold transition-colors",
-                                            isCalendarOpen && activeDateInput === 'to' ? "text-slate-900" : "text-slate-400"
+                                            isCalendarOpen && activeDateInput === 'to' ? "text-slate-900" : "text-slate-600"
                                         )}>End</span>
                                         <span className={cn(
                                             "text-sm block border-b border-transparent group-hover:border-slate-900 transition-colors pb-0.5",
-                                            (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-400"
+                                            (isCalendarOpen ? draftDate?.to : committedDate?.to) ? "text-slate-900" : "text-slate-600"
                                         )}>
                                             {(isCalendarOpen ? draftDate?.to : committedDate?.to)
                                                 ? format((isCalendarOpen ? draftDate!.to! : committedDate!.to!), "MMM d, yyyy")
@@ -658,7 +658,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
                                     {hasCommittedDate && !isCalendarOpen && (
                                         <div>
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.1em]">
+                                            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-[0.1em]">
                                                 {rentalDays} days
                                             </span>
                                         </div>
@@ -727,7 +727,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     "w-full text-left py-1 mt-4 text-xs transition-colors focus-visible:underline focus-visible:outline-none",
                                     showUnavailable
                                         ? "font-bold text-slate-900"
-                                        : "font-normal text-slate-400 hover:text-slate-900"
+                                        : "font-normal text-slate-600 hover:text-slate-900"
                                 )}
                                 aria-pressed={showUnavailable}
                             >
@@ -738,13 +738,13 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
                     {/* 2. Categories */}
                     <div className="mt-10">
-                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold text-slate-600 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Categories
                             {selectedCategoryId && (
                                 <button
                                     type="button"
                                     onClick={() => setSelectedCategoryId(null)}
-                                    className="text-[11px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
+                                    className="text-[11px] text-slate-600 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
                                 >
                                     Reset
                                 </button>
@@ -760,12 +760,12 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group focus-visible:underline focus-visible:outline-none",
                                         selectedCategoryId === cat.id
                                             ? "font-bold text-slate-900"
-                                            : "font-normal text-slate-400 hover:text-slate-900"
+                                            : "font-normal text-slate-600 hover:text-slate-900"
                                     )}
                                     aria-pressed={selectedCategoryId === cat.id}
                                 >
                                     <span>{cat.name}</span>
-                                    <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-900" : "text-slate-300 group-hover:text-slate-400")}>
+                                    <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-900" : "text-slate-500 group-hover:text-slate-600")}>
                                         {categoryCounts[cat.id] || 0}
                                     </span>
                                 </button>
@@ -775,13 +775,13 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
                     {/* 3. Collections */}
                     <div className="mt-10">
-                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold text-slate-600 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Collections
                             {selectedCollectionId && (
                                 <button
                                     type="button"
                                     onClick={() => setSelectedCollectionId(null)}
-                                    className="text-[11px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
+                                    className="text-[11px] text-slate-600 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
                                 >
                                     Reset
                                 </button>
@@ -797,12 +797,12 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group focus-visible:underline focus-visible:outline-none",
                                         selectedCollectionId === col.id
                                             ? "font-bold text-slate-900"
-                                            : "font-normal text-slate-400 hover:text-slate-900"
+                                            : "font-normal text-slate-600 hover:text-slate-900"
                                     )}
                                     aria-pressed={selectedCollectionId === col.id}
                                 >
                                     <span>{col.name}</span>
-                                    <span className={cn("text-[10px] transition-colors", selectedCollectionId === col.id ? "text-slate-900" : "text-slate-300 group-hover:text-slate-400")}>
+                                    <span className={cn("text-[10px] transition-colors", selectedCollectionId === col.id ? "text-slate-900" : "text-slate-500 group-hover:text-slate-600")}>
                                         {collectionCounts[col.id] || 0}
                                     </span>
                                 </button>

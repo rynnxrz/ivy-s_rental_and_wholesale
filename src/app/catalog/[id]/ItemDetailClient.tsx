@@ -60,7 +60,7 @@ export function ItemDetailClient({ item, context, relatedItemsSlot }: ItemDetail
     const backLabel = isArchiveMode ? 'Back to Archive' : 'Back to Collection'
 
     return (
-        <main className="min-h-screen bg-white pb-20" aria-label={`${displayName} details`}>
+        <main id="main-content" tabIndex={-1} className="min-h-screen bg-white pb-20" aria-label={`${displayName} details`}>
             {/* Breadcrumb / Back */}
             <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6">
                 <Link

@@ -93,7 +93,7 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
     }
 
     return (
-        <main className="min-h-screen bg-white" aria-label="Archive catalog">
+        <main id="main-content" tabIndex={-1} className="min-h-screen bg-white" aria-label="Archive catalog">
             {/* Layout Container */}
             <div className="max-w-[1920px] mx-auto px-4 sm:px-8 py-8 flex flex-col md:flex-row gap-12">
                 <h1 className="sr-only">Archive Catalog</h1>
@@ -207,13 +207,13 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
                 <aside className="hidden md:block w-full md:w-56 flex-shrink-0 pt-2 border-r border-slate-50 pr-2" aria-label="Catalog filters">
                     {/* Categories */}
                     <div className="mb-10">
-                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold text-slate-600 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Categories
                             {selectedCategoryId && (
                                 <button
                                     type="button"
                                     onClick={() => setSelectedCategoryId(null)}
-                                    className="text-[11px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
+                                    className="text-[11px] text-slate-600 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
                                 >
                                     Reset
                                 </button>
@@ -229,12 +229,12 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
                                         "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group focus-visible:underline focus-visible:outline-none",
                                         selectedCategoryId === cat.id
                                             ? "font-bold text-slate-900"
-                                            : "font-normal text-slate-400 hover:text-slate-900"
+                                            : "font-normal text-slate-600 hover:text-slate-900"
                                     )}
                                     aria-pressed={selectedCategoryId === cat.id}
                                 >
                                     <span>{cat.name}</span>
-                                    <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-900" : "text-slate-300 group-hover:text-slate-400")}>
+                                    <span className={cn("text-[10px] transition-colors", selectedCategoryId === cat.id ? "text-slate-900" : "text-slate-500 group-hover:text-slate-600")}>
                                         {categoryCounts[cat.id] || 0}
                                     </span>
                                 </button>
@@ -244,13 +244,13 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
 
                     {/* Collections */}
                     <div className="mb-10">
-                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold text-slate-600 tracking-[0.2em] uppercase mb-4 flex items-center justify-between">
                             Collections
                             {selectedCollectionId && (
                                 <button
                                     type="button"
                                     onClick={() => setSelectedCollectionId(null)}
-                                    className="text-[11px] text-slate-400 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
+                                    className="text-[11px] text-slate-600 hover:text-slate-900 transition-colors uppercase font-bold tracking-wide focus-visible:underline focus-visible:outline-none"
                                 >
                                     Reset
                                 </button>
@@ -266,12 +266,12 @@ export function ArchiveClient({ initialItems, categories, collections }: Archive
                                         "w-full text-left py-1 text-xs transition-colors flex items-center justify-between group focus-visible:underline focus-visible:outline-none",
                                         selectedCollectionId === col.id
                                             ? "font-bold text-slate-900"
-                                            : "font-normal text-slate-400 hover:text-slate-900"
+                                            : "font-normal text-slate-600 hover:text-slate-900"
                                     )}
                                     aria-pressed={selectedCollectionId === col.id}
                                 >
                                     <span>{col.name}</span>
-                                    <span className={cn("text-[10px] transition-colors hidden group-hover:inline-block", selectedCollectionId === col.id ? "inline-block text-slate-900" : "text-slate-300")}>
+                                    <span className={cn("text-[10px] transition-colors hidden group-hover:inline-block", selectedCollectionId === col.id ? "inline-block text-slate-900" : "text-slate-500")}>
                                         {collectionCounts[col.id] || 0}
                                     </span>
                                 </button>

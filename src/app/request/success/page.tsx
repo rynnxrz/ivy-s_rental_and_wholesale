@@ -4,7 +4,7 @@ import { CheckCircle2 } from 'lucide-react'
 
 export default function RequestSuccessPage() {
     return (
-        <main className="min-h-screen bg-white flex items-center justify-center px-4" aria-label="Request submitted confirmation">
+        <main id="main-content" tabIndex={-1} className="min-h-screen bg-white flex items-center justify-center px-4" aria-label="Request submitted confirmation">
             <div className="max-w-md w-full text-center space-y-8">
                 <div className="flex justify-center">
                     <div className="h-24 w-24 bg-green-50 rounded-full flex items-center justify-center">
