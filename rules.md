@@ -7,6 +7,7 @@ You are building **Ivy's Rental & Wholesale**, a B2B Management System for high-
 - **Language:** TypeScript (Strict)
 - **Styling:** Tailwind CSS v4 + Shadcn UI
 - **Database & Auth:** Supabase (Postgres, SSR, Auth, Storage)
+  - **API Keys:** Uses new `sb_publishable_...` and `sb_secret_...` format (requires `@supabase/supabase-js` ≥ v2.90.1)
 - **AI Engine:** Google Gemini (Streaming + Search Grounding)
 - **Deployment:** Vercel
 

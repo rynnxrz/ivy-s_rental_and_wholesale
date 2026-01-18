@@ -1,8 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2026-01-06
-**版本:** v1.2 (Reliability & Integrity Patch) 
-485106dd7b7cc0fc6523c4d6a4502b2072303582
+**日期:** 2026-01-18
+**版本:** v1.3 (Supabase API Key Migration)
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
 ---
@@ -118,10 +117,18 @@ AI 配置弹窗 (`AIImportSettings`) 可从商品导入面板打开，提供以�
     ```
 
 ### 关键配置 (Environment Variables)
-*   `NEXT_PUBLIC_SUPABASE_URL` / `ANON_KEY`: 前端连接。
-*   `SUPABASE_SERVICE_ROLE_KEY`: 后台管理员操作。
+
+> **⚠️ 重要更新 (2026-01-18):** Supabase 已弃用旧的 JWT 格式 API Key (`eyJ...`)，改用新格式：
+> - `sb_publishable_...` 替代 `anon` key
+> - `sb_secret_...` 替代 `service_role` key
+> 
+> 必须使用 `@supabase/supabase-js` ≥ v2.90.1 才能支持新格式。
+
+*   `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL。
+*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 新格式 `sb_publishable_...`，前端连接。
+*   `SUPABASE_SERVICE_ROLE_KEY`: 新格式 `sb_secret_...`，后台管理员操作（绕过 RLS）。
 *   `RESEND_API_KEY`: 邮件服务。
-*   `GOOGLE_GENERATIVE_AI_API_KEY`: **新增**，用于 Gemini AI 服务调用。
+*   `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_AI_API_KEY`: Gemini AI 服务调用。
 
 ### 图像存储
 *   **Bucket**: `rental_items`
