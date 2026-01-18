@@ -35,15 +35,33 @@ const getCachedCatalogData = unstable_cache(
 
 export default async function CatalogPage() {
     // Parallel filters fetch (Cached)
-    const [
-        { data: allItems, error: itemsError },
-        { data: visibleCategories, error: catsError },
-        { data: visibleCollections, error: colsError }
-    ] = await getCachedCatalogData()
+    // Parallel filters fetch (Cached)
+    let allItems, visibleCategories, visibleCollections
+    try {
+        const [
+            { data: items, error: itemsError },
+            { data: cats, error: catsError },
+            { data: cols, error: colsError }
+        ] = await getCachedCatalogData()
 
-    if (itemsError) {
-        console.error('Error fetching items:', itemsError)
-        return <div className="p-8 text-center text-red-500">Failed to load items. Please try again later.</div>
+        if (itemsError) throw itemsError
+
+        allItems = items
+        visibleCategories = cats
+        visibleCollections = cols
+    } catch (error) {
+        console.error('CRITICAL: Failed to load catalog data', error)
+        // Return a safe fallback UI instead of crashing the entire app
+        return (
+            <div className="min-h-screen pt-24 pb-12 px-4 sm:px-8 max-w-[1920px] mx-auto text-center">
+                <h1 className="text-2xl font-light tracking-widest text-red-900 mb-4">SYSTEM UNAVAILABLE</h1>
+                <p className="text-slate-600 mb-6">Unable to load the jewelry collection at this time.</p>
+                <div className="text-xs text-slate-400 font-mono bg-slate-50 p-4 rounded inline-block text-left">
+                    <p>Error Digest: {Date.now()}</p>
+                    <p>Please contact support.</p>
+                </div>
+            </div>
+        )
     }
 
     // Cascading Hiding: Filter out items that belong to hidden collections
