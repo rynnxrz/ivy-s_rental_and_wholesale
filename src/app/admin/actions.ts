@@ -448,7 +448,7 @@ export async function approveReservation(reservationId: string, profileId: strin
     return { success: true }
 }
 
-export async function markAsShipped(reservationId: string) {
+export async function markAsShipped(reservationId: string, attachInvoice: boolean = false) {
     const supabase = await createClient()
 
     // 1. Auth
@@ -531,6 +531,41 @@ export async function markAsShipped(reservationId: string) {
             filename: `dispatch-photo-${i + 1}.${ext}`,
             content: buffer
         })
+    }
+
+    // --- ATTACH INVOICE IF REQUESTED ---
+    if (attachInvoice) {
+        // Find links
+        // We look for an invoice linked to this reservation or its group
+        // If group, any reservation in group might be linked, but usually invoice links to primary
+        // But invoice has `reservation_id`.
+        // Let's try to find invoice by reservation_id of this reservation
+        const { data: invoice } = await supabase
+            .from('invoices')
+            .select('id')
+            .eq('reservation_id', reservationId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+
+        if (invoice) {
+            // We can reuse downloadInvoicePdf but it returns base64.
+            // We can use it and decode, or duplicate logic.
+            // Using `downloadInvoicePdf` keeps logic in one place.
+            const { downloadInvoicePdf } = await import('@/actions/invoice')
+            const pdfResult = await downloadInvoicePdf(invoice.id)
+            if (pdfResult.success && pdfResult.data) {
+                const pdfBuffer = Buffer.from(pdfResult.data, 'base64')
+                attachments.push({
+                    filename: 'Invoice.pdf',
+                    content: pdfBuffer
+                })
+            } else {
+                console.warn('Failed to attach invoice:', pdfResult.error)
+            }
+        } else {
+            console.warn('No invoice found to attach for reservation', reservationId)
+        }
     }
 
     // 4. Update Status to Active for ALL Query

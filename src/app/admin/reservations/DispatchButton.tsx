@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Loader2, Truck } from 'lucide-react'
+import { Loader2, Truck, FileText, Check } from 'lucide-react'
 import { markAsShipped } from '@/app/admin/actions'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { downloadInvoicePdf } from '@/actions/invoice'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -16,19 +17,56 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Label } from '@/components/ui/label'
 
-export function DispatchButton({ reservationId }: { reservationId: string }) {
+export function DispatchButton({ reservationId, invoiceId }: { reservationId: string, invoiceId?: string }) {
     const [showConfirm, setShowConfirm] = useState(false)
     const [isPending, startTransition] = useTransition()
+    const [isReviewing, setIsReviewing] = useState(false)
+    const [attachInvoice, setAttachInvoice] = useState(true)
     const router = useRouter()
+
+    const handleReviewInvoice = async () => {
+        if (!invoiceId) {
+            toast.error('No invoice found for this reservation')
+            return
+        }
+
+        setIsReviewing(true)
+        try {
+            const result = await downloadInvoicePdf(invoiceId)
+            if (result.success && result.data) {
+                // Open PDF in new tab
+                const byteCharacters = atob(result.data)
+                const byteNumbers = new Array(byteCharacters.length)
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                }
+                const byteArray = new Uint8Array(byteNumbers)
+                const blob = new Blob([byteArray], { type: 'application/pdf' })
+                const url = URL.createObjectURL(blob)
+                window.open(url, '_blank')
+            } else {
+                toast.error(result.error || 'Failed to generate invoice PDF')
+            }
+        } catch (e) {
+            console.error(e)
+            toast.error('Error opening invoice')
+        } finally {
+            setIsReviewing(false)
+        }
+    }
 
     const handleDispatch = () => {
         startTransition(() => {
             void (async () => {
-                const result = await markAsShipped(reservationId)
+                const result = await markAsShipped(reservationId, attachInvoice)
 
                 if (result.success) {
                     toast.success('Reservation marked as dispatched')
+                    if (result.warning) {
+                        toast.warning(result.warning)
+                    }
                     router.refresh()
                 } else {
                     toast.error(result.error || 'Failed to dispatch order')
@@ -60,13 +98,56 @@ export function DispatchButton({ reservationId }: { reservationId: string }) {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Dispatch Order?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will mark the item as dispatched and send a shipping notification email to the customer with any evidence links attached.
+                            This will mark the item as dispatched and send a shipping notification email to the customer.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
+
+                    <div className="py-4 space-y-4">
+                        {invoiceId && (
+                            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                <div className="flex items-center gap-2">
+                                    <FileText className="h-4 w-4 text-slate-500" />
+                                    <span className="text-sm font-medium text-slate-700">Invoice Review</span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleReviewInvoice}
+                                    disabled={isReviewing}
+                                >
+                                    {isReviewing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                                    View PDF
+                                </Button>
+                            </div>
+                        )}
+
+                        <div className="flex items-center space-x-2">
+                            {/* Fallback to simple checkbox if generic one fails, but I'll trust standard input or component if found later. 
+                                For now, I will use a simple input type checkbox to avoid import issues if component doesn't match exactly.
+                             */}
+                            <input
+                                type="checkbox"
+                                id="attachInvoice"
+                                checked={attachInvoice}
+                                onChange={(e) => setAttachInvoice(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                            />
+                            <label
+                                htmlFor="attachInvoice"
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                                Attach Invoice PDF to Email
+                            </label>
+                        </div>
+                    </div>
+
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                            onClick={handleDispatch}
+                            onClick={(e) => {
+                                e.preventDefault()
+                                handleDispatch()
+                            }}
                             disabled={isPending}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
                         >

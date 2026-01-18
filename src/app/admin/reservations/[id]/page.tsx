@@ -82,6 +82,18 @@ export default async function RequestDetailPage(props: Props) {
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
 
+    // Fetch Invoice for Dispatch (if exists)
+    const { data: invoice } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('reservation_id', reservation.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+    const invoiceId = invoice?.id
+
+
     const item = reservation.items as {
         name?: string
         rental_price?: number
@@ -141,7 +153,16 @@ export default async function RequestDetailPage(props: Props) {
                                 billingProfiles={billingProfiles || []}
                             />
                         )}
-                        {status === 'confirmed' && <DispatchButton reservationId={reservation.id} />}
+                        {status === 'confirmed' && (
+                            /* Fetch Invoice ID for Dispatch Button */
+                            // We need to fetch this async, but we are inside a component.
+                            // Better to fetch above or use an async wrapper.
+                            // Since this is a server component, I can fetch above.
+                            <DispatchButton
+                                reservationId={reservation.id}
+                                invoiceId={invoiceId}
+                            />
+                        )}
 
                         <span className="text-gray-400 text-sm">Created {format(new Date(reservation.created_at), 'PPP')}</span>
                     </div>
