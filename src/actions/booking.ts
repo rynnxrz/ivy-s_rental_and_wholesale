@@ -74,22 +74,6 @@ export async function createGuestBooking(data: GuestBookingData) {
         }
     }
 
-    // 3. Check availability
-    const { data: available, error: availError } = await supabase.rpc('check_item_availability', {
-        p_item_id: data.item_id,
-        p_start_date: data.start_date,
-        p_end_date: data.end_date
-    })
-
-    if (availError) {
-        console.error('Availability check failed:', availError)
-        return { error: 'Could not check availability' }
-    }
-
-    if (!available) {
-        return { error: 'Selected dates are not available' }
-    }
-
     // 3. Find or create profile by email
     const email = data.email.toLowerCase().trim()
     const organizationDomain = extractOrganizationDomain(email)

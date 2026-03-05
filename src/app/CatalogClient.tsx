@@ -1,11 +1,9 @@
 "use client"
-import useSWR from 'swr'
 
 import * as React from "react"
 import { format, parse } from "date-fns"
-import { Calendar as CalendarIcon, X, ShoppingBag, Plus, Pencil, Check, Loader2, Filter, ChevronDown } from "lucide-react"
+import { Calendar as CalendarIcon, Check, Filter } from "lucide-react"
 import { DateRange } from "react-day-picker"
-import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -26,8 +24,6 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { useRequestStore } from "@/store/request"
 import { toast } from "sonner"
 
@@ -41,8 +37,6 @@ interface Item {
     category_id?: string | null
     collection_id?: string | null
     color?: string | null
-    is_booked?: boolean
-    conflict_dates?: string | null
     priority?: number | null
 }
 
@@ -91,13 +85,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     // "Draft" date - temporary selection in calendar before applying
     const [draftDate, setDraftDate] = React.useState<DateRange | undefined>(committedDate)
 
-    // UI Lock: Once user has done a search, stay in narrow mode
-    const [hasActiveSearch, setHasActiveSearch] = React.useState(() => {
-        const from = searchParams.get('from')
-        const to = searchParams.get('to')
-        return !!(from && to)
-    })
-
     // Calendar popover open state
     const [isCalendarOpen, setIsCalendarOpen] = React.useState(false)
     const [activeDateInput, setActiveDateInput] = React.useState<'from' | 'to' | null>(null)
@@ -120,7 +107,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
             }
             setCommittedDate(parsedDate)
             setDraftDate(parsedDate)
-            setHasActiveSearch(true)
         }
     }, []) // Run once on mount
 
@@ -136,71 +122,10 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         }
     }, [committedDate, setGlobalDateRange])
 
-    const [items, setItems] = React.useState<Item[]>(initialItems)
-    const [isLoading, setIsLoading] = React.useState(false)
-    const [showUnavailable, setShowUnavailable] = React.useState(false)
-
-    // SWR Fetcher for Supabase RPC
-    const fetcher = async ({ url, args }: { url: string, args: any }) => {
-        const supabase = createClient()
-        const { data, error } = await supabase.rpc(url, args)
-        if (error) throw error
-        return data
-    }
-
-    // SWR Key Generation
-    const swrKey = React.useMemo(() => {
-        if (!committedDate?.from || !committedDate?.to) return null
-        return {
-            url: 'get_available_items_v2',
-            args: {
-                p_start_date: format(committedDate.from, 'yyyy-MM-dd'),
-                p_end_date: format(committedDate.to, 'yyyy-MM-dd'),
-                p_include_booked: showUnavailable
-            }
-        }
-    }, [committedDate, showUnavailable])
-
-    // Use SWR
-    const { data: swrData, error: swrError, isLoading: isSwrLoading } = useSWR(swrKey, fetcher, {
-        keepPreviousData: true,
-        revalidateOnFocus: false,
-        dedupingInterval: 60000, // Cache for 1 minute
-    })
-
-    // Update items when SWR data changes
-    React.useEffect(() => {
-        if (swrData) {
-            const mappedItems: Item[] = (swrData || []).map((i: Item) => ({
-                id: i.id,
-                name: i.name,
-                category: i.category,
-                rental_price: i.rental_price,
-                image_paths: i.image_paths,
-                status: i.status,
-                color: i.color,
-                category_id: i.category_id,
-                collection_id: i.collection_id,
-                is_booked: i.is_booked,
-                conflict_dates: i.conflict_dates,
-                priority: i.priority
-            }))
-            setItems(mappedItems)
-        }
-    }, [swrData])
-
-    // Update loading state
-    React.useEffect(() => {
-        setIsLoading(isSwrLoading)
-    }, [isSwrLoading])
-
-    // Error handling
-    React.useEffect(() => {
-        if (swrError) {
-            console.error("Fetch error:", swrError)
-            toast.error('Failed to check availability')
-        }
-    }, [swrError])
+    const items = React.useMemo<Item[]>(
+        () => initialItems.map(item => ({ ...item, status: 'available' })),
+        [initialItems]
+    )
 
     // (Client-side filtering logic is defined below at 'filteredItems')
 
@@ -219,7 +144,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         }
 
         setCommittedDate(draftDate)
-        setHasActiveSearch(true)
         setIsCalendarOpen(false)
         setActiveDateInput(null)
 
@@ -234,7 +158,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     const handleReset = () => {
         setCommittedDate(undefined)
         setDraftDate(undefined)
-        setHasActiveSearch(false)
         setIsCalendarOpen(false)
         setActiveDateInput(null)
 
@@ -244,15 +167,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         params.delete('to')
         const queryString = params.toString()
         router.replace(queryString ? `/catalog?${queryString}` : '/catalog', { scroll: false })
-    }
-
-    // Micro clear
-    const handleClearStartDate = () => {
-        setDraftDate(prev => prev ? { ...prev, from: undefined } : undefined)
-    }
-
-    const handleClearEndDate = () => {
-        setDraftDate(prev => prev ? { ...prev, to: undefined } : undefined)
     }
 
     // Open Calendar for specific input
@@ -372,7 +286,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
     const triggerDateError = () => {
         setIsDateShakeError(true)
-        toast("← Select rental dates first to check if this item is available.")
+        toast("← Select rental dates first to add items.")
         setTimeout(() => setIsDateShakeError(false), 800)
     }
 
@@ -481,10 +395,9 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                         handleApplySearch()
                                         setIsMobileCalendarOpen(false)
                                     }}
-                                    disabled={!hasDraftComplete || isLoading}
+                                    disabled={!hasDraftComplete}
                                     className="h-11 min-w-[44px] text-sm bg-slate-900 text-white hover:bg-slate-800"
                                 >
-                                    {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" /> : null}
                                     Apply
                                 </Button>
                             </div>
@@ -720,31 +633,15 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     <Button
                                         size="sm"
                                         onClick={handleApplySearch}
-                                        disabled={!hasDraftComplete || isLoading}
+                                        disabled={!hasDraftComplete}
                                         className="h-11 min-w-[44px] text-sm bg-slate-900 text-white hover:bg-slate-800"
                                     >
-                                        {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" /> : null}
                                         Apply
                                     </Button>
                                 </div>
                             </PopoverContent>
                         </Popover>
 
-                        {hasCommittedDate && (
-                            <button
-                                type="button"
-                                onClick={() => setShowUnavailable(!showUnavailable)}
-                                className={cn(
-                                    "w-full text-left py-1 mt-4 text-xs transition-colors focus-visible:underline focus-visible:outline-none",
-                                    showUnavailable
-                                        ? "font-bold text-slate-900"
-                                        : "font-normal text-slate-600 hover:text-slate-900"
-                                )}
-                                aria-pressed={showUnavailable}
-                            >
-                                Show Booked Items
-                            </button>
-                        )}
                     </div>
 
                     {/* 2. Categories */}
@@ -828,28 +725,12 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                     {/* Aligned Header (Desktop Only) */}
                     <div className="hidden md:block mb-6 pt-2">
                         <h2 className="text-[11px] font-bold text-slate-700 tracking-[0.2em] uppercase">
-                            {hasCommittedDate ? "Available Pieces" : "All Collection"}
+                            Collection Pieces
                         </h2>
                     </div>
 
-                    {/* Loading Overlay */}
-                    <div
-                        className={cn(
-                            "absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/50 backdrop-blur-[1px] transition-all duration-300",
-                            isLoading ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
-                        )}
-                        role="status"
-                        aria-live="polite"
-                        aria-atomic="true"
-                    >
-                        <div className="flex flex-col items-center gap-3">
-                            <Loader2 className="h-8 w-8 animate-spin text-slate-900" aria-hidden="true" />
-                            <p className="text-sm font-semibold text-slate-700">Scanning availability...</p>
-                        </div>
-                    </div>
-
                     {/* Grid Content */}
-                    <div className={cn("transition-opacity duration-300", isLoading ? "opacity-40 pointer-events-none" : "opacity-100")}>
+                    <div className="transition-opacity duration-300">
                         {filteredItems.length > 0 ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[1px] bg-slate-50 border border-slate-50 center-grid">
                                 {filteredItems.map((item, index) => {
@@ -879,7 +760,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                 </div>
 
                                                 {/* Title Only (Inside Link) */}
-                                                <div className={cn("px-5 pt-3", item.is_booked && "opacity-50")}>
+                                                <div className="px-5 pt-3">
                                                     <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 min-h-[40px] group-hover/link:text-slate-700 transition-colors text-left">
                                                         {displayName}
                                                     </h3>
@@ -887,12 +768,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                             </Link>
 
                                             {/* Action Area: Category + Price + Button (Separate Click Zone) */}
-                                            <div
-                                                className={cn(
-                                                    "px-5 pb-5 pt-1 mt-auto transition-colors hover:bg-slate-50/80 group/action",
-                                                    item.is_booked && "pointer-events-none opacity-50"
-                                                )}
-                                            >
+                                            <div className="px-5 pb-5 pt-1 mt-auto transition-colors hover:bg-slate-50/80 group/action">
                                                 {/* Category */}
                                                 <p className="text-[11px] text-slate-700 truncate uppercase tracking-widest mb-2">
                                                     {item.category}
@@ -907,79 +783,56 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                                     {/* Right: Add/Remove Button */}
                                                     <div className="flex-shrink-0">
                                                         {hasCommittedDate ? (
-                                                            item.is_booked ? (
-                                                                <Popover>
-                                                                    <PopoverTrigger asChild>
-                                                                        <Button
-                                                                            type="button"
-                                                                            aria-expanded={false}
-                                                                            aria-controls={`booking-conflict-${item.id}`}
-                                                                            className="h-11 min-w-[44px] rounded-md bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 hover:text-slate-900 px-4 text-xs font-semibold uppercase tracking-wide"
-                                                                            onClick={(e) => {
-                                                                                e.preventDefault()
-                                                                                e.stopPropagation()
-                                                                            }}
-                                                                        >
-                                                                            Booked
-                                                                        </Button>
-                                                                    </PopoverTrigger>
-                                                                    <PopoverContent id={`booking-conflict-${item.id}`} className="w-auto p-3 text-sm text-slate-700 max-w-[220px] rounded-md" align="end">
-                                                                        <p className="font-semibold text-slate-900 mb-1">Unavailable</p>
-                                                                        <p>Dates: {item.conflict_dates}</p>
-                                                                    </PopoverContent>
-                                                                </Popover>
+                                                            isSelected ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    aria-pressed={isSelected}
+                                                                    aria-label={`Remove ${displayName} from request`}
+                                                                    className="h-11 w-11 min-w-[44px] rounded-md bg-white border border-green-300 text-green-700 hover:text-green-800 hover:border-green-400 hover:bg-green-50 p-0 flex items-center justify-center transition-all group-hover/action:scale-105"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault()
+                                                                        e.stopPropagation()
+                                                                        removeItem(item.id)
+                                                                        toast("Item removed from request", {
+                                                                            action: {
+                                                                                label: 'Undo',
+                                                                                onClick: () => addItem({
+                                                                                    id: item.id,
+                                                                                    name: item.name,
+                                                                                    category: item.category,
+                                                                                    rental_price: item.rental_price,
+                                                                                    image_paths: item.image_paths,
+                                                                                    status: item.status
+                                                                                })
+                                                                            }
+                                                                        })
+                                                                    }}
+                                                                >
+                                                                    <Check className="h-5 w-5" aria-hidden="true" />
+                                                                    <span className="sr-only">Remove from request</span>
+                                                                </Button>
                                                             ) : (
-                                                                isSelected ? (
-                                                                    <Button
-                                                                        type="button"
-                                                                        aria-pressed={isSelected}
-                                                                        aria-label={`Remove ${displayName} from request`}
-                                                                        className="h-11 w-11 min-w-[44px] rounded-md bg-white border border-green-300 text-green-700 hover:text-green-800 hover:border-green-400 hover:bg-green-50 p-0 flex items-center justify-center transition-all group-hover/action:scale-105"
-                                                                        onClick={(e) => {
-                                                                            e.preventDefault()
-                                                                            e.stopPropagation()
-                                                                            removeItem(item.id)
-                                                                            toast("Item removed from request", {
-                                                                                action: {
-                                                                                    label: 'Undo',
-                                                                                    onClick: () => addItem({
-                                                                                        id: item.id,
-                                                                                        name: item.name,
-                                                                                        category: item.category,
-                                                                                        rental_price: item.rental_price,
-                                                                                        image_paths: item.image_paths,
-                                                                                        status: item.status
-                                                                                    })
-                                                                                }
-                                                                            })
-                                                                        }}
-                                                                    >
-                                                                        <Check className="h-5 w-5" aria-hidden="true" />
-                                                                        <span className="sr-only">Remove from request</span>
-                                                                    </Button>
-                                                                ) : (
-                                                                    <Button
-                                                                        type="button"
-                                                                        aria-pressed={false}
-                                                                        aria-label={`Add ${displayName} to request`}
-                                                                        className="h-11 min-w-[44px] rounded-md bg-slate-900 text-white hover:bg-slate-800 group-hover/action:scale-105 text-xs font-semibold px-6 transition-transform"
-                                                                        onClick={(e) => {
-                                                                            e.preventDefault()
-                                                                            e.stopPropagation()
-                                                                            addItem({
-                                                                                id: item.id,
-                                                                                name: item.name,
-                                                                                category: item.category,
-                                                                                rental_price: item.rental_price,
-                                                                                image_paths: item.image_paths,
-                                                                                status: item.status
-                                                                            })
-                                                                            toast.success("Added to request")
-                                                                        }}
-                                                                    >
-                                                                        + Add
-                                                                    </Button>
-                                                                )
+                                                                <Button
+                                                                    type="button"
+                                                                    aria-pressed={false}
+                                                                    aria-label={`Add ${displayName} to request`}
+                                                                    className="h-11 min-w-[44px] rounded-md bg-slate-900 text-white hover:bg-slate-800 group-hover/action:scale-105 text-xs font-semibold px-6 transition-transform"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault()
+                                                                        e.stopPropagation()
+                                                                        addItem({
+                                                                            id: item.id,
+                                                                            name: item.name,
+                                                                            category: item.category,
+                                                                            rental_price: item.rental_price,
+                                                                            image_paths: item.image_paths,
+                                                                            status: item.status
+                                                                        })
+                                                                        toast.success("Added to request")
+                                                                    }}
+                                                                >
+                                                                    + Add
+                                                                </Button>
                                                             )
                                                         ) : (
                                                             <Button
@@ -1009,24 +862,9 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                             </div>
                         ) : (
                             <div className="text-center py-20">
-                                {hasCommittedDate ? (
-                                    <>
-                                        <h3 className="text-base text-slate-700 font-semibold">
-                                            No items available for selected dates.
-                                        </h3>
-                                        <Button
-                                            variant="ghost"
-                                            className="mt-3 text-slate-700 hover:text-slate-900 text-sm"
-                                            onClick={handleReset}
-                                        >
-                                            Clear dates
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <h3 className="text-base text-slate-700 font-semibold">
-                                        The collection is currently empty.
-                                    </h3>
-                                )}
+                                <h3 className="text-base text-slate-700 font-semibold">
+                                    No items match the current filters.
+                                </h3>
                             </div>
                         )}
                     </div>
