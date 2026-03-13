@@ -1,7 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2026-01-18
-**版本:** v1.3 (Supabase API Key Migration)
+**日期:** 2026-03-13
+**版本:** v1.4 (Reservation Workflow + PDF Import)
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
 ---
@@ -10,7 +10,8 @@
 *   **框架:** Next.js 16 (App Router) + React 19
 *   **样式:** Tailwind CSS v4 + Shadcn UI (Radix)
 *   **数据库/后端:** Supabase (Postgres, Auth, Storage, Edge Functions)
-*   **AI 引擎:** Google Gemini (Streaming + Search Grounding)
+*   **AI 引擎:** Google Gemini (Search Grounding + PDF Catalog Parsing)
+*   **文档/图像处理:** `pdfjs-dist`, `sharp`, `react-signature-canvas`
 *   **部署:** Vercel
 *   **服务:** Resend (邮件), Cloudflare (DNS/CDN), Microsoft Clarity (用户行为分析)
 
@@ -21,116 +22,133 @@
 ### A. 前台门户 (Portal)
 1.  **三路分流架构**:
     *   **Rental**: 基于日期的租赁画册，含实时库存冲突检测。
-    *   **Wholesale**: 批发专区，全场 6 折，起订量 $2,000 校验。
-        *   *新增*: 独立的批发商登录鉴权 (`WholesaleAuthMiddleware`)。
+    *   **Wholesale**: 批发专区，全场 6 折，起订量 $2,000 校验，支持独立批发登录鉴权。
     *   **Archive**: 品牌归档展示，无交易功能。
-        *   *新增*: 多色变体展示 (Color Display)，移动端筛选器优化 (Mobile Sheet UI)，移除不必要的购物车按钮。
-2.  **用户体验与性能 (UX & Performance)**:
-    *   **智能交互**: 引入 React `useTransition` 优化表单提交体验，`TopLoader` 提供导航加载反馈。
-    *   **骨架屏 (Skeletons)**: 全面覆盖 Catalog, Wholesale, Archive 的数据加载状态。
-    *   **移动端适配**:
-        *   全新的 Mobile Date Picker 与 Filter Drawer。
-        *   吸底式预定栏 (Sticky Booking Bar) 与安全区适配。
-    *   **卡片设计**: 重构 Item Cards，增加 Total Price 显示与快捷移除操作。
-3.  **购物袋系统**:
-    *   **业务隔离**: Rental 和 Wholesale 购物车数据互不干扰。
-    *   **静默添加**: 导航栏右上角常驻，支持原位撤销 (Undo)。
-4.  **详情页**:
-    *   1:1 正方形留白构图，支持多图画廊。
+2.  **租赁请求信息增强**:
+    *   请求数据会保存 **Event Location**、地址快照，以及原始借用日期元数据。
+    *   为后续管理员改期、合同渲染、付款确认提供数据基础。
+3.  **付款确认入口**:
+    *   新增 `/payment/[reservationId]`，自动跳转到该订单最新 Invoice 的付款确认页。
+    *   新增 `/payment-confirmation/[invoiceId]`，客户可在线查看 Invoice、PDF、Loan Form，并完成数字签名与付款声明。
+4.  **移动端与详情体验**:
+    *   1:1 正方形留白构图，多图画廊。
+    *   移动端吸底交互与安全区适配已保留。
 
 ### B. 后台管理 (Admin Dashboard)
-1.  **AI 智能导入 (AI Import Ecosystem)**:
-    *   **完整工作流**: Scan (URL/Text) -> AI Analysis (Gemini) -> Staging (Review) -> Inventory。
-    *   **核心特性**:
-        *   **Real-time Streaming**: 终端风格组件 (`AIStatusConsole`) 实时展示 AI 思考链 (Thinking Chain) 与每步耗时。
-        *   **Grounding**: 强制启用 Google Search Grounding，确保提取信息的真实性，减少幻觉。
-        *   **Batch Management**: 基于 `staging_imports` 表及其关联表，支持整批次的提交与回滚。
-        *   **Dynamic Models**: 动态获取 Google AI 可用模型列表 (e.g., Flash vs Pro)，支持按需切换。
-    *   **配置**: 支持管理员自定义 `System Instructions` 与各环节 Prompts。
-2.  **商品管理 (Inventory)**:
-    *   **母子变体**: 支持 "Save & Add Variation" 快速录入多色变体。
-    *   **分组视图**: 列表页按设计名折叠/展开。
-    *   **生命周期**: Active / Maintenance / Retired。
-3.  **订单管理 (Reservations)**:
-    *   **批量操作**: 支持整单批准、归档，以及新增的 **批量恢复 (Restoration)** 功能。
-    *   **系统可靠性 (Reliability)**: 
-        *   **幂等提交 (Idempotency)**: 引入 Request Fingerprinting，防止网络重试导致的重复订单。
-        *   **紧急备份 (Emergency Backups)**: 提交失败时自动暂存原始 Payload 至 `emergency_backups` 表。
-        *   **代码导入 (Import from Code)**: 支持管理员通过用户提供的“恢复码” (Base64/JSON) 手动补录订单。
-    *   **错误审计 (Error Auditing)**: 新增 `/admin/errors` 面板，实时监控邮件发送、数据校验等后台失败，支持管理员手动触发重试。
-    *   **物流集成**: 支持录入 Tracking Number 并自动生成查询链接。
-4.  **通讯中心 (Communications)**:
-    *   **邮件模板**: 可视化编辑 (Approval/Shipping/Invoice)。
-    *   **PDF Invoice**: 自动生成带商品缩略图、多行表格、银行信息的 PDF 账单，支持新增的 **Invoice Email Types**。
-    *   **真实测试**: 支持发送包含模拟数据的测试邮件。
+1.  **订单生命周期重构 (Reservations)**:
+    *   状态统一为四阶段:
+        *   `Pending Request`
+        *   `Upcoming`
+        *   `Ongoing`
+        *   `Past-loan`
+    *   管理页按新状态拆分视图，并保留 **Archived** 独立筛选入口。
+2.  **审批与账单工作流升级**:
+    *   `Review & Invoice` 弹窗支持:
+        *   确认借出/归还日期
+        *   Event Location 预览
+        *   Discount Percentage
+        *   Deposit Override
+        *   实时 Invoice 价格预览
+    *   审批时会生成 Invoice、发送 Approval Email，并附带公开付款确认链接。
+3.  **付款确认与合同闭环**:
+    *   客户付款确认页支持:
+        *   Invoice 金额拆解 (Subtotal / Discount / Deposit / Total Due)
+        *   Loan Form 条款展示
+        *   数字签名上传
+        *   已确认付款与已阅读条款的双勾选确认
+    *   签名文件会写入 Storage，并回写到 Reservation / Invoice。
+4.  **Upcoming / Ongoing 阶段动作补强**:
+    *   **Upcoming**:
+        *   直接查看 Invoice PDF
+        *   Resend Invoice Email
+        *   Dispatch 发货通知（可附 Invoice）
+    *   **Ongoing**:
+        *   上传 Return Evidence
+        *   `Confirm Return` 进入 `Past-loan`
+    *   **Past-loan**:
+        *   支持 Archive 归档
+5.  **商品管理 (Inventory) 升级为 Taxonomy 模式**:
+    *   `items` 新增:
+        *   `line_type`: Mainline / Collaboration / Archive
+        *   `character_family`: Orchid / Daffodil / Botanic Elegy / Oceanspine / Sea Passiflora / Uncategorized
+    *   列表页现按 **Line Type Tabs + Character Family Grouping** 组织展示。
+    *   支持 Character Group 维度的批量 `Mark Active / Retire All`。
+    *   提供 `Run Taxonomy Backfill`，对历史数据自动回填分类维度。
+6.  **AI Import Ecosystem 扩展到 PDF Catalog**:
+    *   原有 URL Speed Scan 工作流保留。
+    *   新增 **PDF Catalog Import**:
+        *   PDF 上传至私有 Bucket
+        *   Gemini 解析 Catalog 行数据
+        *   自动写入 staging batch
+        *   支持 `source_type`, `source_label`, `source_page`, `default_line_type`
+        *   浏览器端渲染指定 PDF 页面后，调用 AI 进行商品图像定位与裁切
+    *   Staging Review 支持编辑 `line_type`, `character_family`, `specs`, `source_page` 等字段。
 
-### C. 系统配置 (Settings Dashboard)
-系统配置面板位于 `/admin/settings`，包含四个核心 Tab：
-
-1.  **Billing Profiles (账单主体)**:
-    *   支持创建/编辑多个账单主体 (公司抬头、银行信息)。
-    *   可设置默认 Profile，用于自动填充 Invoice。
-2.  **Communications (通讯配置)**:
-    *   **邮件模板编辑**: Approval、Shipping、Invoice 三类邮件的 Subject/Body/Footer 可视化编辑。
-    *   **变量插入**: 支持 `{{customerName}}`, `{{itemName}}`, `{{startDate}}`, `{{reservationId}}` 等占位符。
-    *   **实时预览**: 左侧编辑，右侧即时渲染邮件/PDF 效果。
-    *   **测试发送**: 可向指定邮箱发送包含模拟数据的测试邮件。
-3.  **Taxonomy (分类与系列)**:
-    *   **Categories/Collections CRUD**: 新增、删除、显示/隐藏切换。
-    *   **关联校验**: 删除前检查是否有商品关联，防止误删。
-4.  **System (核心系统参数)**:
-    *   **Turnaround Buffer**: 订单周转缓冲天数 (同一商品两笔订单间的最小间隔)。
-    *   **Booking Password**: 租赁预约表单的访问密码 (空值表示开放访问)。
-    *   **Contact Email**: 邮件回复地址 (Reply-To)。
-
-### D. AI 配置 (AI Configuration Dialog)
-AI 配置弹窗 (`AIImportSettings`) 可从商品导入面板打开，提供以下高级设置：
-
-1.  **模型选择**: 动态拉取 Google AI 可用模型列表，支持 Flash/Pro 等模型切换。
-2.  **Thinking Levels**: 针对不同环节 (Category/Subcategory/ProductList/ProductDetail) 独立设置思考深度 (Low/Medium/High)。
-3.  **Custom Prompts**: 自定义各环节的 AI 提示词，支持恢复默认。
-4.  **Max Output Tokens**: AI 单次响应的最大 Token 数。
-5.  **System Instruction 开关**: 是否启用全局 AI 人设指令。
-6.  **Test Chat**: 与当前选中模型进行实时对话，验证配置效果。
-7.  **Speed Scan Test**: 使用测试 URL 测试快速扫描流程，实时输出思考链与耗时。
+### C. 通讯中心与 Invoice 能力
+1.  **Invoice 价格模型升级**:
+    *   `invoices` 新增:
+        *   `subtotal_amount`
+        *   `discount_percentage`
+        *   `discount_amount`
+        *   `deposit_amount`
+    *   租赁价格由 Retail Value 和租期阶梯计算，支持折扣与押金拆分。
+2.  **邮件能力升级**:
+    *   Approval Email 现在可附带:
+        *   最新 Invoice PDF
+        *   付款确认页面链接
+    *   Admin 可对 Upcoming 订单执行 Resend Invoice。
+3.  **PDF Invoice 复用能力**:
+    *   Admin 可从 Reservation 页面直接查看 PDF。
+    *   Public payment-confirmation 页面也可内嵌/打开同一份 Invoice PDF。
 
 ---
 
-## 3. 开发规范与维护 (Maintenance)
+## 3. 数据库与维护 (Maintenance)
 
-### 数据库架构与安全
-*   **Schema 变更**:
-    *   新增 `staging_imports`, `staging_items` 表支持 AI 导入暂存业务。
-    *   新增 `app_settings` 表用于 AI 配置 (Max Output Tokens, Temperature 等) 的持久化。
-*   **系统可靠性**:
-    *   **Atomic Operations (RPC)**: 实现 `commit_staging_batch` 事务，确保批量入库的原子性。
-    *   **Error Handling**:
-        *   新增 `system_errors` 表追踪异步任务失败。
-        *   新增 `emergency_backups` 表作为最后一层数据防线。
-    *   **Security**:
-        *   关键 RPC 强制设置 `search_path` 防止注入。
-        *   后台批量写操作显式使用 `Service Role Client` 绕过复杂 RLS，同时对 Staging 表启用严格的 RLS 策略。
-*   **常规维护**:
-    *   Schema 变更后**必须**运行同步命令：
-    ```bash
-    npm run update-types
-    ```
+### 数据库变更
+本次版本核心依赖以下 Migration:
+
+*   `00039_reservation_status_invoice_pricing.sql`
+    *   Reservation 新状态模型
+    *   Invoice 金额拆分字段
+    *   `payment_signature_url`
+*   `00040_reservation_invoice_overrides.sql`
+    *   Reservation 级别 `discount_percent` / `deposit_override`
+*   `00041_item_taxonomy_dimensions.sql`
+    *   `items.line_type`
+    *   `items.character_family`
+*   `00042_pdf_import_taxonomy.sql`
+    *   `staging_imports` PDF 元数据
+    *   `staging_items` taxonomy/specs/source_page
+    *   `import_documents` bucket
+*   `00043_digital_loan_form_metadata.sql`
+    *   `original_start_date`
+    *   `original_end_date`
+    *   `event_location`
+
+> 建议后续所有 Schema 变更都以 `supabase/migrations/*.sql` 为准进行版本管理；变更完成后必须同步类型。
+
+```bash
+npm run update-types
+```
+
+### Storage 约定
+*   **主商品图 Bucket:** `rental_items`
+*   **商品图 Path:** `/items/{filename}`
+*   **PDF 原件 Bucket:** `import_documents`
+*   **PDF Preview Crop:** `rental_items/import-previews/...`
+*   **签名文件 Path:** `rental_items/payment-signatures/...`
+*   **Invoice PDF Path:** `rental_items/invoices/{invoiceId}/latest.pdf`
 
 ### 关键配置 (Environment Variables)
+*   `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL
+*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 新格式 `sb_publishable_...`
+*   `SUPABASE_SERVICE_ROLE_KEY`: 新格式 `sb_secret_...`
+*   `RESEND_API_KEY`: 邮件服务
+*   `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`: Gemini AI 调用
+*   `NEXT_PUBLIC_APP_URL` 或 `NEXT_PUBLIC_SITE_URL`: Approval Email / Payment Confirmation Link 的公开地址生成依赖
 
-> **⚠️ 重要更新 (2026-01-18):** Supabase 已弃用旧的 JWT 格式 API Key (`eyJ...`)，改用新格式：
-> - `sb_publishable_...` 替代 `anon` key
-> - `sb_secret_...` 替代 `service_role` key
-> 
-> 必须使用 `@supabase/supabase-js` ≥ v2.90.1 才能支持新格式。
-
-*   `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL。
-*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 新格式 `sb_publishable_...`，前端连接。
-*   `SUPABASE_SERVICE_ROLE_KEY`: 新格式 `sb_secret_...`，后台管理员操作（绕过 RLS）。
-*   `RESEND_API_KEY`: 邮件服务。
-*   `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_AI_API_KEY`: Gemini AI 服务调用。
-
-### 图像存储
-*   **Bucket**: `rental_items`
-*   **Path**: `/items/{filename}`
-*   **规范**: 建议上传正方形白底图，系统会自动适配 `object-contain`。
+### 运维备注
+*   若未配置 `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL`，Approval Email 仍可发送，但付款确认链接可能缺失。
+*   PDF 导入依赖 `import_documents` bucket 与 Gemini File API。
+*   Reservation Archive 在旧环境下支持回退到 `admin_notes` 标记方案，以兼容未完全同步的状态枚举。

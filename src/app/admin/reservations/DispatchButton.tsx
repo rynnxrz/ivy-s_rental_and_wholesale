@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Loader2, Truck, FileText, Check } from 'lucide-react'
+import { Loader2, FileText } from 'lucide-react'
 import { markAsShipped } from '@/app/admin/actions'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -17,7 +17,6 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Label } from '@/components/ui/label'
 
 export function DispatchButton({ reservationId, invoiceId }: { reservationId: string, invoiceId?: string }) {
     const [showConfirm, setShowConfirm] = useState(false)
@@ -82,23 +81,19 @@ export function DispatchButton({ reservationId, invoiceId }: { reservationId: st
                 onClick={() => setShowConfirm(true)}
                 disabled={isPending}
                 size="sm"
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                title="Mark as Dispatched"
+                variant="default"
+                title="Review Dispatch & Notify"
             >
-                {isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                    <Truck className="h-3 w-3" />
-                )}
-                Dispatch & Notify
+                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isPending ? 'Sending...' : 'Review Dispatch & Notify'}
             </Button>
 
             <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Dispatch Order?</AlertDialogTitle>
+                        <AlertDialogTitle>Review Dispatch & Notify?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will mark the item as dispatched and send a shipping notification email to the customer.
+                            Review invoice options, then mark the order as dispatched and send a shipping notification email.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
@@ -149,10 +144,9 @@ export function DispatchButton({ reservationId, invoiceId }: { reservationId: st
                                 handleDispatch()
                             }}
                             disabled={isPending}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isPending ? 'Sending...' : 'Dispatch & Notify'}
+                            {isPending ? 'Sending...' : 'Review Dispatch & Notify'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -160,4 +154,3 @@ export function DispatchButton({ reservationId, invoiceId }: { reservationId: st
         </>
     )
 }
-

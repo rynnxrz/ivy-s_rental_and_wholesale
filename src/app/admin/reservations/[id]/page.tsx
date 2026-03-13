@@ -4,8 +4,16 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import EvidenceUploader from './EvidenceUploader'
 import { ApproveButton } from '../ApproveButton'
+import { ArchiveButton } from '../ArchiveButton'
 import { DispatchButton } from '../DispatchButton'
 import { FinalizeReturnButton } from '../FinalizeReturnButton'
+import {
+    RESERVATION_STATUSES,
+    normalizeLegacyReservationStatus,
+} from '@/lib/constants/reservation-status'
+
+const ARCHIVED_STATUS = 'archived'
+const ARCHIVED_NOTE_PREFIX = '[ARCHIVED]'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -38,7 +46,7 @@ export default async function RequestDetailPage(props: Props) {
     }
 
     // Fetch Group Siblings
-    let groupItems: { start_date: string; end_date: string; items?: { name?: string; rental_price?: number; image_paths?: string[] }; id: string; status: string }[] = []
+    let groupItems: { start_date: string; end_date: string; items?: { name?: string; sku?: string; rental_price?: number; replacement_cost?: number; image_paths?: string[] }; id: string; status: string }[] = []
     if (reservation.group_id) {
         const { data: siblings } = await supabase
             .from('reservations')
@@ -47,7 +55,7 @@ export default async function RequestDetailPage(props: Props) {
                 status,
                 start_date,
                 end_date,
-                items (name, sku, rental_price, image_paths)
+                items (name, sku, rental_price, replacement_cost, image_paths)
             `)
             .eq('group_id', reservation.group_id)
             .neq('id', reservation.id) // Exclude current
@@ -69,7 +77,7 @@ export default async function RequestDetailPage(props: Props) {
         const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
         return {
             name: r.items?.name || 'Unknown',
-            rentalPrice: r.items?.rental_price || 0,
+            retailPrice: r.items?.replacement_cost || r.items?.rental_price || 0,
             days: d,
             imageUrl: r.items?.image_paths?.[0]
         }
@@ -93,24 +101,19 @@ export default async function RequestDetailPage(props: Props) {
 
     const invoiceId = invoice?.id
 
-
-    const item = reservation.items as {
-        name?: string
-        rental_price?: number
-        sku?: string
-        image_paths?: string[]
-        replacement_cost?: number
-    } | null
-
     const customer = reservation.profiles as {
         full_name?: string
         email?: string
         company_name?: string
     } | null
-    const status = reservation.status
+    const isArchived =
+        reservation.status === ARCHIVED_STATUS
+        || (typeof reservation.admin_notes === 'string'
+            && reservation.admin_notes.trim().startsWith(ARCHIVED_NOTE_PREFIX))
+    const status = isArchived ? ARCHIVED_STATUS : normalizeLegacyReservationStatus(reservation.status)
 
-    const isDispatchEditable = status === 'confirmed' || status === 'active'
-    const isReturnEditable = status === 'active'
+    const isDispatchEditable = status === RESERVATION_STATUSES.UPCOMING || status === RESERVATION_STATUSES.ONGOING
+    const isReturnEditable = status === RESERVATION_STATUSES.ONGOING
 
     return (
         <div className="max-w-5xl mx-auto py-10 px-4">
@@ -129,17 +132,19 @@ export default async function RequestDetailPage(props: Props) {
                     </div>
                     <div className="flex items-center gap-4 mt-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium uppercase tracking-wide
-                            ${status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                                    status === 'active' ? 'bg-green-100 text-green-800' :
-                                        status === 'returned' ? 'bg-gray-100 text-gray-800' :
-                                            'bg-red-100 text-red-800'}`}>
+                            ${status === RESERVATION_STATUSES.PENDING_REQUEST ? 'bg-yellow-100 text-yellow-800' :
+                                status === RESERVATION_STATUSES.UPCOMING ? 'bg-blue-100 text-blue-800' :
+                                    status === RESERVATION_STATUSES.ONGOING ? 'bg-green-100 text-green-800' :
+                                        status === ARCHIVED_STATUS ? 'bg-purple-100 text-purple-800' :
+                                            'bg-gray-100 text-gray-800'}`}>
                             {status}
                         </span>
 
-                        {status === 'pending' && (
+                        {status === RESERVATION_STATUSES.PENDING_REQUEST && (
                             <ApproveButton
                                 reservationId={reservation.id}
+                                startDate={reservation.start_date}
+                                endDate={reservation.end_date}
                                 items={allGroupItems}
                                 customerName={customer?.full_name}
                                 customerEmail={customer?.email}
@@ -150,10 +155,11 @@ export default async function RequestDetailPage(props: Props) {
                                     [reservation.city_region, reservation.postcode].filter(Boolean).join(', '),
                                     reservation.country
                                 ].filter(Boolean)}
+                                eventLocation={reservation.event_location}
                                 billingProfiles={billingProfiles || []}
                             />
                         )}
-                        {status === 'confirmed' && (
+                        {status === RESERVATION_STATUSES.UPCOMING && (
                             /* Fetch Invoice ID for Dispatch Button */
                             // We need to fetch this async, but we are inside a component.
                             // Better to fetch above or use an async wrapper.
@@ -161,6 +167,13 @@ export default async function RequestDetailPage(props: Props) {
                             <DispatchButton
                                 reservationId={reservation.id}
                                 invoiceId={invoiceId}
+                            />
+                        )}
+                        {status === RESERVATION_STATUSES.PAST_LOAN && (
+                            <ArchiveButton
+                                reservationId={reservation.id}
+                                groupId={reservation.group_id ?? undefined}
+                                itemCount={allGroupItems.length}
                             />
                         )}
 
@@ -187,13 +200,19 @@ export default async function RequestDetailPage(props: Props) {
                                 // We need the original objects for IDs and status, not just the mapped "allGroupItems" for ApproveButton
                                 // Let's use [reservation, ...groupItems] directly
                                 const original = idx === 0 ? reservation : groupItems[idx - 1]
-                                const itemData = idx === 0 ? (reservation.items as any) : groupItems[idx - 1].items
+                                const itemData = idx === 0 ? (reservation.items as {
+                                    name?: string
+                                    rental_price?: number
+                                    sku?: string
+                                    image_paths?: string[]
+                                } | null) : groupItems[idx - 1].items
+                                const normalizedItemStatus = normalizeLegacyReservationStatus(original.status)
 
                                 return (
                                     <Link key={original.id} href={`/admin/reservations/${original.id}`} className={`flex items-start gap-4 p-3 rounded-lg border transition-all ${original.id === reservation.id ? 'bg-blue-50/50 border-blue-100 ring-1 ring-blue-100' : 'hover:bg-slate-50 border-transparent hover:border-slate-200'}`}>
                                         <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             {itemData?.image_paths?.[0] ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
                                                 <img src={itemData.image_paths[0]} alt={itemData.name} className="w-full h-full object-cover" />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>
@@ -205,12 +224,12 @@ export default async function RequestDetailPage(props: Props) {
                                                     <div className="font-medium text-slate-900 truncate pr-2">{itemData?.name || 'Unknown Item'}</div>
                                                     <div className="text-xs text-slate-500 font-mono mt-0.5">{itemData?.sku}</div>
                                                 </div>
-                                                <div className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-medium flex-shrink-0 ${original.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
-                                                    original.status === 'confirmed' ? 'bg-blue-50 text-blue-700' :
-                                                        original.status === 'active' ? 'bg-green-50 text-green-700' :
+                                                <div className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-medium flex-shrink-0 ${normalizedItemStatus === RESERVATION_STATUSES.UPCOMING ? 'bg-blue-50 text-blue-700' :
+                                                    normalizedItemStatus === RESERVATION_STATUSES.ONGOING ? 'bg-green-50 text-green-700' :
+                                                        normalizedItemStatus === RESERVATION_STATUSES.PENDING_REQUEST ? 'bg-yellow-50 text-yellow-700' :
                                                             'bg-gray-50 text-gray-600'
                                                     }`}>
-                                                    {original.status}
+                                                    {normalizedItemStatus}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4 mt-2 text-sm">
@@ -235,7 +254,7 @@ export default async function RequestDetailPage(props: Props) {
                     </div>
 
                     {/* Dispatch Evidence Section */}
-                    {(status !== 'pending' && status !== 'cancelled') && (
+                    {status !== RESERVATION_STATUSES.PENDING_REQUEST && (
                         <EvidenceUploader
                             reservationId={reservation.id}
                             type="dispatch"
@@ -246,7 +265,7 @@ export default async function RequestDetailPage(props: Props) {
                     )}
 
                     {/* Return Evidence Section */}
-                    {(status === 'active' || status === 'returned') && (
+                    {(status === RESERVATION_STATUSES.ONGOING || status === RESERVATION_STATUSES.PAST_LOAN) && (
                         <div className="space-y-4">
                             <EvidenceUploader
                                 reservationId={reservation.id}
@@ -257,7 +276,7 @@ export default async function RequestDetailPage(props: Props) {
                             />
 
                             {/* Finalize Action */}
-                            {status === 'active' && (
+                            {status === RESERVATION_STATUSES.ONGOING && (
                                 <div className="flex justify-end pt-4 border-t border-gray-100">
                                     <FinalizeReturnButton reservationId={reservation.id} />
                                 </div>

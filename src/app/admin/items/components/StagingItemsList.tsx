@@ -1,10 +1,10 @@
 'use client'
 import useSWR from 'swr'
 
-import { useState, useMemo, useTransition, Fragment, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useTransition, Fragment, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Trash2, Edit2, Package, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, Sparkles, GripVertical, Terminal, RefreshCw, AlertCircle } from 'lucide-react'
+import { Trash2, Edit2, Package, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, Sparkles, GripVertical, Terminal, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
@@ -22,7 +22,6 @@ import {
     DialogDescription,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
     DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -36,10 +35,8 @@ import {
 import {
     Collapsible,
     CollapsibleContent,
-    CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import type { StagingItem } from '@/types'
+import type { ImportSourceType, ItemLineType, StagingItem } from '@/types'
 import { ItemForm } from '@/components/admin/ItemForm'
 import {
     removeStagingItemAction,
@@ -85,11 +82,14 @@ interface Category {
 
 interface ImportBatch {
     id: string
-    source_url: string
+    source_url: string | null
+    source_label: string | null
+    source_type: ImportSourceType
     status: string
     created_at: string
     items_scraped: number | null
     pending_count: number
+    default_line_type: ItemLineType
 }
 
 interface StagingItemsListProps {
@@ -107,6 +107,22 @@ type StagingItemGroup = {
     collectionName: string | null
     variantCount: number
     createdAt: string
+}
+
+const getBatchDisplayLabel = (batch: ImportBatch) => {
+    if (batch.source_label?.trim()) {
+        return batch.source_label.trim()
+    }
+
+    if (batch.source_url) {
+        try {
+            return new URL(batch.source_url).hostname
+        } catch {
+            return batch.source_url
+        }
+    }
+
+    return 'Imported catalog'
 }
 
 // Terminal Log Component
@@ -438,7 +454,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
         return res.json()
     }
 
-    const { data: swrData, error: swrError, isLoading: isSwrLoading, mutate } = useSWR(
+    const { data: swrData, isLoading: isSwrLoading, mutate } = useSWR(
         selectedBatchId ? `/api/staging-items?batchId=${selectedBatchId}` : null,
         fetcher,
         {
@@ -487,13 +503,6 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
         setIsRenaming(false)
     }
 
-    /* eslint-disable react-hooks/set-state-in-effect */
-    // Initial load
-    /* eslint-disable react-hooks/set-state-in-effect */
-    // Initial load handled by SWR
-    /* eslint-enable react-hooks/set-state-in-effect */
-    /* eslint-enable react-hooks/set-state-in-effect */
-
     const toggleGroup = (groupName: string) => {
         const newOpenGroups = new Set(openGroups)
         if (newOpenGroups.has(groupName)) {
@@ -533,6 +542,9 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
             color: data.color,
             weight: data.weight,
             category_id: data.category_id,
+            collection_id: data.collection_id,
+            line_type: data.line_type,
+            character_family: data.character_family,
             description: data.description,
             image_urls: data.image_paths // Map image_paths from form back to image_urls
         })
@@ -597,7 +609,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                 ))
                 toast.error(result.error || 'Failed to move item')
             }
-        } catch (error) {
+        } catch {
             // Rollback on error
             setStagingItems(prev => prev.map(item =>
                 item.id === draggedItemId
@@ -769,10 +781,13 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                     <SelectItem key={batch.id} value={batch.id}>
                                         <div className="flex items-center gap-2 w-full">
                                             <span className="font-medium truncate max-w-[200px]">
-                                                {new URL(batch.source_url).hostname}
+                                                {getBatchDisplayLabel(batch)}
                                             </span>
                                             <Badge variant={batch.status === 'completed' ? 'secondary' : 'default'} className="text-[10px] h-5">
                                                 {batch.status}
+                                            </Badge>
+                                            <Badge variant="outline" className="text-[10px] h-5 uppercase">
+                                                {batch.source_type}
                                             </Badge>
                                             <span className="text-xs text-slate-400 ml-auto">
                                                 {new Date(batch.created_at).toLocaleDateString()}
@@ -786,15 +801,17 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
 
                     {selectedBatch && (
                         <div className="flex-none pt-6 flex gap-2">
-                            <Button variant="ghost" size="sm" asChild className="h-9 gap-1 text-slate-500">
-                                <a
-                                    href={selectedBatch.source_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <ExternalLink className="h-4 w-4" /> View Source
-                                </a>
-                            </Button>
+                            {selectedBatch.source_url && (
+                                <Button variant="ghost" size="sm" asChild className="h-9 gap-1 text-slate-500">
+                                    <a
+                                        href={selectedBatch.source_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink className="h-4 w-4" /> View Source
+                                    </a>
+                                </Button>
+                            )}
 
                             <Button
                                 variant="ghost"
@@ -960,6 +977,8 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                     name: editingItem.name,
                                     sku: editingItem.sku || '',
                                     description: editingItem.description || '',
+                                    line_type: editingItem.line_type || 'Mainline',
+                                    character_family: editingItem.character_family || 'Uncategorized',
                                     rental_price: editingItem.rental_price || 0,
                                     replacement_cost: editingItem.replacement_cost || 0,
                                     color: editingItem.color || '',

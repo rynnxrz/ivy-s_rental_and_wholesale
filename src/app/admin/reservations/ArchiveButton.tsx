@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Archive, Loader2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { archiveReservationGroup } from '@/app/admin/actions'
+import { archiveReservation, archiveReservationGroup } from '@/app/admin/actions'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -28,7 +27,6 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
     const [showConfirm, setShowConfirm] = useState(false)
     const [isPending, startTransition] = useTransition()
     const router = useRouter()
-    const supabase = createClient()
 
     const isGroup = !!groupId && itemCount > 1
 
@@ -40,18 +38,20 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
                     if (result.error) {
                         toast.error(result.error)
                     } else {
+                        if (result.warning) {
+                            toast.warning(result.warning)
+                        }
                         toast.success(`${result.count} items archived`)
                         router.refresh()
                     }
                 } else {
-                    const { error } = await supabase
-                        .from('reservations')
-                        .update({ status: 'archived' })
-                        .eq('id', reservationId)
-
-                    if (error) {
-                        toast.error(error.message || 'Failed to archive reservation')
+                    const result = await archiveReservation(reservationId)
+                    if (result.error) {
+                        toast.error(result.error)
                     } else {
+                        if (result.warning) {
+                            toast.warning(result.warning)
+                        }
                         toast.success('Reservation archived')
                         router.refresh()
                     }
@@ -66,17 +66,13 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
             <Button
                 onClick={() => setShowConfirm(true)}
                 disabled={isPending}
-                variant="outline"
+                variant="default"
                 size="sm"
                 aria-label={isGroup ? `Archive entire request with ${itemCount} items` : 'Archive Reservation'}
                 title={isGroup ? `Archive entire request with ${itemCount} items` : 'Archive Reservation'}
             >
-                {isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                    <Archive className="h-3 w-3" />
-                )}
-                Archive
+                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isPending ? 'Archiving...' : 'Archive'}
             </Button>
 
             <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
@@ -87,8 +83,8 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             {isGroup
-                                ? `This will archive all ${itemCount} items in this request. The dates will be released and become available for new bookings.`
-                                : 'The dates will be released and become available for new bookings.'}
+                                ? `This will move all ${itemCount} items out of the Past-loan queue into Archived.`
+                                : 'This will move this reservation out of the Past-loan queue into Archived.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -96,7 +92,6 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
                         <AlertDialogAction
                             onClick={handleArchive}
                             disabled={isPending}
-                            className="bg-slate-900 hover:bg-slate-800 text-white"
                         >
                             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isPending ? 'Archiving...' : 'Archive'}
@@ -107,5 +102,3 @@ export function ArchiveButton({ reservationId, groupId, itemCount = 1 }: Archive
         </>
     )
 }
-
-

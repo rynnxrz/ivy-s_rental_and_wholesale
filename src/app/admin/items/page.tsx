@@ -24,7 +24,7 @@ export default async function ItemsPage() {
         // Get import batches with pending counts
         supabase
             .from('staging_imports')
-            .select('id, source_url, status, created_at, items_scraped')
+            .select('id, source_type, source_url, source_label, default_line_type, status, created_at, items_scraped')
             .in('status', ['completed', 'pending', 'scanning'])
             .order('created_at', { ascending: false })
     ])

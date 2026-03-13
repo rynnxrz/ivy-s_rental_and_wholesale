@@ -8,6 +8,7 @@ interface EmailTemplateProps {
     totalDays: number;
     totalPrice: number;
     reservationId: string;
+    paymentConfirmUrl?: string;
     customBody?: string | null;
     customFooter?: string | null;
 }
@@ -33,6 +34,7 @@ export const EmailTemplate: React.FC<Readonly<EmailTemplateProps>> = ({
     totalDays,
     totalPrice,
     reservationId,
+    paymentConfirmUrl,
     customBody,
     customFooter,
 }) => {
@@ -84,6 +86,36 @@ export const EmailTemplate: React.FC<Readonly<EmailTemplateProps>> = ({
                 Please find the attached invoice for your records.
                 Payment instructions are included in the invoice.
             </p>
+
+            {paymentConfirmUrl && (
+                <div style={{ margin: '20px 0' }}>
+                    <p style={{ marginBottom: '10px' }}>
+                        Please complete contract signature and payment confirmation:
+                    </p>
+                    <a
+                        href={paymentConfirmUrl}
+                        style={{
+                            display: 'inline-block',
+                            padding: '10px 16px',
+                            backgroundColor: '#111827',
+                            color: '#fff',
+                            textDecoration: 'none',
+                            borderRadius: '6px',
+                            fontWeight: 600,
+                        }}
+                    >
+                        Click here to sign the contract and confirm your payment
+                    </a>
+                    <p style={{ marginTop: '10px', fontSize: '12px', color: '#6b7280' }}>
+                        If the button does not work, copy and open this link:
+                    </p>
+                    <p style={{ marginTop: '4px', wordBreak: 'break-all' }}>
+                        <a href={paymentConfirmUrl} style={{ color: '#2563eb' }}>
+                            {paymentConfirmUrl}
+                        </a>
+                    </p>
+                </div>
+            )}
 
             {/* Custom footer or default */}
             {processedFooter ? (

@@ -1,8 +1,7 @@
 /* eslint-disable jsx-a11y/alt-text */
-import React from 'react';
-import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
+import React from 'react'
+import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer'
 
-// Professional minimalist styles - Black/White/Gray only
 const styles = StyleSheet.create({
     page: {
         padding: 40,
@@ -11,7 +10,6 @@ const styles = StyleSheet.create({
         color: '#000',
         backgroundColor: '#FFF',
     },
-    // Header
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -41,7 +39,6 @@ const styles = StyleSheet.create({
     invoiceValue: {
         fontFamily: 'Helvetica-Bold',
     },
-    // Sections
     section: {
         marginBottom: 20,
     },
@@ -53,7 +50,6 @@ const styles = StyleSheet.create({
         marginBottom: 10,
         color: '#666',
     },
-    // Bill To
     billToContent: {
         fontSize: 10,
         lineHeight: 1.5,
@@ -62,7 +58,6 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica-Bold',
         marginBottom: 2,
     },
-    // Table
     table: {
         borderWidth: 1,
         borderColor: '#E0E0E0',
@@ -91,13 +86,10 @@ const styles = StyleSheet.create({
         fontSize: 9,
         padding: 8,
     },
-    // Column widths
     colImage: { width: 60 },
     colDescription: { flex: 1 },
     colDays: { width: 50, textAlign: 'center' },
-    colRate: { width: 70, textAlign: 'right' },
-    colAmount: { width: 70, textAlign: 'right' },
-    // Item image
+    colAmount: { width: 90, textAlign: 'right' },
     itemThumb: {
         width: 44,
         height: 44,
@@ -113,7 +105,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    // Item details
     itemName: {
         fontFamily: 'Helvetica-Bold',
         fontSize: 10,
@@ -123,7 +114,6 @@ const styles = StyleSheet.create({
         fontSize: 8,
         color: '#666',
     },
-    // Totals
     totalsSection: {
         marginTop: 10,
         alignItems: 'flex-end',
@@ -151,7 +141,6 @@ const styles = StyleSheet.create({
         fontFamily: 'Helvetica-Bold',
         fontSize: 11,
     },
-    // Payment
     paymentBox: {
         backgroundColor: '#F9F9F9',
         padding: 15,
@@ -169,7 +158,6 @@ const styles = StyleSheet.create({
         color: '#333',
         lineHeight: 1.5,
     },
-    // Notes
     notesBox: {
         marginTop: 15,
         padding: 10,
@@ -187,7 +175,6 @@ const styles = StyleSheet.create({
         color: '#555',
         lineHeight: 1.4,
     },
-    // Footer
     footer: {
         position: 'absolute',
         bottom: 30,
@@ -200,56 +187,59 @@ const styles = StyleSheet.create({
         borderTopColor: '#E0E0E0',
         paddingTop: 10,
     },
-});
+})
 
-// Single item in the invoice
 export interface InvoiceItem {
-    name: string;
-    sku: string;
-    rentalPrice: number;
-    days: number;
-    startDate: string;
-    endDate: string;
-    imageBase64?: string; // Pre-fetched Base64 data URL
+    name: string
+    sku: string
+    rentalPrice: number
+    days: number
+    lineTotal?: number
+    retailValue?: number
+    description?: string
+    startDate: string
+    endDate: string
+    imageBase64?: string
 }
 
-// Invoice props with items array
-export interface InvoiceProps {
-    invoiceId: string;
-    date: string;
-    customerName: string;
-    customerCompany?: string;
-    customerEmail: string;
-    customerAddress?: string[]; // Array of strings for multi-line address
-    items: InvoiceItem[];
-    companyName?: string;
-    companyEmail?: string;
-    bankInfo?: string;
-    footerText?: string;
-    notes?: string;
+export interface InvoiceData {
+    invoiceId: string
+    date: string
+    customerName: string
+    customerCompany?: string
+    customerEmail: string
+    customerAddress?: string[]
+    items: InvoiceItem[]
+    companyName?: string
+    companyEmail?: string
+    bankInfo?: string
+    footerText?: string
+    notes?: string
+    subtotalAmount: number
+    discountPercentage: number
+    discountAmount: number
+    depositAmount: number
+    totalDue: number
 }
 
-export const InvoicePdf = ({
-    invoiceId,
-    date,
-    customerName,
-    customerCompany,
-    customerEmail,
-    customerAddress,
-    items,
-    companyName = "Ivy's Rental & Wholesale",
-    companyEmail = "contact@ivysrental.com",
-    bankInfo,
-    footerText = "Thank you for your business!",
-    notes,
-}: InvoiceProps) => {
-    // Calculate grand total from all items
-    const grandTotal = items.reduce((sum, item) => sum + (item.rentalPrice * item.days), 0);
+interface InvoiceProps {
+    data: InvoiceData
+}
+
+export const InvoicePdf = ({ data }: InvoiceProps) => {
+    const mandatoryLateFeeNote = 'Late return fee: £20 per day, which will be deducted from the deposit.'
+    const companyName = data.companyName || "Ivy's Rental & Wholesale"
+    const companyEmail = data.companyEmail || 'contact@ivysrental.com'
+    const footerText = data.footerText || 'Thank you for your business!'
+    const resolvedSubtotal = Number(data.subtotalAmount ?? 0)
+    const resolvedDiscountAmount = Number(data.discountAmount ?? 0)
+    const resolvedDiscountPercentage = Number(data.discountPercentage ?? 0)
+    const resolvedDepositAmount = Number(data.depositAmount ?? 0)
+    const resolvedTotalDue = Number(data.totalDue ?? 0)
 
     return (
         <Document>
             <Page size="A4" style={styles.page}>
-                {/* Header */}
                 <View style={styles.header}>
                     <View>
                         <Text style={styles.title}>INVOICE</Text>
@@ -258,30 +248,27 @@ export const InvoicePdf = ({
                     </View>
                     <View style={styles.invoiceInfo}>
                         <Text style={styles.invoiceLabel}>Invoice Number</Text>
-                        <Text style={styles.invoiceValue}>{invoiceId}</Text>
+                        <Text style={styles.invoiceValue}>{data.invoiceId}</Text>
                         <Text style={[styles.invoiceLabel, { marginTop: 8 }]}>Date</Text>
-                        <Text style={styles.invoiceValue}>{date}</Text>
+                        <Text style={styles.invoiceValue}>{data.date}</Text>
                     </View>
                 </View>
 
-                {/* Bill To */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Bill To</Text>
                     <View style={styles.billToContent}>
-                        <Text style={styles.customerName}>{customerName}</Text>
-                        {customerCompany && <Text>{customerCompany}</Text>}
-                        {customerAddress && customerAddress.map((line, i) => (
-                            <Text key={i}>{line}</Text>
+                        <Text style={styles.customerName}>{data.customerName}</Text>
+                        {data.customerCompany && <Text>{data.customerCompany}</Text>}
+                        {(data.customerAddress || []).map((line, index) => (
+                            <Text key={index}>{line}</Text>
                         ))}
-                        <Text style={{ color: '#666', marginTop: 2 }}>{customerEmail}</Text>
+                        <Text style={{ color: '#666', marginTop: 2 }}>{data.customerEmail}</Text>
                     </View>
                 </View>
 
-                {/* Items Table */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Rental Items</Text>
                     <View style={styles.table}>
-                        {/* Table Header */}
                         <View style={styles.tableHeader}>
                             <View style={[styles.colImage, styles.tableHeaderCell]}>
                                 <Text></Text>
@@ -292,20 +279,15 @@ export const InvoicePdf = ({
                             <View style={[styles.colDays, styles.tableHeaderCell]}>
                                 <Text>Days</Text>
                             </View>
-                            <View style={[styles.colRate, styles.tableHeaderCell]}>
-                                <Text>Rate</Text>
-                            </View>
                             <View style={[styles.colAmount, styles.tableHeaderCell]}>
                                 <Text>Amount</Text>
                             </View>
                         </View>
 
-                        {/* Table Rows */}
-                        {items.map((item, index) => {
-                            const itemTotal = item.rentalPrice * item.days;
+                        {data.items.map((item, index) => {
+                            const itemTotal = Number(item.lineTotal ?? 0)
                             return (
                                 <View key={index} style={styles.tableRow}>
-                                    {/* Thumbnail */}
                                     <View style={[styles.colImage, styles.tableCell]}>
                                         {item.imageBase64 ? (
                                             <Image src={item.imageBase64} style={styles.itemThumb} />
@@ -315,70 +297,71 @@ export const InvoicePdf = ({
                                             </View>
                                         )}
                                     </View>
-                                    {/* Description */}
                                     <View style={[styles.colDescription, styles.tableCell]}>
                                         <Text style={styles.itemName}>{item.name}</Text>
-                                        <Text style={styles.itemMeta}>SKU: {item.sku}</Text>
-                                        <Text style={styles.itemMeta}>
-                                            {item.startDate} - {item.endDate}
-                                        </Text>
+                                        {item.description && <Text style={styles.itemMeta}>{item.description}</Text>}
+                                        {item.sku && <Text style={styles.itemMeta}>SKU: {item.sku}</Text>}
+                                        {item.startDate && item.endDate && (
+                                            <Text style={styles.itemMeta}>
+                                                {item.startDate} - {item.endDate}
+                                            </Text>
+                                        )}
                                     </View>
-                                    {/* Days */}
                                     <View style={[styles.colDays, styles.tableCell]}>
                                         <Text style={{ textAlign: 'center' }}>{item.days}</Text>
                                     </View>
-                                    {/* Rate */}
-                                    <View style={[styles.colRate, styles.tableCell]}>
-                                        <Text style={{ textAlign: 'right' }}>${item.rentalPrice.toFixed(2)}/day</Text>
-                                    </View>
-                                    {/* Amount */}
                                     <View style={[styles.colAmount, styles.tableCell]}>
                                         <Text style={{ textAlign: 'right', fontFamily: 'Helvetica-Bold' }}>
                                             ${itemTotal.toFixed(2)}
                                         </Text>
                                     </View>
                                 </View>
-                            );
+                            )
                         })}
                     </View>
 
-                    {/* Totals */}
                     <View style={styles.totalsSection}>
-                        {items.length > 1 && (
+                        <View style={styles.totalsRow}>
+                            <Text style={{ color: '#666' }}>Subtotal</Text>
+                            <Text>${resolvedSubtotal.toFixed(2)}</Text>
+                        </View>
+                        {resolvedDiscountAmount > 0 && (
                             <View style={styles.totalsRow}>
-                                <Text style={{ color: '#666' }}>Subtotal ({items.length} items)</Text>
-                                <Text>${grandTotal.toFixed(2)}</Text>
+                                <Text style={{ color: '#666' }}>
+                                    Discount ({resolvedDiscountPercentage.toFixed(2)}%)
+                                </Text>
+                                <Text>- ${resolvedDiscountAmount.toFixed(2)}</Text>
                             </View>
                         )}
+                        <View style={styles.totalsRow}>
+                            <Text style={{ color: '#666' }}>Deposit</Text>
+                            <Text>${resolvedDepositAmount.toFixed(2)}</Text>
+                        </View>
                         <View style={styles.grandTotalRow}>
                             <Text style={styles.grandTotalLabel}>Total Due</Text>
-                            <Text style={styles.grandTotalValue}>${grandTotal.toFixed(2)}</Text>
+                            <Text style={styles.grandTotalValue}>${resolvedTotalDue.toFixed(2)}</Text>
                         </View>
                     </View>
                 </View>
 
-                {/* Payment Instructions */}
                 <View style={styles.paymentBox}>
                     <Text style={styles.paymentTitle}>Payment Instructions</Text>
                     <Text style={styles.paymentText}>
-                        {bankInfo || `Bank: Chase Bank\nAccount Name: Ivy's Rental\nAccount Number: 1234567890\nRouting Number: 098765432`}
-                        {'\n\n'}Please include Invoice #{invoiceId} in the payment reference.
+                        {data.bankInfo || `Bank: Chase Bank\nAccount Name: Ivy's Rental\nAccount Number: 1234567890\nRouting Number: 098765432`}
+                        {'\n\n'}Please include Invoice #{data.invoiceId} in the payment reference.
                     </Text>
                 </View>
 
-                {/* Notes */}
-                {notes && (
-                    <View style={styles.notesBox}>
-                        <Text style={styles.notesTitle}>Additional Notes</Text>
-                        <Text style={styles.notesText}>{notes}</Text>
-                    </View>
-                )}
+                <View style={styles.notesBox}>
+                    <Text style={styles.notesTitle}>Terms / Notes</Text>
+                    {data.notes && <Text style={styles.notesText}>{data.notes}</Text>}
+                    <Text style={styles.notesText}>{mandatoryLateFeeNote}</Text>
+                </View>
 
-                {/* Footer */}
                 <View style={styles.footer}>
                     <Text>{footerText}</Text>
                 </View>
             </Page>
         </Document>
-    );
-};
+    )
+}

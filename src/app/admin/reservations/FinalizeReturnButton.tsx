@@ -7,9 +7,20 @@ import { finalizeReturn } from '../actions'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
-export function FinalizeReturnButton({ reservationId }: { reservationId: string }) {
+interface FinalizeReturnButtonProps {
+    reservationId: string
+    label?: string
+    compact?: boolean
+}
+
+export function FinalizeReturnButton({
+    reservationId,
+    label,
+    compact = false,
+}: FinalizeReturnButtonProps) {
     const [isPending, startTransition] = useTransition()
     const router = useRouter()
+    const buttonLabel = label || (compact ? 'Confirm Return' : 'Complete Return & Close Order')
 
     const handleFinalize = () => {
         startTransition(() => {
@@ -19,7 +30,7 @@ export function FinalizeReturnButton({ reservationId }: { reservationId: string 
                 if (result?.error) {
                     toast.error(result.error)
                 } else {
-                    toast.success('Reservation marked as returned')
+                    toast.success('Reservation moved to Past-loan')
                     router.refresh()
                 }
             })()
@@ -31,10 +42,11 @@ export function FinalizeReturnButton({ reservationId }: { reservationId: string 
             type="button"
             onClick={handleFinalize}
             disabled={isPending}
-            className="bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 shadow-sm transition-all"
+            size={compact ? 'sm' : 'default'}
+            className={compact ? undefined : 'bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 shadow-sm transition-all'}
         >
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isPending ? 'Completing...' : 'Complete Return & Close Order'}
+            {isPending ? 'Completing...' : buttonLabel}
         </Button>
     )
 }

@@ -84,6 +84,7 @@ export function SummaryClient() {
                         start_date: dateRange.from!,
                         end_date: dateRange.to!,
                         company_name: contactInfo.company_name,
+                        event_location: contactInfo.event_location || '',
                         address_line1: contactInfo.address_line1,
                         address_line2: contactInfo.address_line2,
                         city_region: contactInfo.city_region,
@@ -127,6 +128,7 @@ export function SummaryClient() {
             full_name: contactInfo.full_name,
             email: contactInfo.email,
             company_name: contactInfo.company_name,
+            event_location: contactInfo.event_location || '',
             address: {
                 line1: contactInfo.address_line1,
                 line2: contactInfo.address_line2,
@@ -155,6 +157,7 @@ export function SummaryClient() {
             'My rental request failed, please review these details:',
             `Name: ${contactInfo.full_name}`,
             `Email: ${contactInfo.email}`,
+            `Event Location: ${contactInfo.event_location || 'Not provided'}`,
             `Dates: ${dateStr}`,
             `Items: ${itemNames || 'None'}`,
             '',
@@ -382,6 +385,19 @@ export function SummaryClient() {
                                                     required
                                                     placeholder="ZIP code"
                                                 />
+                                            </div>
+                                            <div className="md:col-span-2 space-y-2">
+                                                <Label htmlFor="eventLocation">Shoot / Event Location</Label>
+                                                <Input
+                                                    id="eventLocation"
+                                                    value={contactInfo.event_location || ''}
+                                                    onChange={e => setContactInfo({ event_location: e.target.value })}
+                                                    required
+                                                    placeholder="Studio, venue, or event address"
+                                                />
+                                                <p className="text-xs text-gray-500">
+                                                    This becomes the read-only location shown in the final loan form.
+                                                </p>
                                             </div>
                                         </div>
                                     </div>

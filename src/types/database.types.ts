@@ -377,6 +377,7 @@ export type Database = {
       }
       items: {
         Row: {
+          character_family: string
           category: string | null
           category_id: string | null
           collection_id: string | null
@@ -388,6 +389,7 @@ export type Database = {
           import_batch_id: string | null
           is_ai_generated: boolean | null
           is_ai_imported: boolean | null
+          line_type: string
           material: string | null
           name: string
           owner_id: string | null
@@ -401,6 +403,7 @@ export type Database = {
           weight: string | null
         }
         Insert: {
+          character_family?: string
           category?: string | null
           category_id?: string | null
           collection_id?: string | null
@@ -412,6 +415,7 @@ export type Database = {
           import_batch_id?: string | null
           is_ai_generated?: boolean | null
           is_ai_imported?: boolean | null
+          line_type?: string
           material?: string | null
           name: string
           owner_id?: string | null
@@ -425,6 +429,7 @@ export type Database = {
           weight?: string | null
         }
         Update: {
+          character_family?: string
           category?: string | null
           category_id?: string | null
           collection_id?: string | null
@@ -436,6 +441,7 @@ export type Database = {
           import_batch_id?: string | null
           is_ai_generated?: boolean | null
           is_ai_imported?: boolean | null
+          line_type?: string
           material?: string | null
           name?: string
           owner_id?: string | null
@@ -524,6 +530,7 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          admin_notes: string | null
           city_region: string | null
           country: string | null
           created_at: string | null
@@ -531,9 +538,13 @@ export type Database = {
           dispatch_image_paths: string[] | null
           dispatch_notes: string | null
           end_date: string
+          event_location: string | null
+          fingerprint: string | null
           group_id: string | null
           id: string
           item_id: string
+          original_end_date: string | null
+          original_start_date: string | null
           postcode: string | null
           renter_id: string
           return_image_paths: string[] | null
@@ -544,6 +555,7 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          admin_notes?: string | null
           city_region?: string | null
           country?: string | null
           created_at?: string | null
@@ -551,9 +563,13 @@ export type Database = {
           dispatch_image_paths?: string[] | null
           dispatch_notes?: string | null
           end_date: string
+          event_location?: string | null
+          fingerprint?: string | null
           group_id?: string | null
           id?: string
           item_id: string
+          original_end_date?: string | null
+          original_start_date?: string | null
           postcode?: string | null
           renter_id: string
           return_image_paths?: string[] | null
@@ -564,6 +580,7 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          admin_notes?: string | null
           city_region?: string | null
           country?: string | null
           created_at?: string | null
@@ -571,9 +588,13 @@ export type Database = {
           dispatch_image_paths?: string[] | null
           dispatch_notes?: string | null
           end_date?: string
+          event_location?: string | null
+          fingerprint?: string | null
           group_id?: string | null
           id?: string
           item_id?: string
+          original_end_date?: string | null
+          original_start_date?: string | null
           postcode?: string | null
           renter_id?: string
           return_image_paths?: string[] | null
@@ -609,34 +630,46 @@ export type Database = {
         Row: {
           created_at: string | null
           current_category: string | null
+          default_line_type: string
           id: string
           items_scraped: number | null
           items_total: number | null
           last_scanned_index: number | null
           product_urls: string[] | null
-          source_url: string
+          source_label: string | null
+          source_storage_path: string | null
+          source_type: string
+          source_url: string | null
           status: string | null
         }
         Insert: {
           created_at?: string | null
           current_category?: string | null
+          default_line_type?: string
           id?: string
           items_scraped?: number | null
           items_total?: number | null
           last_scanned_index?: number | null
           product_urls?: string[] | null
-          source_url: string
+          source_label?: string | null
+          source_storage_path?: string | null
+          source_type?: string
+          source_url?: string | null
           status?: string | null
         }
         Update: {
           created_at?: string | null
           current_category?: string | null
+          default_line_type?: string
           id?: string
           items_scraped?: number | null
           items_total?: number | null
           last_scanned_index?: number | null
           product_urls?: string[] | null
-          source_url?: string
+          source_label?: string | null
+          source_storage_path?: string | null
+          source_type?: string
+          source_url?: string | null
           status?: string | null
         }
         Relationships: []
@@ -644,6 +677,7 @@ export type Database = {
       staging_items: {
         Row: {
           category_id: string | null
+          character_family: string
           collection_id: string | null
           color: string | null
           created_at: string | null
@@ -653,6 +687,7 @@ export type Database = {
           image_urls: string[] | null
           import_batch_id: string | null
           is_variant: boolean | null
+          line_type: string
           material: string | null
           name: string
           needs_enrichment: boolean | null
@@ -662,12 +697,15 @@ export type Database = {
           review_notes: string | null
           sku: string | null
           source_url: string | null
+          source_page: number | null
+          specs: Json | null
           status: string | null
           variant_of_name: string | null
           weight: string | null
         }
         Insert: {
           category_id?: string | null
+          character_family?: string
           collection_id?: string | null
           color?: string | null
           created_at?: string | null
@@ -677,6 +715,7 @@ export type Database = {
           image_urls?: string[] | null
           import_batch_id?: string | null
           is_variant?: boolean | null
+          line_type?: string
           material?: string | null
           name: string
           needs_enrichment?: boolean | null
@@ -686,12 +725,15 @@ export type Database = {
           review_notes?: string | null
           sku?: string | null
           source_url?: string | null
+          source_page?: number | null
+          specs?: Json | null
           status?: string | null
           variant_of_name?: string | null
           weight?: string | null
         }
         Update: {
           category_id?: string | null
+          character_family?: string
           collection_id?: string | null
           color?: string | null
           created_at?: string | null
@@ -701,6 +743,7 @@ export type Database = {
           image_urls?: string[] | null
           import_batch_id?: string | null
           is_variant?: boolean | null
+          line_type?: string
           material?: string | null
           name?: string
           needs_enrichment?: boolean | null
@@ -710,6 +753,8 @@ export type Database = {
           review_notes?: string | null
           sku?: string | null
           source_url?: string | null
+          source_page?: number | null
+          specs?: Json | null
           status?: string | null
           variant_of_name?: string | null
           weight?: string | null
@@ -769,6 +814,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_errors: {
+        Row: {
+          created_at: string | null
+          error_type: string
+          id: string
+          is_resolved: boolean | null
+          payload: Json | null
+          retry_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_type: string
+          id?: string
+          is_resolved?: boolean | null
+          payload?: Json | null
+          retry_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error_type?: string
+          id?: string
+          is_resolved?: boolean | null
+          payload?: Json | null
+          retry_count?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -797,6 +869,7 @@ export type Database = {
       get_available_items: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: {
+          character_family: string
           category: string | null
           category_id: string | null
           collection_id: string | null
@@ -808,6 +881,7 @@ export type Database = {
           import_batch_id: string | null
           is_ai_generated: boolean | null
           is_ai_imported: boolean | null
+          line_type: string
           material: string | null
           name: string
           owner_id: string | null

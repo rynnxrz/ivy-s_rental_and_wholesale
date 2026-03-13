@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import { Plus, Sparkles, ClipboardList } from 'lucide-react'
-import type { Item } from '@/types'
+import type { ImportSourceType, Item, ItemLineType } from '@/types'
 import { GroupedItemsList } from './GroupedItemsList'
 import { AIImportPanel } from './AIImportPanel'
 import { StagingItemsList } from './StagingItemsList'
@@ -22,11 +22,14 @@ interface Collection {
 
 interface ImportBatch {
     id: string
-    source_url: string
+    source_url: string | null
+    source_label: string | null
+    source_type: ImportSourceType
     status: string
     created_at: string
     items_scraped: number | null
     pending_count: number
+    default_line_type: ItemLineType
 }
 
 interface ItemsPageClientProps {

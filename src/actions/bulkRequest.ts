@@ -1,7 +1,13 @@
 'use server'
 
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import {
+    buildReservationContractMetadata,
+    isMissingReservationContractColumnsError,
+    stripReservationContractMetadata,
+} from '@/lib/reservations/contract'
 
 const PUBLIC_EMAIL_DOMAINS = new Set([
     'gmail.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'me.com', 'yahoo.com',
@@ -17,6 +23,7 @@ interface BulkRequestData {
     notes?: string
     start_date: string
     end_date: string
+    event_location: string
     access_password?: string
     // Address Fields
     country: string
@@ -51,6 +58,9 @@ export async function submitBulkRequest(data: BulkRequestData) {
     if (!data.start_date || !data.end_date) return { error: 'Invalid dates.' }
     if (!data.country || !data.city_region || !data.address_line1 || !data.postcode) {
         return { error: 'Missing address information.' }
+    }
+    if (!data.event_location?.trim()) {
+        return { error: 'Missing event location.' }
     }
 
     // 2. Access Password Check
@@ -136,7 +146,7 @@ export async function submitBulkRequest(data: BulkRequestData) {
         renter_id: profileId,
         start_date: data.start_date,
         end_date: data.end_date,
-        status: 'pending',
+        status: RESERVATION_STATUSES.PENDING_REQUEST,
         group_id: groupId,
         dispatch_notes: data.notes ? `Request Notes: ${data.notes}` : null,
         // Save snapshot of address to reservation logic (if needed per earlier design)
@@ -149,13 +159,36 @@ export async function submitBulkRequest(data: BulkRequestData) {
         address_line1: data.address_line1,
         address_line2: data.address_line2 || null,
         postcode: data.postcode,
-        fingerprint: `${requestFingerprint}-${itemId}` // Unique per item-request
+        fingerprint: `${requestFingerprint}-${itemId}`, // Unique per item-request
+        ...buildReservationContractMetadata({
+            startDate: data.start_date,
+            endDate: data.end_date,
+            eventLocation: data.event_location,
+            addressLine1: data.address_line1,
+            addressLine2: data.address_line2 || null,
+            cityRegion: data.city_region,
+            postcode: data.postcode,
+            country: data.country,
+        })
     }))
 
     try {
-        const { error: insertError } = await supabase
+        let { error: insertError } = await supabase
             .from('reservations')
             .insert(reservationsToInsert)
+
+        if (insertError && isMissingReservationContractColumnsError(insertError)) {
+            console.warn(
+                '[Reservations] Missing contract metadata columns. Falling back to legacy reservation insert.',
+                insertError
+            )
+
+            const fallback = await supabase
+                .from('reservations')
+                .insert(reservationsToInsert.map(stripReservationContractMetadata))
+
+            insertError = fallback.error ?? null
+        }
 
         if (insertError) {
             // Idempotency Check: Code 23505 is unique_violation

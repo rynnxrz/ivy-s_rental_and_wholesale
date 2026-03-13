@@ -3,8 +3,16 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth/guards'
-import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
 import { format } from 'date-fns'
+import { sendApprovalEmail } from '@/lib/email/sendApprovalEmail'
+import {
+    buildRentalTierDescription,
+    computeEffectiveDailyRate,
+    computeInvoicePricing,
+    computeRentalChargeFromRetail,
+} from '@/lib/invoice/pricing'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import { buildInvoicePdfBuffer } from '@/lib/invoice/document'
 
 // ============================================================
 // Invoice Types (until types are regenerated from Supabase)
@@ -34,6 +42,10 @@ export interface Invoice {
     billing_address?: Record<string, unknown>
     billing_profile_id?: string | null
     currency: string
+    subtotal_amount?: number
+    discount_percentage?: number
+    discount_amount?: number
+    deposit_amount?: number
     total_amount: number
     issue_date: string
     due_date?: string | null
@@ -67,6 +79,251 @@ export interface UpdateInvoiceInput {
     items?: Omit<InvoiceLineItem, 'id'>[]
 }
 
+interface ReservationPricingOverrides {
+    discountPercentage: number | null
+    depositAmountOverride: number | null
+}
+
+function sanitizeOptionalNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+    }
+    if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value)
+        return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+}
+
+function resolveReservationPricingOverrides(reservation: Record<string, unknown>): ReservationPricingOverrides {
+    const discountFromReservation = sanitizeOptionalNumber(
+        reservation.discount_percent ?? reservation.discount_percentage
+    )
+    const depositFromReservation = sanitizeOptionalNumber(
+        reservation.deposit_override ??
+        reservation.deposit_amount_override ??
+        reservation.deposit_amount
+    )
+
+    return {
+        discountPercentage: discountFromReservation,
+        depositAmountOverride: depositFromReservation,
+    }
+}
+
+function buildPaymentUrl(reservationId: string, invoiceId?: string): string | undefined {
+    const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+
+    if (!appUrl) return undefined
+    const baseUrl = appUrl.replace(/\/$/, '')
+    if (invoiceId) {
+        return `${baseUrl}/payment-confirmation/${invoiceId}`
+    }
+    return `${baseUrl}/payment/${reservationId}`
+}
+
+function isMissingReservationPricingColumnsError(error: { message?: string | null } | null | undefined) {
+    const message = error?.message ?? ''
+    return (
+        message.includes('discount_percent')
+        || message.includes('deposit_override')
+        || message.includes('deposit_amount')
+        || message.includes('schema cache')
+    )
+}
+
+function isMissingInvoicePricingColumnsError(error: { message?: string | null } | null | undefined) {
+    const message = error?.message ?? ''
+    return (
+        message.includes('subtotal_amount')
+        || message.includes('discount_percentage')
+        || message.includes('discount_amount')
+        || message.includes('deposit_amount')
+        || message.includes('schema cache')
+    )
+}
+
+async function createInvoiceRecord(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    payload: {
+        category: InvoiceCategory
+        reservation_id: string
+        customer_id: string | null
+        customer_name: string
+        customer_email: string | null
+        billing_address: Record<string, unknown>
+        billing_profile_id: string | null
+        subtotal_amount: number
+        discount_percentage: number
+        discount_amount: number
+        deposit_amount: number
+        total_amount: number
+        status: InvoiceStatus
+    }
+) {
+    const fullInsert = await supabase
+        .from('invoices')
+        .insert(payload)
+        .select()
+        .single()
+
+    if (!fullInsert.error) {
+        return fullInsert
+    }
+
+    if (!isMissingInvoicePricingColumnsError(fullInsert.error)) {
+        return fullInsert
+    }
+
+    console.warn(
+        '[Invoices] Missing pricing columns on invoices. Falling back to legacy invoice insert.',
+        fullInsert.error
+    )
+
+    return await supabase
+        .from('invoices')
+        .insert({
+            category: payload.category,
+            reservation_id: payload.reservation_id,
+            customer_id: payload.customer_id,
+            customer_name: payload.customer_name,
+            customer_email: payload.customer_email,
+            billing_address: payload.billing_address,
+            billing_profile_id: payload.billing_profile_id,
+            total_amount: payload.total_amount,
+            status: payload.status,
+        })
+        .select()
+        .single()
+}
+
+async function fetchReservationsForInvoice(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    reservationId: string
+) {
+    const fullSelect = `
+        id,
+        group_id,
+        renter_id,
+        start_date,
+        end_date,
+        discount_percent,
+        deposit_override,
+        deposit_amount,
+        items (id, name, sku, rental_price, replacement_cost, description),
+        profiles:renter_id (id, full_name, email, company_name, address_line1, address_line2, city_region, country, postcode)
+    `
+    const legacySelect = `
+        id,
+        group_id,
+        renter_id,
+        start_date,
+        end_date,
+        items (id, name, sku, rental_price, replacement_cost, description),
+        profiles:renter_id (id, full_name, email, company_name, address_line1, address_line2, city_region, country, postcode)
+    `
+
+    const { data, error } = await supabase
+        .from('reservations')
+        .select(fullSelect)
+        .eq('id', reservationId)
+
+    if (!error) {
+        return { data, error: null as typeof error }
+    }
+
+    if (!isMissingReservationPricingColumnsError(error)) {
+        return { data: null, error }
+    }
+
+    console.warn(
+        '[Invoices] Missing reservation pricing columns. Falling back to legacy reservation select.',
+        error
+    )
+
+    const fallback = await supabase
+        .from('reservations')
+        .select(legacySelect)
+        .eq('id', reservationId)
+
+    return {
+        data: fallback.data ?? null,
+        error: fallback.error ?? null,
+    }
+}
+
+async function resolveLatestInvoiceByReservation(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    reservationId: string
+) {
+    const { data: reservation, error: reservationError } = await supabase
+        .from('reservations')
+        .select('id, group_id, start_date, end_date, profiles:renter_id(full_name, email, company_name), items(name)')
+        .eq('id', reservationId)
+        .single()
+
+    if (reservationError || !reservation) {
+        return { reservation: null, invoice: null, error: 'Reservation not found' as const }
+    }
+
+    const candidateReservationIds = new Set<string>([reservation.id])
+
+    if (reservation.group_id) {
+        const { data: siblings } = await supabase
+            .from('reservations')
+            .select('id')
+            .eq('group_id', reservation.group_id)
+
+        for (const sibling of siblings || []) {
+            if (sibling?.id) {
+                candidateReservationIds.add(sibling.id)
+            }
+        }
+    }
+
+    const { data: invoices, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, reservation_id, customer_name, customer_email, total_amount, billing_profile_id, status')
+        .in('reservation_id', Array.from(candidateReservationIds))
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+    if (invoiceError || !invoices || invoices.length === 0) {
+        return { reservation, invoice: null, error: 'Invoice not found' as const }
+    }
+
+    return { reservation, invoice: invoices[0], error: null }
+}
+
+async function uploadInvoicePdfToStorage(invoiceId: string, pdfBuffer: Buffer) {
+    const serviceClient = createServiceClient()
+    const storagePath = `invoices/${invoiceId}/latest.pdf`
+
+    const { error: uploadError } = await serviceClient.storage
+        .from('rental_items')
+        .upload(storagePath, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: true,
+        })
+
+    if (uploadError) {
+        return { success: false, error: uploadError.message, url: null as string | null }
+    }
+
+    const { data: signedData, error: signedError } = await serviceClient.storage
+        .from('rental_items')
+        .createSignedUrl(storagePath, 60 * 60)
+
+    if (signedError || !signedData?.signedUrl) {
+        return { success: false, error: signedError?.message || 'Failed to create signed URL', url: null as string | null }
+    }
+
+    return { success: true, error: null as string | null, url: signedData.signedUrl }
+}
+
 // ============================================================
 // Invoice CRUD Actions
 // ============================================================
@@ -92,6 +349,10 @@ export async function createManualInvoice(input: CreateManualInvoiceInput) {
             customer_id: input.customer_id || null,
             billing_address: input.billing_address || {},
             billing_profile_id: input.billing_profile_id || null,
+            subtotal_amount: total_amount,
+            discount_percentage: 0,
+            discount_amount: 0,
+            deposit_amount: 0,
             total_amount,
             issue_date: input.issue_date || new Date().toISOString().split('T')[0],
             due_date: input.due_date || null,
@@ -138,20 +399,20 @@ export async function createManualInvoice(input: CreateManualInvoiceInput) {
  */
 export async function generateInvoiceFromReservation(
     reservationId: string,
-    billingProfileId?: string
+    billingProfileId?: string,
+    pricingOverrides?: {
+        discountPercentage?: number
+        depositAmountOverride?: number | null
+    }
 ) {
     await requireAdmin()
     const supabase = await createClient()
 
     // Fetch reservation with items and customer
-    const { data: reservations, error: resError } = await supabase
-        .from('reservations')
-        .select(`
-            *,
-            items (id, name, sku, rental_price, description),
-            profiles:renter_id (id, full_name, email, company_name, address_line1, address_line2, city_region, country, postcode)
-        `)
-        .eq('id', reservationId)
+    const { data: reservations, error: resError } = await fetchReservationsForInvoice(
+        supabase,
+        reservationId
+    )
 
     if (resError || !reservations || reservations.length === 0) {
         console.error('Failed to fetch reservation:', resError)
@@ -162,18 +423,21 @@ export async function generateInvoiceFromReservation(
     const primaryReservation = reservations[0]
     const groupId = primaryReservation.group_id
 
-    let allReservations = [primaryReservation]
+    let allReservations: Array<Record<string, unknown>> = [primaryReservation as Record<string, unknown>]
     if (groupId) {
         const { data: groupRes } = await supabase
             .from('reservations')
             .select(`
-                *,
-                items (id, name, sku, rental_price, description)
+                id,
+                group_id,
+                start_date,
+                end_date,
+                items (id, name, sku, rental_price, replacement_cost, description)
             `)
             .eq('group_id', groupId)
 
         if (groupRes) {
-            allReservations = groupRes
+            allReservations = groupRes as unknown as Array<Record<string, unknown>>
         }
     }
 
@@ -203,48 +467,94 @@ export async function generateInvoiceFromReservation(
     // Calculate items and total
     const invoiceItems: Omit<InvoiceLineItem, 'id'>[] = []
     let totalAmount = 0
+    let replacementCostTotal = 0
 
     for (const res of allReservations) {
-        const item = res.items as { id: string; name: string; sku: string; rental_price: number; description?: string } | null
+        const itemRecord = res.items as {
+            id: string
+            name: string
+            sku: string
+            rental_price: number
+            replacement_cost?: number | null
+            description?: string
+        } | Array<{
+            id: string
+            name: string
+            sku: string
+            rental_price: number
+            replacement_cost?: number | null
+            description?: string
+        }> | null
+        const item = Array.isArray(itemRecord) ? itemRecord[0] : itemRecord
         if (!item) continue
 
-        const startDate = new Date(res.start_date)
-        const endDate = new Date(res.end_date)
+        const startDateRaw = String(res.start_date)
+        const endDateRaw = String(res.end_date)
+        const startDate = new Date(startDateRaw)
+        const endDate = new Date(endDateRaw)
         const days = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
-        const lineTotal = item.rental_price * days
+        const retailPrice = Number(item.replacement_cost ?? item.rental_price ?? 0)
+        replacementCostTotal += retailPrice
+        const lineTotal = computeRentalChargeFromRetail({
+            retailPrice,
+            rentalDays: days,
+        })
+        const effectiveDailyRate = computeEffectiveDailyRate(lineTotal, days)
+        const tierDescription = buildRentalTierDescription({
+            retailPrice,
+            rentalDays: days,
+        })
 
         invoiceItems.push({
             item_id: item.id,
             name: item.name,
-            description: item.sku ? `SKU: ${item.sku} | ${res.start_date} - ${res.end_date}` : `${res.start_date} - ${res.end_date}`,
+            description: item.sku
+                ? `${tierDescription} | SKU: ${item.sku} | ${startDateRaw} - ${endDateRaw}`
+                : `${tierDescription} | ${startDateRaw} - ${endDateRaw}`,
             quantity: days,
-            unit_price: item.rental_price,
+            unit_price: effectiveDailyRate,
             total: lineTotal,
         })
 
         totalAmount += lineTotal
     }
 
+    const reservationPricingOverrides = resolveReservationPricingOverrides(
+        primaryReservation as Record<string, unknown>
+    )
+    const effectiveDiscountPercentage =
+        pricingOverrides?.discountPercentage ??
+        reservationPricingOverrides.discountPercentage ??
+        undefined
+    const pricing = computeInvoicePricing({
+        subtotal: totalAmount,
+        discountPercentage: effectiveDiscountPercentage,
+        depositAmountOverride:
+            pricingOverrides?.depositAmountOverride ??
+            reservationPricingOverrides.depositAmountOverride,
+        replacementCostTotal,
+    })
+
     // Determine category based on reservation context (default to RENTAL)
     const category: InvoiceCategory = 'RENTAL'
 
     // Create the invoice
-    const { data: invoice, error: createError } = await supabase
-        .from('invoices')
-        .insert({
-            category,
-            reservation_id: reservationId,
-            customer_id: profile?.id || null,
-            customer_name: profile?.full_name || profile?.company_name || 'Customer',
-            customer_email: profile?.email || null,
-            billing_address: billingAddress,
-            billing_profile_id: billingProfileId || null,
-            total_amount: totalAmount,
-            status: 'DRAFT',
-        })
-        .select()
-        .single()
+    const { data: invoice, error: createError } = await createInvoiceRecord(supabase, {
+        category,
+        reservation_id: reservationId,
+        customer_id: profile?.id || null,
+        customer_name: profile?.full_name || profile?.company_name || 'Customer',
+        customer_email: profile?.email || null,
+        billing_address: billingAddress,
+        billing_profile_id: billingProfileId || null,
+        subtotal_amount: pricing.subtotal,
+        discount_percentage: pricing.discountPercentage,
+        discount_amount: pricing.discountAmount,
+        deposit_amount: pricing.depositAmount,
+        total_amount: pricing.totalDue,
+        status: 'DRAFT',
+    })
 
     if (createError) {
         console.error('Failed to create invoice:', createError)
@@ -310,13 +620,13 @@ export async function markInvoiceAsPaid(invoiceId: string) {
             // Update all reservations in the group
             await supabase
                 .from('reservations')
-                .update({ status: 'confirmed' }) // confirmed = paid in user flow
+                .update({ status: RESERVATION_STATUSES.UPCOMING })
                 .eq('group_id', reservation.group_id)
         } else {
             // Update single reservation
             await supabase
                 .from('reservations')
-                .update({ status: 'confirmed' })
+                .update({ status: RESERVATION_STATUSES.UPCOMING })
                 .eq('id', invoice.reservation_id)
         }
 
@@ -363,7 +673,13 @@ export async function updateInvoice(invoiceId: string, input: UpdateInvoiceInput
     if (input.billing_profile_id) updateData.billing_profile_id = input.billing_profile_id
     if (input.notes !== undefined) updateData.notes = input.notes
     if (input.due_date !== undefined) updateData.due_date = input.due_date
-    if (total_amount !== undefined) updateData.total_amount = total_amount
+    if (total_amount !== undefined) {
+        updateData.subtotal_amount = total_amount
+        updateData.discount_percentage = 0
+        updateData.discount_amount = 0
+        updateData.deposit_amount = 0
+        updateData.total_amount = total_amount
+    }
 
     const { data: invoice, error: updateError } = await supabase
         .from('invoices')
@@ -551,90 +867,125 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
     return { success: true, error: null }
 }
 
+export async function getInvoicePdfViewUrl(reservationId: string) {
+    await requireAdmin()
+    const supabase = await createClient()
+
+    const { invoice, error } = await resolveLatestInvoiceByReservation(supabase, reservationId)
+    if (error || !invoice) {
+        return { success: false, error: error || 'Invoice not found', url: null as string | null }
+    }
+
+    const pdfResult = await downloadInvoicePdf(invoice.id)
+    if (!pdfResult.success || !pdfResult.data) {
+        return { success: false, error: pdfResult.error || 'Failed to generate invoice PDF', url: null as string | null }
+    }
+
+    const pdfBuffer = Buffer.from(pdfResult.data, 'base64')
+    const uploadResult = await uploadInvoicePdfToStorage(invoice.id, pdfBuffer)
+    if (!uploadResult.success || !uploadResult.url) {
+        return { success: false, error: uploadResult.error || 'Failed to upload invoice PDF', url: null as string | null }
+    }
+
+    return { success: true, error: null as string | null, url: uploadResult.url }
+}
+
+export async function sendInvoiceEmail(reservationId: string) {
+    await requireAdmin()
+    const supabase = await createClient()
+
+    const resolved = await resolveLatestInvoiceByReservation(supabase, reservationId)
+    if (resolved.error || !resolved.invoice || !resolved.reservation) {
+        return { success: false, error: resolved.error || 'Unable to resolve reservation/invoice' }
+    }
+
+    const reservation = resolved.reservation
+    const invoice = resolved.invoice
+
+    const pdfResult = await downloadInvoicePdf(invoice.id)
+    if (!pdfResult.success || !pdfResult.data) {
+        return { success: false, error: pdfResult.error || 'Failed to generate invoice PDF' }
+    }
+
+    const { data: settings } = await supabase
+        .from('app_settings')
+        .select('contact_email, email_approval_body, email_footer')
+        .single()
+
+    const { data: billingProfile } = await supabase
+        .from('billing_profiles')
+        .select('company_header')
+        .eq('id', invoice.billing_profile_id ?? '')
+        .maybeSingle()
+
+    const profileRaw = (reservation as {
+        profiles?: { full_name?: string; email?: string; company_name?: string } | Array<{ full_name?: string; email?: string; company_name?: string }>
+    }).profiles
+    const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw
+    const itemRaw = (reservation as {
+        items?: { name?: string } | Array<{ name?: string }>
+    }).items
+    const item = Array.isArray(itemRaw) ? itemRaw[0] : itemRaw
+
+    const start = new Date(reservation.start_date)
+    const end = new Date(reservation.end_date)
+    const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const paymentUrl = buildPaymentUrl(reservationId, invoice.id)
+    const recipientEmail = invoice.customer_email || profile?.email
+
+    if (!recipientEmail) {
+        return { success: false, error: 'Customer email is missing' }
+    }
+
+    const sendResult = await sendApprovalEmail({
+        toIndices: [recipientEmail],
+        customerName: invoice.customer_name || profile?.full_name || 'Customer',
+        itemName: item?.name || 'Reservation',
+        startDate: format(start, 'MMM dd, yyyy'),
+        endDate: format(end, 'MMM dd, yyyy'),
+        totalDays,
+        totalPrice: Number(invoice.total_amount ?? 0),
+        reservationId,
+        invoicePdfBuffer: Buffer.from(pdfResult.data, 'base64'),
+        invoiceId: invoice.invoice_number,
+        invoiceRecordId: invoice.id,
+        paymentUrl,
+        companyName: billingProfile?.company_header || undefined,
+        replyTo: settings?.contact_email || undefined,
+        customBody: settings?.email_approval_body || undefined,
+        customFooter: settings?.email_footer || undefined,
+    })
+
+    if (!sendResult.success) {
+        return { success: false, error: 'Failed to resend invoice email' }
+    }
+
+    if (invoice.status === 'DRAFT') {
+        await supabase
+            .from('invoices')
+            .update({ status: 'SENT' })
+            .eq('id', invoice.id)
+    }
+
+    revalidatePath('/admin/reservations')
+    return { success: true, error: null as string | null }
+}
+
 /**
  * Generates regular PDF for download.
  * Returns base64 string.
  */
 export async function downloadInvoicePdf(invoiceId: string) {
     await requireAdmin()
-    const supabase = await createClient()
-
-    // 1. Fetch Invoice
-    const { data: invoice, error } = await supabase
-        .from('invoices')
-        .select(`
-            *,
-            invoice_items (*),
-            billing_profiles (*)
-        `)
-        .eq('id', invoiceId)
-        .single()
-
-    if (error || !invoice) {
-        return { success: false, error: 'Invoice not found' }
-    }
-
-    // 2. Prepare items with images
-    const serviceClient = createServiceClient()
-    const invoiceItems: InvoiceItem[] = []
-
-    for (const item of invoice.invoice_items) {
-        let imageBase64: string | undefined
-
-        // If it was linked to a rental item, try to fetch its image
-        if (item.item_id) {
-            const { data: rentalItem } = await supabase
-                .from('items')
-                .select('image_paths')
-                .eq('id', item.item_id)
-                .single()
-
-            if (rentalItem?.image_paths?.[0]) {
-                try {
-                    imageBase64 = await fetchImageAsBase64(serviceClient, 'rental_items', rentalItem.image_paths[0])
-                } catch (e) {
-                    console.warn(`Failed to fetch image for item ${item.item_id}`)
-                }
-            }
+    try {
+        const pdfResult = await buildInvoicePdfBuffer(invoiceId)
+        if (!pdfResult.success || !pdfResult.data) {
+            return { success: false, error: pdfResult.error || 'Failed to generate PDF' }
         }
 
-        invoiceItems.push({
-            name: item.name,
-            sku: '', // TODO: Fetch SKU if needed
-            rentalPrice: item.unit_price,
-            days: item.quantity,
-            startDate: '', // Not stored on invoice_items directly unless we parse description
-            endDate: '',
-            imageBase64
-        })
-    }
-
-    // 3. Prepare Billing Profile
-    const billingProfile = invoice.billing_profiles || {
-        company_header: "Ivy's Rental",
-        contact_email: 'contact@ivysrental.com',
-        bank_info: '',
-    }
-
-    // 4. Generate PDF
-    try {
-        const buffer = await generateInvoicePdf({
-            invoiceId: invoice.invoice_number,
-            date: format(new Date(invoice.issue_date), 'MMM dd, yyyy'),
-            customerName: invoice.customer_name,
-            customerEmail: invoice.customer_email || '',
-            // Handle address JSONB safely
-            customerAddress: invoice.billing_address ? Object.values(invoice.billing_address).map(v => String(v)) : [],
-            items: invoiceItems,
-            companyName: billingProfile.company_header,
-            companyEmail: billingProfile.contact_email,
-            bankInfo: billingProfile.bank_info,
-            notes: invoice.notes || undefined,
-        })
-
-        return { success: true, data: buffer.toString('base64') }
-    } catch (e) {
-        console.error('PDF Generation failed:', e)
+        return { success: true, data: pdfResult.data.toString('base64') }
+    } catch (error) {
+        console.error('PDF Generation failed:', error)
         return { success: false, error: 'Failed to generate PDF' }
     }
 }

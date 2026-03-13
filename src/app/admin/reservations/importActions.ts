@@ -3,6 +3,12 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import {
+    buildReservationContractMetadata,
+    isMissingReservationContractColumnsError,
+    stripReservationContractMetadata,
+} from '@/lib/reservations/contract'
 
 // Zod Schema for Validation
 const importSchema = z.object({
@@ -15,6 +21,7 @@ const importSchema = z.object({
         full_name: z.string().min(1),
         email: z.string().email(),
         company_name: z.string().optional(),
+        event_location: z.string().optional(),
         address: z.object({
             line1: z.string(),
             line2: z.string().optional(),
@@ -59,7 +66,7 @@ export async function importRequestFromJSON(jsonString: string, force: boolean =
             return { error: 'Data corruption detected: JSON structure does not match schema.' }
         }
         parsedData = result.data
-    } catch (e) {
+    } catch {
         return { error: 'Invalid JSON format.' }
     }
 
@@ -162,7 +169,7 @@ export async function importRequestFromJSON(jsonString: string, force: boolean =
         renter_id: profileId,
         start_date: startDate,
         end_date: endDate,
-        status: 'pending',
+        status: RESERVATION_STATUSES.PENDING_REQUEST,
         group_id: groupId,
         dispatch_notes: parsedData.notes ? `[IMPORTED] ${parsedData.notes}` : '[IMPORTED] Manual Import',
         country: customer.address?.country,
@@ -171,12 +178,35 @@ export async function importRequestFromJSON(jsonString: string, force: boolean =
         address_line2: customer.address?.line2 || null,
         postcode: customer.address?.postcode,
         fingerprint: fingerprint ? `${fingerprint}-${itemId}` : null,
-        admin_notes: force ? 'Manual Overridden: Conflicts Ignored' : null
+        admin_notes: force ? 'Manual Overridden: Conflicts Ignored' : null,
+        ...buildReservationContractMetadata({
+            startDate,
+            endDate,
+            eventLocation: customer.event_location,
+            addressLine1: customer.address?.line1,
+            addressLine2: customer.address?.line2 || null,
+            cityRegion: customer.address?.city,
+            postcode: customer.address?.postcode,
+            country: customer.address?.country,
+        })
     }))
 
-    const { error: insertError } = await serviceClient
+    let { error: insertError } = await serviceClient
         .from('reservations')
         .insert(reservationsToInsert)
+
+    if (insertError && isMissingReservationContractColumnsError(insertError)) {
+        console.warn(
+            '[Reservations] Missing contract metadata columns. Falling back to legacy imported reservation insert.',
+            insertError
+        )
+
+        const fallback = await serviceClient
+            .from('reservations')
+            .insert(reservationsToInsert.map(stripReservationContractMetadata))
+
+        insertError = fallback.error ?? null
+    }
 
     if (insertError) {
         if (insertError.code === '23505') {

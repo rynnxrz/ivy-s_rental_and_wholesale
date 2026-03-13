@@ -13,7 +13,7 @@ import {
     TableHeader,
     TableRow
 } from '@/components/ui/table'
-import { ArrowLeft, Download, CheckCircle, XCircle, Send, Pencil } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { InvoiceActions } from './InvoiceActions'
 
 export const dynamic = 'force-dynamic'
@@ -44,6 +44,10 @@ interface Invoice {
     customer_name: string
     customer_email: string | null
     billing_address: Record<string, string> | null
+    subtotal_amount: number
+    discount_percentage: number
+    discount_amount: number
+    deposit_amount: number
     total_amount: number
     issue_date: string
     due_date: string | null
@@ -91,6 +95,11 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
     }
 
     const typedInvoice = invoice as Invoice
+    const subtotalAmount = Number(typedInvoice.subtotal_amount ?? typedInvoice.total_amount ?? 0)
+    const discountPercentage = Number(typedInvoice.discount_percentage ?? 0)
+    const discountAmount = Number(typedInvoice.discount_amount ?? 0)
+    const depositAmount = Number(typedInvoice.deposit_amount ?? 0)
+    const totalAmount = Number(typedInvoice.total_amount ?? 0)
 
     return (
         <div className="space-y-6 max-w-4xl">
@@ -222,17 +231,25 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                     <div className="border-t mt-4 pt-4">
                         <div className="flex justify-end">
                             <div className="w-64 space-y-2">
-                                {typedInvoice.invoice_items.length > 1 && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Subtotal</span>
+                                    <span>${subtotalAmount.toFixed(2)}</span>
+                                </div>
+                                {discountAmount > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">
-                                            Subtotal ({typedInvoice.invoice_items.length} items)
+                                            Discount ({discountPercentage.toFixed(2)}%)
                                         </span>
-                                        <span>${typedInvoice.total_amount.toFixed(2)}</span>
+                                        <span className="text-red-600">- ${discountAmount.toFixed(2)}</span>
                                     </div>
                                 )}
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Deposit</span>
+                                    <span>${depositAmount.toFixed(2)}</span>
+                                </div>
                                 <div className="flex justify-between text-lg font-bold border-t pt-2">
                                     <span>Total Due</span>
-                                    <span>${typedInvoice.total_amount.toFixed(2)}</span>
+                                    <span>${totalAmount.toFixed(2)}</span>
                                 </div>
                             </div>
                         </div>

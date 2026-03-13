@@ -16,6 +16,7 @@ interface ContactInfo {
     company_name: string
     notes: string
     access_password: string
+    event_location: string
     country: string
     city_region: string
     address_line1: string
@@ -54,6 +55,7 @@ export const useRequestStore = create<RequestState>()(
                 company_name: '',
                 notes: '',
                 access_password: '',
+                event_location: '',
                 country: '',
                 city_region: '',
                 address_line1: '',
@@ -84,6 +86,7 @@ export const useRequestStore = create<RequestState>()(
                     company_name: '',
                     notes: '',
                     access_password: '',
+                    event_location: '',
                     country: '',
                     city_region: '',
                     address_line1: '',

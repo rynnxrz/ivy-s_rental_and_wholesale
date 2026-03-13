@@ -21,18 +21,23 @@ import {
     getStagingItemsAction,
     getAvailableModelsAction,
     exploreSubCategoriesAction,
-    AvailableModel
+    AvailableModel,
+    importPdfCatalogAction,
+    matchPdfCatalogPageImagesAction,
 } from '@/actions/items'
 import { readStreamableValue } from '@/lib/ai-stream'
 import { getAISettingsAction } from '@/app/admin/settings/actions'
 import { AIImportSettings } from './AIImportSettings'
 import { StagingItemsList } from './StagingItemsList'
 import { toast } from 'sonner'
-import type { StagingItem } from '@/types'
+import type { ItemLineType, StagingItem } from '@/types'
 import { GEMINI_MODELS } from '@/types'
 import { useAIWorkflow } from '@/hooks/useAIWorkflow'
 import type { AIWorkflowState, LogEntry } from '@/hooks/useAIWorkflow'
 import { AIStatusConsole } from '@/components/admin/AIStatusConsole'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { resolvePreferredDocumentModelId, DEFAULT_GEMINI_MODEL } from '@/lib/ai/model-selection'
+import { renderSelectedPdfPages } from '@/lib/pdf/renderSelectedPages'
 
 
 interface Category {
@@ -59,6 +64,7 @@ interface CategoryMapping {
 }
 
 type ViewMode = 'extract' | 'scanning' | 'results'
+type ImportMode = 'url' | 'pdf'
 
 type CategoryExtractionChunk =
     | { type: 'chunk'; text: string; isThought?: boolean }
@@ -80,13 +86,29 @@ type RunHistoryEntry = {
     logs: LogEntry[]
 }
 
+type ResultBatchMeta = {
+    id: string
+    source_url: string | null
+    source_label: string | null
+    source_type: ImportMode
+    status: string
+    created_at: string
+    items_scraped: number
+    pending_count: number
+    default_line_type: ItemLineType
+}
+
 export function AIImportPanel({ categories, collections, onClose }: AIImportPanelProps) {
     const [url, setUrl] = useState('')
+    const [importMode, setImportMode] = useState<ImportMode>('url')
+    const [defaultLineType, setDefaultLineType] = useState<ItemLineType>('Mainline')
+    const [pdfFile, setPdfFile] = useState<File | null>(null)
+    const [pdfSourceLabel, setPdfSourceLabel] = useState('')
     const [isPending, startTransition] = useTransition()
     const [extractedCategories, setExtractedCategories] = useState<CategoryMapping[]>([])
     const [hasExtracted, setHasExtracted] = useState(false)
 
-    const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash')
+    const [selectedModel, setSelectedModel] = useState(DEFAULT_GEMINI_MODEL)
     const [settingsOpen, setSettingsOpen] = useState(false)
     const [aiSettings, setAiSettings] = useState<{
         selectedModel: string
@@ -103,7 +125,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         useSystemInstruction: boolean
         promptHistory?: Record<string, string[]>
     }>({
-        selectedModel: 'gemini-2.0-flash',
+        selectedModel: DEFAULT_GEMINI_MODEL,
         promptCategory: null,
         promptSubcategory: null,
         promptProductList: null,
@@ -141,7 +163,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             const settings = await getAISettingsAction()
             if (settings) {
                 setAiSettings({
-                    selectedModel: settings.ai_selected_model || 'gemini-2.0-flash',
+                    selectedModel: settings.ai_selected_model || DEFAULT_GEMINI_MODEL,
                     promptCategory: settings.ai_prompt_category,
                     promptSubcategory: settings.ai_prompt_subcategory,
                     promptProductList: settings.ai_prompt_product_list,
@@ -155,7 +177,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     useSystemInstruction: settings.ai_use_system_instruction ?? false,
                     promptHistory: (settings && 'prompt_history' in settings ? (settings as { prompt_history?: Record<string, string[]> }).prompt_history : {}) || {}
                 })
-                setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
+                setSelectedModel(settings.ai_selected_model || DEFAULT_GEMINI_MODEL)
             }
         }
         fetchModelsAndSettings()
@@ -169,6 +191,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
     const [isScanning, setIsScanning] = useState(false)
     const [isClassifying, setIsClassifying] = useState(false)
     const [classifySummary, setClassifySummary] = useState<string | null>(null)
+    const [resultBatch, setResultBatch] = useState<ResultBatchMeta | null>(null)
 
     // AI Workflow state (replaces simple loadingStep)
     const {
@@ -227,6 +250,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         }
 
         setClassifySummary(null)
+        setResultBatch(null)
 
         // Reset and prepare console
         resetAIWorkflow()
@@ -352,6 +376,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         }
 
         setClassifySummary(null)
+        setResultBatch(null)
 
         // Reset and prepare console for scan
         resetAIWorkflow()
@@ -363,7 +388,12 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
         setLoadingStep(`Speed scanning ${selectedCategories.length} category pages...`)
 
         // Create batch in background
-        const { batchId: newBatchId, error } = await createStagingBatchAction(url)
+        const { batchId: newBatchId, error } = await createStagingBatchAction({
+            sourceType: 'url',
+            sourceUrl: url,
+            sourceLabel: url,
+            defaultLineType,
+        })
         if (error || !newBatchId) {
             addLog(`Failed to create batch: ${error}`, 'error', 'Error')
             toast.error(error || 'Failed to create import batch')
@@ -446,6 +476,17 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             // Fetch results immediately
             const { data } = await getStagingItemsAction(newBatchId)
             setStagingItems(data || [])
+            setResultBatch({
+                id: newBatchId,
+                source_url: url,
+                source_label: url,
+                source_type: 'url',
+                status: 'completed',
+                created_at: new Date().toISOString(),
+                items_scraped: (data || []).length,
+                pending_count: (data || []).length,
+                default_line_type: defaultLineType,
+            })
             setViewMode('results')
 
         } catch (error) {
@@ -454,6 +495,137 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
             setIsScanning(false)
         }
 
+    }
+
+    const handlePdfImport = () => {
+        if (!pdfFile) {
+            toast.error('Please choose a PDF catalog to import')
+            return
+        }
+
+        const effectiveSourceLabel = pdfSourceLabel.trim() || pdfFile.name
+        const preferredDocumentModel = resolvePreferredDocumentModelId(
+            availableModels.map(model => model.id),
+            selectedModel
+        )
+
+        setClassifySummary(null)
+        setResultBatch(null)
+        resetAIWorkflow()
+
+        const newRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        setCurrentRunId(newRunId)
+        setActiveRunId(newRunId)
+        setCurrentRunUrl(effectiveSourceLabel)
+        setConsoleOpen(true)
+
+        startTransition(async () => {
+            try {
+                setViewMode('scanning')
+                setIsScanning(true)
+                setLoadingStep('Parsing PDF catalog...')
+                setStatus('analyzing')
+                addLog(`Uploading ${effectiveSourceLabel}...`, 'loading', 'Fetch')
+
+                const formData = new FormData()
+                formData.append('file', pdfFile)
+                formData.append('sourceLabel', effectiveSourceLabel)
+                formData.append('defaultLineType', defaultLineType)
+                formData.append('modelId', preferredDocumentModel)
+
+                const importResult = await importPdfCatalogAction(formData)
+                if (!importResult.success || !importResult.batchId) {
+                    addLog(importResult.error || 'PDF import failed', 'error', 'Error')
+                    setStatus('error')
+                    setViewMode('extract')
+                    setIsScanning(false)
+                    setLoadingStep('')
+                    archiveRun('error')
+                    toast.error(importResult.error || 'PDF import failed')
+                    return
+                }
+
+                addLog(`Parsed ${importResult.itemsFound} catalog rows`, 'success', 'Discovery')
+                setBatchId(importResult.batchId)
+                setCurrentItem(`Rendering ${importResult.renderedPages.length} PDF page(s)...`)
+                setLoadingStep('Rendering referenced PDF pages...')
+
+                let matchedImages = 0
+                let totalImageTargets = 0
+
+                if (importResult.renderedPages.length > 0) {
+                    try {
+                        const renderedPages = await renderSelectedPdfPages(pdfFile, importResult.renderedPages)
+
+                        for (const page of renderedPages) {
+                            setCurrentItem(`Matching product images on page ${page.pageNumber}`)
+                            addLog(`Matching images on page ${page.pageNumber}...`, 'loading', 'Logic')
+
+                            const pageMatchResult = await matchPdfCatalogPageImagesAction({
+                                batchId: importResult.batchId,
+                                pageNumber: page.pageNumber,
+                                pageImageDataUrl: page.dataUrl,
+                                modelId: preferredDocumentModel,
+                            })
+
+                            if (!pageMatchResult.success) {
+                                addLog(pageMatchResult.error || `Failed to match page ${page.pageNumber}`, 'warning', 'Logic')
+                                continue
+                            }
+
+                            matchedImages += pageMatchResult.matchedCount
+                            totalImageTargets += pageMatchResult.totalItems
+                            addLog(
+                                `Matched ${pageMatchResult.matchedCount}/${pageMatchResult.totalItems} items on page ${page.pageNumber}`,
+                                'success',
+                                'Logic'
+                            )
+                        }
+                    } catch (pageError) {
+                        console.error('PDF page rendering failed', pageError)
+                        addLog('PDF pages were parsed, but preview image matching could not be completed in-browser.', 'warning', 'Logic')
+                    }
+                } else {
+                    addLog('No source pages were detected for image matching', 'warning', 'Logic')
+                }
+
+                const { data } = await getStagingItemsAction(importResult.batchId)
+                setStagingItems(data || [])
+                setResultBatch({
+                    id: importResult.batchId,
+                    source_url: null,
+                    source_label: effectiveSourceLabel,
+                    source_type: 'pdf',
+                    status: 'completed',
+                    created_at: new Date().toISOString(),
+                    items_scraped: (data || []).length,
+                    pending_count: (data || []).length,
+                    default_line_type: defaultLineType,
+                })
+
+                setStatus('success')
+                setCurrentItem(null)
+                setLoadingStep('')
+                setIsScanning(false)
+                setViewMode('results')
+                archiveRun('success')
+
+                if (totalImageTargets > 0) {
+                    toast.success(`Imported ${importResult.itemsFound} rows, matched ${matchedImages}/${totalImageTargets} preview images`)
+                } else {
+                    toast.success(`Imported ${importResult.itemsFound} rows from PDF catalog`)
+                }
+            } catch (error) {
+                console.error('PDF import failed', error)
+                addLog(error instanceof Error ? error.message : 'PDF import failed', 'error', 'Error')
+                setStatus('error')
+                setViewMode('extract')
+                setIsScanning(false)
+                setLoadingStep('')
+                archiveRun('error')
+                toast.error('PDF import failed')
+            }
+        })
     }
 
     const handleAutoCategorize = async () => {
@@ -590,6 +762,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
 
     // Scanning View - Quick scan mode (completes in seconds)
     if (viewMode === 'scanning') {
+        const isPdfScan = importMode === 'pdf'
         return (
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
@@ -598,13 +771,15 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                     </div>
                     <div className="flex-1">
                         <h2 className="text-xl font-semibold flex items-center gap-2">
-                            Quick Scanning
+                            {isPdfScan ? 'Processing PDF Catalog' : 'Quick Scanning'}
                             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
-                                Fast Mode
+                                {isPdfScan ? 'Document Mode' : 'Fast Mode'}
                             </span>
                         </h2>
                         <p className="text-sm text-muted-foreground">
-                            {loadingStep || 'Extracting products from category listings...'}
+                            {loadingStep || (isPdfScan
+                                ? 'Extracting catalog rows and matching preview images...'
+                                : 'Extracting products from category listings...')}
                         </p>
                     </div>
                     {isScanning && (
@@ -624,7 +799,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                 />
 
                 <p className="text-xs text-center text-muted-foreground">
-                    This should only take a few seconds
+                    {isPdfScan ? 'This can take a little longer while pages are parsed and matched.' : 'This should only take a few seconds'}
                 </p>
             </div>
         )
@@ -632,15 +807,18 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
 
     // Results View
     if (viewMode === 'results' && batchId) {
-        // Construct a temporary batch object for the list component
-        const currentBatch = {
+        const currentBatch = resultBatch ?? {
             id: batchId,
             source_url: url,
-            status: 'completed', // Quick scan is done
+            source_label: url,
+            source_type: importMode,
+            status: 'completed',
             created_at: new Date().toISOString(),
             items_scraped: stagingItems.length,
-            pending_count: stagingItems.length
+            pending_count: stagingItems.length,
+            default_line_type: defaultLineType,
         }
+        const canAutoCategorize = currentBatch.source_type === 'url'
 
         return (
             <div className="space-y-6">
@@ -650,29 +828,36 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                         setStagingItems([])
                         setBatchId(null)
                         setClassifySummary(null)
+                        setResultBatch(null)
                     }}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div>
-                        <h2 className="text-xl font-semibold text-slate-900">Speed Scan Results</h2>
-                        <p className="text-sm text-slate-500">Review and classify your scanned items.</p>
+                        <h2 className="text-xl font-semibold text-slate-900">
+                            {currentBatch.source_type === 'pdf' ? 'PDF Import Results' : 'Speed Scan Results'}
+                        </h2>
+                        <p className="text-sm text-slate-500">
+                            Review and classify your imported items before committing them to inventory.
+                        </p>
                     </div>
                     <div className="ml-auto flex items-center gap-3">
                         {classifySummary && (
                             <span className="text-xs text-slate-500">{classifySummary}</span>
                         )}
-                        <Button
-                            onClick={handleAutoCategorize}
-                            disabled={isClassifying || !batchId || stagingItems.length === 0}
-                            className="bg-purple-600 hover:bg-purple-700"
-                        >
-                            {isClassifying ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <Sparkles className="mr-2 h-4 w-4" />
-                            )}
-                            AI 分类
-                        </Button>
+                        {canAutoCategorize && (
+                            <Button
+                                onClick={handleAutoCategorize}
+                                disabled={isClassifying || !batchId || stagingItems.length === 0}
+                                className="bg-purple-600 hover:bg-purple-700"
+                            >
+                                {isClassifying ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Sparkles className="mr-2 h-4 w-4" />
+                                )}
+                                AI 分类
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -703,7 +888,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                         AI Import
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Extract and map categories from an e-commerce website
+                        Import from a storefront URL or parse a PDF catalog into staging items
                     </p>
                 </div>
 
@@ -738,7 +923,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                         getAISettingsAction().then(settings => {
                             if (settings) {
                                 setAiSettings({
-                                    selectedModel: settings.ai_selected_model || 'gemini-2.0-flash',
+                                    selectedModel: settings.ai_selected_model || DEFAULT_GEMINI_MODEL,
                                     promptCategory: settings.ai_prompt_category,
                                     promptSubcategory: settings.ai_prompt_subcategory,
                                     promptProductList: settings.ai_prompt_product_list,
@@ -751,7 +936,7 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                                     maxOutputTokens: settings.ai_max_output_tokens ?? null,
                                     useSystemInstruction: settings.ai_use_system_instruction ?? false
                                 })
-                                setSelectedModel(settings.ai_selected_model || 'gemini-2.0-flash')
+                                setSelectedModel(settings.ai_selected_model || DEFAULT_GEMINI_MODEL)
                             }
                         })
                     }
@@ -760,86 +945,176 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                 initialSettings={aiSettings}
             />
 
-            {/* URL Input */}
-            <div className="space-y-2">
-                <Label htmlFor="source-url">Source URL</Label>
-                <div className="flex gap-2">
-                    <Input
-                        id="source-url"
-                        placeholder="https://example.com/collections"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        disabled={isPending}
-                        className="flex-1"
-                    />
-                    <Button onClick={handleExtract} disabled={isPending || !url.trim()} className="min-w-[160px]">
-                        {isPending ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                {loadingStep || 'Extracting...'}
-                            </>
-                        ) : (
-                            'Extract Categories'
-                        )}
-                    </Button>
-                </div>
-                {isPending && loadingStep && (
-                    <p className="text-xs text-muted-foreground animate-pulse">
-                        ⏳ {loadingStep}
-                    </p>
-                )}
+            <Tabs
+                value={importMode}
+                onValueChange={(value) => {
+                    setImportMode(value as ImportMode)
+                    setHasExtracted(false)
+                    setExtractedCategories([])
+                    setClassifySummary(null)
+                }}
+                className="space-y-4"
+            >
+                <TabsList>
+                    <TabsTrigger value="url">Web URL</TabsTrigger>
+                    <TabsTrigger value="pdf">PDF Catalog</TabsTrigger>
+                </TabsList>
 
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setConsoleOpen(prev => !prev)}
-                        className="h-9"
-                    >
-                        Extraction Console
-                        {runHistory.length > 0 && (
-                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                                {runHistory.length}
-                            </span>
-                        )}
-                    </Button>
-                    {(aiState.status !== 'idle' || runHistory.length > 0) && (
-                        <Select
-                            value={(activeRunId || currentRunId || runHistory[0]?.id) ?? undefined}
-                            onValueChange={(value) => setActiveRunId(value)}
-                        >
-                            <SelectTrigger className="h-9 w-[260px]">
-                                <SelectValue placeholder="Select run to view logs" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {currentRunId && (
-                                    <SelectItem value={currentRunId}>
-                                        Current run (in progress)
-                                    </SelectItem>
-                                )}
-                                {runHistory.map((run) => (
-                                    <SelectItem key={run.id} value={run.id}>
-                                        {new Date(run.finishedAt).toLocaleTimeString()} – {run.url}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                <TabsContent value="url" className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                        <div className="space-y-2">
+                            <Label htmlFor="source-url">Source URL</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="source-url"
+                                    placeholder="https://example.com/collections"
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    disabled={isPending}
+                                    className="flex-1"
+                                />
+                                <Button onClick={handleExtract} disabled={isPending || !url.trim()} className="min-w-[160px]">
+                                    {isPending ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            {loadingStep || 'Extracting...'}
+                                        </>
+                                    ) : (
+                                        'Extract Categories'
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="default-line-url">Default Line Type</Label>
+                            <Select value={defaultLineType} onValueChange={(value) => setDefaultLineType(value as ItemLineType)}>
+                                <SelectTrigger id="default-line-url">
+                                    <SelectValue placeholder="Select line type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Mainline">Mainline</SelectItem>
+                                    <SelectItem value="Collaboration">Collaboration</SelectItem>
+                                    <SelectItem value="Archive">Archive</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="pdf" className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="pdf-file">PDF Catalog</Label>
+                            <Input
+                                id="pdf-file"
+                                type="file"
+                                accept="application/pdf"
+                                onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                                disabled={isPending}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Upload one PDF per batch. The importer will create staging rows first, then try to attach one best-match preview image per item.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="pdf-source-label">Source Label</Label>
+                            <Input
+                                id="pdf-source-label"
+                                placeholder="2026SS Mainline"
+                                value={pdfSourceLabel}
+                                onChange={(e) => setPdfSourceLabel(e.target.value)}
+                                disabled={isPending}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-end">
+                        <div className="space-y-2">
+                            <Label htmlFor="default-line-pdf">Default Line Type</Label>
+                            <Select value={defaultLineType} onValueChange={(value) => setDefaultLineType(value as ItemLineType)}>
+                                <SelectTrigger id="default-line-pdf">
+                                    <SelectValue placeholder="Select line type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Mainline">Mainline</SelectItem>
+                                    <SelectItem value="Collaboration">Collaboration</SelectItem>
+                                    <SelectItem value="Archive">Archive</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <Button onClick={handlePdfImport} disabled={isPending || !pdfFile} className="min-w-[200px] md:justify-self-start">
+                            {isPending ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    {loadingStep || 'Importing PDF...'}
+                                </>
+                            ) : (
+                                'Import PDF Catalog'
+                            )}
+                        </Button>
+                    </div>
+                </TabsContent>
+            </Tabs>
+
+            {isPending && loadingStep && (
+                <p className="text-xs text-muted-foreground animate-pulse">
+                    ⏳ {loadingStep}
+                </p>
+            )}
+
+            <div className="flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConsoleOpen(prev => !prev)}
+                    className="h-9"
+                >
+                    Extraction Console
+                    {runHistory.length > 0 && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                            {runHistory.length}
+                        </span>
                     )}
-                </div>
-
-                {(consoleOpen || aiState.status !== 'idle') && (
-                    <AIStatusConsole
-                        state={displayedConsoleState}
-                        isOpen={true}
-                        title="Extraction Console"
-                        maxHeight={200}
-                        className="animate-in fade-in slide-in-from-top-2 duration-300"
-                    />
+                </Button>
+                {(aiState.status !== 'idle' || runHistory.length > 0) && (
+                    <Select
+                        value={(activeRunId || currentRunId || runHistory[0]?.id) ?? undefined}
+                        onValueChange={(value) => setActiveRunId(value)}
+                    >
+                        <SelectTrigger className="h-9 w-[260px]">
+                            <SelectValue placeholder="Select run to view logs" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {currentRunId && (
+                                <SelectItem value={currentRunId}>
+                                    Current run (in progress)
+                                </SelectItem>
+                            )}
+                            {runHistory.map((run) => (
+                                <SelectItem key={run.id} value={run.id}>
+                                    {new Date(run.finishedAt).toLocaleTimeString()} – {run.url}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 )}
             </div>
 
+            {(consoleOpen || aiState.status !== 'idle') && (
+                <AIStatusConsole
+                    state={displayedConsoleState}
+                    isOpen={true}
+                    title="Extraction Console"
+                    maxHeight={200}
+                    className="animate-in fade-in slide-in-from-top-2 duration-300"
+                />
+            )}
+
             {/* Extracted Categories */}
-            {hasExtracted && (
+            {importMode === 'url' && hasExtracted && (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className="font-medium">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useState, useTransition } from 'react'
@@ -28,6 +28,8 @@ const itemSchema = z.object({
     sku: z.string().min(1, 'SKU is required'),
     name: z.string().min(1, 'Name is required'),
     description: z.string().optional(),
+    line_type: z.enum(['Mainline', 'Collaboration', 'Archive']),
+    character_family: z.string().trim().min(1, 'Character / Family is required'),
     category_id: z.string().optional(),
     collection_id: z.string().optional(),
     material: z.string().optional(),
@@ -101,13 +103,14 @@ export const ItemForm = ({
         formState: { errors },
         setValue,
         watch,
-        reset,
     } = useForm<ItemFormData>({
-        resolver: zodResolver(itemSchema) as any,
+        resolver: zodResolver(itemSchema) as Resolver<ItemFormData>,
         defaultValues: {
             sku: initialData?.sku ?? item?.sku ?? '',
             name: initialData?.name ?? item?.name ?? '',
             description: initialData?.description ?? item?.description ?? '',
+            line_type: initialData?.line_type ?? item?.line_type ?? 'Mainline',
+            character_family: initialData?.character_family ?? item?.character_family ?? (isStaging ? 'Uncategorized' : ''),
             category_id: initialData?.category_id ?? item?.category_id ?? '',
             collection_id: initialData?.collection_id ?? item?.collection_id ?? '',
             material: initialData?.material ?? item?.material ?? '',
@@ -214,6 +217,7 @@ export const ItemForm = ({
                         image_paths: images,
                         specs,
                         description: data.description || undefined,
+                        character_family: data.character_family.trim(),
                         category_id: data.category_id || undefined,
                         collection_id: data.collection_id || undefined,
                         material: data.material || undefined,
@@ -352,6 +356,40 @@ export const ItemForm = ({
                                 placeholder="Describe the item..."
                                 rows={3}
                             />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="line_type">Line Type *</Label>
+                                <Select
+                                    value={watch('line_type')}
+                                    onValueChange={(value) => setValue('line_type', value as ItemFormData['line_type'])}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select line type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Mainline">Mainline</SelectItem>
+                                        <SelectItem value="Collaboration">Collaboration</SelectItem>
+                                        <SelectItem value="Archive">Archive</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {errors.line_type && (
+                                    <p className="text-sm text-red-500">{errors.line_type.message}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="character_family">Character / Family *</Label>
+                                <Input
+                                    id="character_family"
+                                    {...register('character_family')}
+                                    placeholder="e.g., Orchid, Daffodil"
+                                />
+                                {errors.character_family && (
+                                    <p className="text-sm text-red-500">{errors.character_family.message}</p>
+                                )}
+                            </div>
                         </div>
 
                         {/* Collections & Categories */}

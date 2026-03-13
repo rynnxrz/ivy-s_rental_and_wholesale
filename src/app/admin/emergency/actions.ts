@@ -3,6 +3,12 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth/guards'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import {
+    buildReservationContractMetadata,
+    isMissingReservationContractColumnsError,
+    stripReservationContractMetadata,
+} from '@/lib/reservations/contract'
 
 // Support both flat (from bulkRequest) and nested (from SummaryClient) payload formats
 interface EmergencyPayloadRaw {
@@ -15,6 +21,7 @@ interface EmergencyPayloadRaw {
     notes?: string
     start_date?: string
     end_date?: string
+    event_location?: string
     access_password?: string
     country?: string
     city_region?: string
@@ -27,6 +34,7 @@ interface EmergencyPayloadRaw {
         full_name?: string
         email?: string
         company_name?: string
+        event_location?: string
         address?: {
             line1?: string
             line2?: string
@@ -50,6 +58,7 @@ interface NormalizedPayload {
     notes?: string
     start_date: string
     end_date: string
+    event_location?: string
     country?: string
     city_region?: string
     address_line1?: string
@@ -75,6 +84,7 @@ function normalizePayload(raw: EmergencyPayloadRaw): NormalizedPayload | null {
     // Extract dates
     const start_date = raw.start_date || raw.dates?.from || ''
     const end_date = raw.end_date || raw.dates?.to || ''
+    const event_location = raw.event_location || raw.customer?.event_location
 
     // Extract address info
     const country = raw.country || raw.customer?.address?.country
@@ -96,6 +106,7 @@ function normalizePayload(raw: EmergencyPayloadRaw): NormalizedPayload | null {
         notes: raw.notes,
         start_date,
         end_date,
+        event_location,
         country,
         city_region,
         address_line1,
@@ -188,7 +199,7 @@ export async function convertEmergencyBackup(backupId: string) {
         renter_id: profileId,
         start_date: payload.start_date,
         end_date: payload.end_date,
-        status: 'pending',
+        status: RESERVATION_STATUSES.PENDING_REQUEST,
         group_id: groupId,
         dispatch_notes: payload.notes ? `Request Notes: ${payload.notes}` : null,
         country: payload.country,
@@ -196,12 +207,35 @@ export async function convertEmergencyBackup(backupId: string) {
         address_line1: payload.address_line1,
         address_line2: payload.address_line2 || null,
         postcode: payload.postcode,
-        fingerprint: `${requestFingerprint}-${itemId}`
+        fingerprint: `${requestFingerprint}-${itemId}`,
+        ...buildReservationContractMetadata({
+            startDate: payload.start_date,
+            endDate: payload.end_date,
+            eventLocation: payload.event_location,
+            addressLine1: payload.address_line1,
+            addressLine2: payload.address_line2 || null,
+            cityRegion: payload.city_region,
+            postcode: payload.postcode,
+            country: payload.country,
+        })
     }))
 
-    const { error: insertError } = await supabase
+    let { error: insertError } = await supabase
         .from('reservations')
         .insert(reservationsToInsert)
+
+    if (insertError && isMissingReservationContractColumnsError(insertError)) {
+        console.warn(
+            '[Reservations] Missing contract metadata columns. Falling back to legacy emergency import insert.',
+            insertError
+        )
+
+        const fallback = await supabase
+            .from('reservations')
+            .insert(reservationsToInsert.map(stripReservationContractMetadata))
+
+        insertError = fallback.error ?? null
+    }
 
     if (insertError) {
         if (insertError.code === '23505') {
@@ -217,4 +251,3 @@ export async function convertEmergencyBackup(backupId: string) {
     revalidatePath('/admin/reservations')
     return { success: true as const }
 }
-

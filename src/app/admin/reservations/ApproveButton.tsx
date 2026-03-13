@@ -22,19 +22,27 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Loader2, FileText, Star } from 'lucide-react'
 import type { BillingProfile } from '@/types'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import {
+    computeInvoicePricing,
+    computeRentalChargeFromRetail,
+} from '@/lib/invoice/pricing'
 
 interface ApproveItem {
     name: string
-    rentalPrice: number
+    retailPrice: number
     days: number
     imageUrl?: string
 }
 
 interface ApproveButtonProps {
     reservationId: string
+    startDate: string
+    endDate: string
     itemName?: string
     rentalPrice?: number
     days?: number
@@ -42,13 +50,47 @@ interface ApproveButtonProps {
     customerEmail?: string
     customerCompany?: string
     customerAddress?: string[]
+    eventLocation?: string | null
     billingProfiles: BillingProfile[]
     itemImageUrl?: string
     items?: ApproveItem[] // New prop for multiple items
 }
 
+const DISCOUNT_OPTIONS = [
+    { value: '0', label: '0% (No discount)' },
+    { value: '10', label: '10%' },
+    { value: '15', label: '15%' },
+    { value: '20', label: '20%' },
+    { value: '25', label: '25%' },
+    { value: '30', label: '30%' },
+] as const
+
+function getInclusiveRentalDays(startDate: string, endDate: string) {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+        return null
+    }
+
+    return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+}
+
+function formatConfirmedDate(value: string) {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return value
+
+    return parsed.toLocaleDateString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    })
+}
+
 export function ApproveButton({
     reservationId,
+    startDate,
+    endDate,
     itemName = 'Unknown Item',
     rentalPrice = 0,
     days = 0,
@@ -56,6 +98,7 @@ export function ApproveButton({
     customerEmail = 'N/A',
     customerCompany,
     customerAddress,
+    eventLocation,
     billingProfiles,
     itemImageUrl,
     items // Destructure new prop
@@ -64,11 +107,15 @@ export function ApproveButton({
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
     const [notes, setNotes] = useState('')
+    const [discountPercentageInput, setDiscountPercentageInput] = useState('0')
+    const [depositAmountOverrideInput, setDepositAmountOverrideInput] = useState('')
+    const [confirmedStartDateInput, setConfirmedStartDateInput] = useState(startDate)
+    const [confirmedEndDateInput, setConfirmedEndDateInput] = useState(endDate)
 
     // Normalize items: use the array if provided, otherwise fallback to single item props
     const invoiceItems: ApproveItem[] = items && items.length > 0 ? items : [{
         name: itemName,
-        rentalPrice: rentalPrice,
+        retailPrice: rentalPrice,
         days: days,
         imageUrl: itemImageUrl
     }]
@@ -79,9 +126,46 @@ export function ApproveButton({
 
     // Get the currently selected profile for preview
     const selectedProfile = billingProfiles.find(p => p.id === selectedProfileId)
+    const initialRentalDays = getInclusiveRentalDays(startDate, endDate) ?? days
+    const previewRentalDays = getInclusiveRentalDays(confirmedStartDateInput, confirmedEndDateInput)
+    const hasValidDateRange = previewRentalDays !== null
+    const effectiveRentalDays = previewRentalDays ?? initialRentalDays
 
     // Calculate total from all items
-    const totalAmount = invoiceItems.reduce((sum, item) => sum + (item.rentalPrice * item.days), 0)
+    const previewItems = invoiceItems.map((item) => {
+        const lineTotal = computeRentalChargeFromRetail({
+            retailPrice: item.retailPrice,
+            rentalDays: effectiveRentalDays,
+        })
+        return {
+            ...item,
+            lineTotal,
+            tierDescription: `50% of Retail Value: $${(item.retailPrice * 0.5).toFixed(2)}`,
+        }
+    })
+
+    const subtotalAmount = previewItems.reduce((sum, item) => sum + item.lineTotal, 0)
+    const replacementCostTotal = previewItems.reduce((sum, item) => sum + item.retailPrice, 0)
+    const parsedDiscountPercentage = Number.parseFloat(discountPercentageInput)
+    const normalizedDiscountPercentage = Number.isFinite(parsedDiscountPercentage)
+        ? parsedDiscountPercentage
+        : 0
+    const parsedDepositOverride = depositAmountOverrideInput.trim() === ''
+        ? null
+        : Number.parseFloat(depositAmountOverrideInput)
+    const normalizedDepositOverride = typeof parsedDepositOverride === 'number' && Number.isFinite(parsedDepositOverride)
+        ? parsedDepositOverride
+        : null
+    const pricing = computeInvoicePricing({
+        subtotal: subtotalAmount,
+        discountPercentage: normalizedDiscountPercentage,
+        depositAmountOverride: normalizedDepositOverride,
+        replacementCostTotal,
+    })
+    const hasManualDeposit = normalizedDepositOverride !== null
+    const isDefaultDepositCapped =
+        pricing.uncappedDefaultDepositAmount > pricing.defaultDepositAmount
+    const lateFeeNotice = 'Late return fee: £20 per day, which will be deducted from the deposit.'
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
     const invoiceIdDisplay = `INV-R-${dateStr}-####`
@@ -91,10 +175,20 @@ export function ApproveButton({
             toast.error('Please select a billing profile')
             return
         }
+        if (!hasValidDateRange) {
+            toast.error('Confirmed return date must be on or after the call-in date.')
+            return
+        }
 
         startTransition(() => {
             void (async () => {
-                const result = await approveReservation(reservationId, selectedProfileId, notes || undefined)
+                const result = await approveReservation(reservationId, selectedProfileId, {
+                    notes: notes || undefined,
+                    discountPercentage: normalizedDiscountPercentage,
+                    depositAmountOverride: normalizedDepositOverride,
+                    confirmedStartDate: confirmedStartDateInput,
+                    confirmedEndDate: confirmedEndDateInput,
+                })
 
                 if (result.error) {
                     if (result.error.includes('23P01') || result.error.includes('conflicting key')) {
@@ -109,6 +203,8 @@ export function ApproveButton({
                             })
                             setOpen(false)
                             setNotes('')
+                            setConfirmedStartDateInput(startDate)
+                            setConfirmedEndDateInput(endDate)
                             router.refresh()
                             return
                         }
@@ -121,6 +217,8 @@ export function ApproveButton({
                     })
                     setOpen(false)
                     setNotes('')
+                    setConfirmedStartDateInput(startDate)
+                    setConfirmedEndDateInput(endDate)
                     router.refresh()
                 }
             })()
@@ -131,11 +229,19 @@ export function ApproveButton({
     const bankInfo = selectedProfile?.bank_info || "No billing profile selected"
     const companyHeader = selectedProfile?.company_header || "No billing profile selected"
     const contactEmail = selectedProfile?.contact_email || ""
+    const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen)
+
+        if (!nextOpen) {
+            setConfirmedStartDateInput(startDate)
+            setConfirmedEndDateInput(endDate)
+        }
+    }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                <Button size="sm" variant="default">
                     Review & Invoice
                 </Button>
             </DialogTrigger>
@@ -220,17 +326,39 @@ export function ApproveButton({
                             <p className="text-gray-600">{customerEmail}</p>
                         </div>
 
+                        <div className="mb-8 rounded border border-gray-200 bg-gray-50 p-4">
+                            <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider">
+                                Confirmed Loan Details
+                            </h3>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wider text-gray-500">Call-in / Start Date</p>
+                                    <p className="font-medium text-gray-900">{formatConfirmedDate(confirmedStartDateInput)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wider text-gray-500">Return Date</p>
+                                    <p className="font-medium text-gray-900">{formatConfirmedDate(confirmedEndDateInput)}</p>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <p className="text-[11px] uppercase tracking-wider text-gray-500">Shoot / Event Location</p>
+                                    <p className="font-medium text-gray-900">{eventLocation || 'Not provided'}</p>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Line Items */}
                         <div className="mb-8">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Reservation Details</h3>
 
-                            {invoiceItems.map((item, idx) => (
+                            {previewItems.map((item, idx) => (
                                 <div key={idx} className="flex gap-3 py-2 border-b border-gray-50">
                                     {/* Item Thumbnail */}
                                     {item.imageUrl ? (
-                                        <img
+                                        <Image
                                             src={item.imageUrl}
                                             alt={item.name}
+                                            width={48}
+                                            height={48}
                                             className="w-12 h-12 object-cover rounded border border-gray-200"
                                         />
                                     ) : (
@@ -241,10 +369,10 @@ export function ApproveButton({
                                     <div className="flex-1 flex justify-between">
                                         <div>
                                             <span className="font-medium text-gray-900">{item.name}</span>
-                                            <div className="text-xs text-gray-500">Rental Period ({item.days} days)</div>
+                                            <div className="text-xs text-gray-500">{item.tierDescription}</div>
                                         </div>
                                         <div className="text-right">
-                                            <span>${item.rentalPrice.toFixed(2)}/day</span>
+                                            <span>${item.lineTotal.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -256,11 +384,39 @@ export function ApproveButton({
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Charges</h3>
                             <div className="flex justify-between py-2 border-b border-gray-50">
                                 <span className="text-gray-600">Subtotal</span>
-                                <span className="font-medium">${totalAmount.toFixed(2)}</span>
+                                <span className="font-medium">${pricing.subtotal.toFixed(2)}</span>
+                            </div>
+                            {pricing.discountAmount > 0 && (
+                                <div className="flex justify-between py-2 border-b border-gray-50">
+                                    <span className="text-gray-600">Discount ({pricing.discountPercentage.toFixed(2)}%)</span>
+                                    <span className="font-medium text-red-600">- ${pricing.discountAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {!hasManualDeposit && (
+                                <div className="flex justify-between py-2 border-b border-gray-50">
+                                    <span className="text-gray-600">Deposit (50% Retail)</span>
+                                    <span className="font-medium">${pricing.uncappedDefaultDepositAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {!hasManualDeposit && isDefaultDepositCapped && (
+                                <div className="flex justify-between py-2 border-b border-gray-50">
+                                    <span className="text-gray-600">Deposit (Capped at $300)</span>
+                                    <span className="font-medium">${pricing.defaultDepositAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {hasManualDeposit && (
+                                <div className="flex justify-between py-2 border-b border-gray-50">
+                                    <span className="text-gray-600">Default Deposit (50% Retail)</span>
+                                    <span className="font-medium">${pricing.defaultDepositAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between py-2 border-b border-gray-50">
+                                <span className="text-gray-600">{hasManualDeposit ? 'Deposit (Manual)' : 'Deposit'}</span>
+                                <span className="font-medium">${pricing.depositAmount.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between py-3 border-t-2 border-gray-800 mt-2">
                                 <span className="font-bold text-lg">Total Due</span>
-                                <span className="font-bold text-lg text-green-700">${totalAmount.toFixed(2)}</span>
+                                <span className="font-bold text-lg text-green-700">${pricing.totalDue.toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -271,13 +427,14 @@ export function ApproveButton({
                             <p className="mt-2 text-gray-400 italic">Please include Invoice #{invoiceIdDisplay} in the memo.</p>
                         </div>
 
-                        {/* Notes Preview */}
-                        {notes && (
-                            <div className="mb-4 bg-yellow-50 p-4 rounded text-xs text-gray-700 border border-yellow-100">
-                                <h3 className="font-bold text-yellow-800 mb-1 uppercase tracking-wider">Notes</h3>
-                                <p className="whitespace-pre-wrap">{notes}</p>
-                            </div>
-                        )}
+                        {/* Terms / Notes Preview */}
+                        <div className="mb-4 bg-yellow-50 p-4 rounded text-xs text-gray-700 border border-yellow-100">
+                            <h3 className="font-bold text-yellow-800 mb-1 uppercase tracking-wider">Terms / Notes</h3>
+                            {notes && (
+                                <p className="whitespace-pre-wrap mb-2">{notes}</p>
+                            )}
+                            <p className="whitespace-pre-wrap">{lateFeeNotice}</p>
+                        </div>
 
                         {/* Footer */}
                         <div className="text-center text-gray-400 text-xs mt-8 pt-4 border-t border-gray-100">
@@ -287,6 +444,81 @@ export function ApproveButton({
 
                     {/* EDITABLE FIELDS (Outside the preview visual) */}
                     <div className="space-y-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="confirmed-start-date" className="text-sm font-medium text-gray-700">
+                                    Confirmed Call-in Date
+                                </Label>
+                                <Input
+                                    id="confirmed-start-date"
+                                    type="date"
+                                    value={confirmedStartDateInput}
+                                    onChange={(e) => setConfirmedStartDateInput(e.target.value)}
+                                    className="bg-white"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="confirmed-end-date" className="text-sm font-medium text-gray-700">
+                                    Confirmed Return Date
+                                </Label>
+                                <Input
+                                    id="confirmed-end-date"
+                                    type="date"
+                                    value={confirmedEndDateInput}
+                                    onChange={(e) => setConfirmedEndDateInput(e.target.value)}
+                                    className="bg-white"
+                                />
+                            </div>
+                        </div>
+                        <div className="rounded border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wider text-gray-500">Shoot / Event Location</p>
+                            <p className="mt-1 text-sm text-gray-900">{eventLocation || 'Not provided'}</p>
+                            <p className="mt-1 text-xs text-gray-500">Location stays read-only in this step.</p>
+                        </div>
+                        {!hasValidDateRange && (
+                            <p className="text-xs text-red-600">
+                                Confirmed return date must be on or after the call-in date.
+                            </p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium text-gray-700">
+                                    Discount Percentage
+                                </Label>
+                                <Select
+                                    value={discountPercentageInput}
+                                    onValueChange={setDiscountPercentageInput}
+                                >
+                                    <SelectTrigger className="w-full bg-white">
+                                        <SelectValue placeholder="Select discount" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {DISCOUNT_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="deposit-override" className="text-sm font-medium text-gray-700">
+                                    Deposit
+                                </Label>
+                                <Input
+                                    id="deposit-override"
+                                    type="number"
+                                    min={0}
+                                    max={300}
+                                    step={0.01}
+                                    value={depositAmountOverrideInput}
+                                    onChange={(e) => setDepositAmountOverrideInput(e.target.value)}
+                                    placeholder="0 to waive or custom"
+                                    className="bg-white"
+                                />
+                                <p className="text-xs text-gray-500">Blank = default. Max $300.</p>
+                            </div>
+                        </div>
                         <Label htmlFor="invoice-notes" className="text-sm font-medium text-gray-700">
                             Add Note to Invoice
                         </Label>
@@ -307,7 +539,7 @@ export function ApproveButton({
                     </Button>
                     <Button
                         onClick={handleApprove}
-                        disabled={isPending || billingProfiles.length === 0}
+                        disabled={isPending || billingProfiles.length === 0 || !hasValidDateRange}
                         className="bg-green-600 hover:bg-green-700"
                     >
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

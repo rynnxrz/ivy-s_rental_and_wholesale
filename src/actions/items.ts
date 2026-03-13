@@ -2,8 +2,17 @@
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ItemInsert, ItemUpdate } from '@/types'
+import type { ItemInsert, ItemLineType, ItemUpdate } from '@/types'
 import { requireAdmin } from '@/lib/auth/guards'
+import {
+    createFamilySummary,
+    inferCharacterFamilyFromText,
+    inferLineTypeFromText,
+    normalizeLineType,
+    resolveItemTaxonomy,
+    sanitizeCharacterFamily,
+    UNCATEGORIZED_FAMILY,
+} from '@/lib/items/taxonomy'
 
 const slugify = (value: string, prefix: string) => {
     const base = value
@@ -13,6 +22,25 @@ const slugify = (value: string, prefix: string) => {
         .replace(/(^-|-$)+/g, '')
 
     return base || `${prefix}-${Date.now()}`
+}
+
+const normalizeItemPayload = (item: ItemInsert | ItemUpdate): ItemInsert | ItemUpdate => {
+    const { lineType, characterFamily } = resolveItemTaxonomy({
+        name: typeof item.name === 'string' ? item.name : undefined,
+        description: typeof item.description === 'string' ? item.description : undefined,
+        lineType: typeof item.line_type === 'string' ? item.line_type : undefined,
+        characterFamily: typeof item.character_family === 'string' ? item.character_family : undefined,
+        defaultLineType: normalizeLineType(
+            typeof item.line_type === 'string' ? item.line_type : undefined,
+            'Mainline'
+        ),
+    })
+
+    return {
+        ...item,
+        line_type: lineType,
+        character_family: characterFamily,
+    }
 }
 
 export async function getItems() {
@@ -49,10 +77,11 @@ export async function getItem(id: string) {
 export async function createItem(item: ItemInsert) {
     await requireAdmin()
     const supabase = await createClient()
+    const normalizedItem = normalizeItemPayload(item) as ItemInsert
 
     const { data, error } = await supabase
         .from('items')
-        .insert(item)
+        .insert(normalizedItem)
         .select()
         .single()
 
@@ -67,10 +96,11 @@ export async function createItem(item: ItemInsert) {
 export async function updateItem(id: string, item: ItemUpdate) {
     await requireAdmin()
     const supabase = await createClient()
+    const normalizedItem = normalizeItemPayload(item) as ItemUpdate
 
     const { data, error } = await supabase
         .from('items')
-        .update(item)
+        .update(normalizedItem)
         .eq('id', id)
         .select()
         .single()
@@ -119,6 +149,97 @@ export async function archiveItem(id: string) {
 
     revalidatePath('/admin/items')
     return { success: true, error: null }
+}
+
+export async function bulkUpdateItemStatus(itemIds: string[], status: 'active' | 'retired') {
+    await requireAdmin()
+
+    if (!itemIds.length) {
+        return { success: false, error: 'No items selected' }
+    }
+
+    const supabase = createServiceClient()
+    const { error } = await supabase
+        .from('items')
+        .update({ status })
+        .in('id', itemIds)
+
+    if (error) {
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null }
+}
+
+export async function runItemTaxonomyBackfill() {
+    await requireAdmin()
+
+    const supabase = createServiceClient()
+    const { data: items, error } = await supabase
+        .from('items')
+        .select('id, name, line_type, character_family')
+
+    if (error) {
+        return { success: false, error: error.message }
+    }
+
+    if (!items || items.length === 0) {
+        return {
+            success: true,
+            error: null,
+            updated: 0,
+            total: 0,
+            summary: createFamilySummary(),
+        }
+    }
+
+    let updated = 0
+    const summary = createFamilySummary()
+
+    for (const item of items) {
+        const inferredLineType = inferLineTypeFromText(item.name || '', item.line_type)
+        const inferredCharacter = inferCharacterFamilyFromText(item.name || '', item.character_family)
+
+        if (inferredLineType === 'Mainline') summary.Mainline += 1
+        if (inferredLineType === 'Collaboration') summary.Collaboration += 1
+        if (inferredLineType === 'Archive') summary.Archive += 1
+        if (summary[inferredCharacter] !== undefined) {
+            summary[inferredCharacter] += 1
+        } else {
+            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_FAMILY)] ??= 0
+            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_FAMILY)] += 1
+        }
+
+        const hasLineChanged = item.line_type !== inferredLineType
+        const hasCharacterChanged = (item.character_family || '').trim() !== inferredCharacter
+
+        if (!hasLineChanged && !hasCharacterChanged) continue
+
+        const { error: updateError } = await supabase
+            .from('items')
+            .update({
+                line_type: inferredLineType,
+                character_family: inferredCharacter,
+            })
+            .eq('id', item.id)
+
+        if (updateError) {
+            return { success: false, error: updateError.message }
+        }
+
+        updated += 1
+    }
+
+    revalidatePath('/admin/items')
+
+    return {
+        success: true,
+        error: null,
+        updated,
+        total: items.length,
+        summary,
+    }
 }
 
 export async function uploadItemImage(formData: FormData) {
@@ -192,8 +313,10 @@ export async function createCollection(name: string) {
 // AI Import Actions
 // ============================================================
 
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
+import { createPartFromUri, FileState, GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
 import { createStreamableValue } from '@/lib/ai-stream'
+import { DEFAULT_GEMINI_MODEL } from '@/lib/ai/model-selection'
+import sharp from 'sharp'
 
 // Initialize Gemini client
 const getGeminiClient = () => {
@@ -202,6 +325,284 @@ const getGeminiClient = () => {
         throw new Error('GOOGLE_AI_API_KEY environment variable is not set')
     }
     return new GoogleGenAI({ apiKey })
+}
+
+const IMPORT_DOCUMENT_BUCKET = 'import_documents'
+const IMPORT_DOCUMENT_PREFIX = 'catalogs'
+const IMPORT_PREVIEW_PREFIX = 'import-previews'
+const RENTAL_ITEMS_PUBLIC_SEGMENT = '/storage/v1/object/public/rental_items/'
+
+type ImportSourceType = 'url' | 'pdf'
+
+type BatchSummary = {
+    id: string
+    source_type: ImportSourceType
+    source_url: string | null
+    source_label: string | null
+    source_storage_path: string | null
+    default_line_type: ItemLineType
+}
+
+type ParsedPdfCatalogItem = {
+    style_code?: string | null
+    sku?: string | null
+    name?: string | null
+    description?: string | null
+    material?: string | null
+    color?: string | null
+    weight?: string | null
+    size?: string | null
+    category_form?: string | null
+    character_family?: string | null
+    line_type?: string | null
+    rrp?: number | string | null
+    source_page?: number | null
+}
+
+type PdfPageMatch = {
+    itemId: string
+    found: boolean
+    confidence?: number | null
+    box_2d?: [number, number, number, number] | null
+    note?: string | null
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+const buildSafeSlug = (value: string, fallback = 'file') => {
+    const slug = value
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '')
+        .slice(0, 48)
+
+    return slug || fallback
+}
+
+const extractJsonPayload = <T>(rawText: string): T => {
+    const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim()
+    return JSON.parse(jsonStr) as T
+}
+
+const parsePriceValue = (value: number | string | null | undefined): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+    }
+
+    if (typeof value === 'string') {
+        const numeric = Number.parseFloat(value.replace(/[^0-9.]+/g, ''))
+        if (Number.isFinite(numeric)) {
+            return numeric
+        }
+    }
+
+    return 0
+}
+
+const appendReviewNote = (existing: string | null | undefined, note: string): string => {
+    const normalized = existing?.trim()
+    if (!normalized) {
+        return note
+    }
+
+    if (normalized.includes(note)) {
+        return normalized
+    }
+
+    return `${normalized}\n${note}`
+}
+
+const extractRentalItemsStoragePath = (publicUrl: string): string | null => {
+    const markerIndex = publicUrl.indexOf(RENTAL_ITEMS_PUBLIC_SEGMENT)
+    if (markerIndex === -1) {
+        return null
+    }
+
+    return publicUrl.slice(markerIndex + RENTAL_ITEMS_PUBLIC_SEGMENT.length)
+}
+
+const parseDataUrl = (dataUrl: string): { mimeType: string; buffer: Buffer } => {
+    const match = dataUrl.match(/^data:(.+?);base64,(.+)$/)
+    if (!match) {
+        throw new Error('Invalid page image payload')
+    }
+
+    return {
+        mimeType: match[1],
+        buffer: Buffer.from(match[2], 'base64'),
+    }
+}
+
+const clampBoxCoordinate = (value: number, limit: number) => Math.min(Math.max(value, 0), limit)
+
+const getBatchSourceLabel = (batch: Pick<BatchSummary, 'source_label' | 'source_url'>): string => {
+    if (batch.source_label?.trim()) {
+        return batch.source_label.trim()
+    }
+
+    if (batch.source_url?.trim()) {
+        return batch.source_url.trim()
+    }
+
+    return 'Imported catalog'
+}
+
+async function waitForGeminiFileActive(ai: GoogleGenAI, fileName: string) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        const file = await ai.files.get({ name: fileName })
+
+        if (file.state === FileState.ACTIVE) {
+            return file
+        }
+
+        if (file.state === FileState.FAILED) {
+            throw new Error(file.error?.message || `Gemini file processing failed for ${fileName}`)
+        }
+
+        await sleep(1500)
+    }
+
+    throw new Error(`Gemini file did not become active in time: ${fileName}`)
+}
+
+async function createStagingBatchRecord(input: {
+    sourceType: ImportSourceType
+    sourceUrl?: string | null
+    sourceLabel?: string | null
+    sourceStoragePath?: string | null
+    defaultLineType?: ItemLineType
+}) {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('staging_imports')
+        .insert({
+            source_type: input.sourceType,
+            source_url: input.sourceUrl ?? null,
+            source_label: input.sourceLabel ?? input.sourceUrl ?? null,
+            source_storage_path: input.sourceStoragePath ?? null,
+            default_line_type: normalizeLineType(input.defaultLineType, 'Mainline'),
+            status: 'pending',
+        })
+        .select('id')
+        .single()
+
+    if (error) {
+        return { batchId: null, error: error.message }
+    }
+
+    return { batchId: data.id, error: null }
+}
+
+async function getBatchSummary(
+    batchId: string,
+    supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<BatchSummary> {
+    const { data, error } = await supabase
+        .from('staging_imports')
+        .select('id, source_type, source_url, source_label, source_storage_path, default_line_type')
+        .eq('id', batchId)
+        .single()
+
+    if (error || !data) {
+        throw new Error(error?.message || 'Failed to load import batch')
+    }
+
+    return {
+        id: data.id,
+        source_type: data.source_type === 'pdf' ? 'pdf' : 'url',
+        source_url: data.source_url,
+        source_label: data.source_label,
+        source_storage_path: data.source_storage_path,
+        default_line_type: normalizeLineType(data.default_line_type, 'Mainline'),
+    }
+}
+
+async function promotePreviewImageToInventory(
+    imageUrl: string,
+    itemName: string,
+    supabase: ReturnType<typeof createServiceClient>
+): Promise<string> {
+    const sourcePath = extractRentalItemsStoragePath(imageUrl)
+    if (!sourcePath || !sourcePath.startsWith(`${IMPORT_PREVIEW_PREFIX}/`)) {
+        return imageUrl
+    }
+
+    const ext = sourcePath.split('.').pop() || 'jpg'
+    const destinationPath = `items/${buildSafeSlug(itemName, 'item')}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error } = await supabase.storage
+        .from('rental_items')
+        .copy(sourcePath, destinationPath)
+
+    if (error) {
+        console.error(`Failed to promote preview image: ${error.message}`)
+        return imageUrl
+    }
+
+    const { data } = supabase.storage
+        .from('rental_items')
+        .getPublicUrl(destinationPath)
+
+    return data.publicUrl
+}
+
+function resolveCategoryId(
+    guess: string | null | undefined,
+    categories: Array<{ id: string; name: string }>
+): string | null {
+    const normalizedGuess = guess?.trim().toLowerCase()
+    if (!normalizedGuess) {
+        return null
+    }
+
+    const aliasMap: Record<string, string[]> = {
+        earrings: ['earrings', 'earring', 'stud', 'stud earrings', 'hoop', 'hoops', 'drop', 'drop earrings', 'dangle', 'dangle earrings'],
+        rings: ['rings', 'ring'],
+        brooch: ['brooch', 'brooches', 'pin'],
+    }
+
+    const category = categories.find(entry => {
+        const normalizedName = entry.name.trim().toLowerCase()
+        if (normalizedName === normalizedGuess) {
+            return true
+        }
+
+        const aliases = aliasMap[normalizedName]
+        return aliases ? aliases.some(alias => normalizedGuess.includes(alias)) : normalizedGuess.includes(normalizedName)
+    })
+
+    return category?.id || null
+}
+
+function normalizePdfCatalogItem(item: ParsedPdfCatalogItem, defaultLineType: ItemLineType) {
+    const resolvedTaxonomy = resolveItemTaxonomy({
+        name: item.name,
+        description: item.description,
+        lineType: item.line_type,
+        characterFamily: item.character_family,
+        defaultLineType,
+    })
+
+    const size = item.size?.trim()
+    const specs = size ? { size } : null
+
+    return {
+        sku: item.style_code?.trim() || item.sku?.trim() || null,
+        name: item.name?.trim() || item.description?.trim() || 'Imported Catalog Item',
+        description: item.description?.trim() || null,
+        material: item.material?.trim() || null,
+        color: item.color?.trim() || null,
+        weight: item.weight?.trim() || null,
+        replacement_cost: parsePriceValue(item.rrp),
+        rental_price: 0,
+        categoryGuess: item.category_form?.trim() || null,
+        line_type: resolvedTaxonomy.lineType,
+        character_family: resolvedTaxonomy.characterFamily,
+        source_page: typeof item.source_page === 'number' && item.source_page > 0 ? item.source_page : null,
+        specs,
+    }
 }
 
 // ============================================================
@@ -1384,12 +1785,13 @@ export async function scanCategoriesAction(
         // Get current batch state
         const { data: batchState } = await supabase
             .from('staging_imports')
-            .select('product_urls, last_scanned_index, items_scraped')
+            .select('product_urls, last_scanned_index, items_scraped, default_line_type')
             .eq('id', batchId)
             .single()
 
         let allProductUrls: Array<{ url: string; categoryId: string | null; collectionId: string | null; categoryName: string }> = []
         let startIndex = batchState?.last_scanned_index || 0
+        const defaultLineType = normalizeLineType(batchState?.default_line_type, 'Mainline')
 
         // If we don't have stored URLs, extract them (first call)
         if (!batchState?.product_urls || batchState.product_urls.length === 0) {
@@ -1458,6 +1860,11 @@ export async function scanCategoriesAction(
                 for (const item of scrapedItems) {
                     // Check SKU uniqueness
                     const uniqueSku = await ensureUniqueSku(item.sku, supabase)
+                    const resolvedTaxonomy = resolveItemTaxonomy({
+                        name: item.name,
+                        description: item.description,
+                        defaultLineType,
+                    })
 
                     await supabase
                         .from('staging_items')
@@ -1475,6 +1882,8 @@ export async function scanCategoriesAction(
                             source_url: item.source_url,
                             category_id: categoryId,
                             collection_id: collectionId,  // NEW: Dual mapping
+                            line_type: resolvedTaxonomy.lineType,
+                            character_family: resolvedTaxonomy.characterFamily,
                             is_variant: item.is_variant,
                             variant_of_name: item.variant_of_name,
                             status: 'pending'
@@ -1542,21 +1951,31 @@ export async function scanCategoriesAction(
 /**
  * Creates a new staging import batch and returns the batch ID.
  */
-export async function createStagingBatchAction(sourceUrl: string): Promise<{ batchId: string | null; error: string | null }> {
+export async function createStagingBatchAction(input: string | {
+    sourceUrl?: string | null
+    sourceType?: ImportSourceType
+    sourceLabel?: string | null
+    sourceStoragePath?: string | null
+    defaultLineType?: ItemLineType
+}): Promise<{ batchId: string | null; error: string | null }> {
     await requireAdmin()
-    const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('staging_imports')
-        .insert({ source_url: sourceUrl, status: 'pending' })
-        .select('id')
-        .single()
-
-    if (error) {
-        return { batchId: null, error: error.message }
+    if (typeof input === 'string') {
+        return createStagingBatchRecord({
+            sourceType: 'url',
+            sourceUrl: input,
+            sourceLabel: input,
+            defaultLineType: inferLineTypeFromText(input, 'Mainline'),
+        })
     }
 
-    return { batchId: data.id, error: null }
+    return createStagingBatchRecord({
+        sourceType: input.sourceType ?? 'url',
+        sourceUrl: input.sourceUrl ?? null,
+        sourceLabel: input.sourceLabel ?? input.sourceUrl ?? null,
+        sourceStoragePath: input.sourceStoragePath ?? null,
+        defaultLineType: normalizeLineType(input.defaultLineType, 'Mainline'),
+    })
 }
 
 /**
@@ -1615,7 +2034,11 @@ export async function getImportBatchesAction() {
         .from('staging_imports')
         .select(`
             id,
+            source_type,
             source_url,
+            source_label,
+            source_storage_path,
+            default_line_type,
             status,
             created_at,
             items_scraped,
@@ -1682,16 +2105,40 @@ export async function updateStagingItemAction(
         color?: string
         weight?: string
         category_id?: string | null
+        collection_id?: string | null
+        line_type?: ItemLineType
+        character_family?: string
         image_urls?: string[]
         variant_of_name?: string | null  // For drag-and-drop group reassignment
     }
 ) {
     await requireAdmin()
     const supabase = await createClient()
+    const { data: existingItem, error: existingError } = await supabase
+        .from('staging_items')
+        .select('name, description, line_type, character_family')
+        .eq('id', id)
+        .single()
+
+    if (existingError || !existingItem) {
+        return { success: false, error: existingError?.message || 'Failed to load staging item', data: null }
+    }
+
+    const resolvedTaxonomy = resolveItemTaxonomy({
+        name: updates.name ?? existingItem.name,
+        description: updates.description ?? existingItem.description,
+        lineType: updates.line_type ?? existingItem.line_type,
+        characterFamily: updates.character_family ?? existingItem.character_family,
+        defaultLineType: normalizeLineType(existingItem.line_type, 'Mainline'),
+    })
 
     const { data, error } = await supabase
         .from('staging_items')
-        .update(updates)
+        .update({
+            ...updates,
+            line_type: resolvedTaxonomy.lineType,
+            character_family: resolvedTaxonomy.characterFamily,
+        })
         .eq('id', id)
         .select()
         .single()
@@ -1807,11 +2254,9 @@ export async function commitStagingItemsAction(batchId: string) {
             const migratedUrls: string[] = []
 
             for (const imageUrl of staging.image_urls) {
-                const migratedUrl = await migrateExternalImage(
-                    imageUrl,
-                    staging.name,
-                    serviceClient
-                )
+                const migratedUrl = imageUrl.includes(`${IMPORT_PREVIEW_PREFIX}/`)
+                    ? await promotePreviewImageToInventory(imageUrl, staging.name, serviceClient)
+                    : await migrateExternalImage(imageUrl, staging.name, serviceClient)
                 migratedUrls.push(migratedUrl)
             }
 
@@ -1858,6 +2303,10 @@ export async function commitStagingItemsAction(batchId: string) {
                     weight: staging.weight,
                     image_paths: staging.image_urls, // Now contains Supabase URLs
                     category_id: staging.category_id,
+                    collection_id: staging.collection_id,
+                    specs: staging.specs,
+                    line_type: normalizeLineType(staging.line_type, 'Mainline'),
+                    character_family: sanitizeCharacterFamily(staging.character_family),
                     status: 'active',
                     is_ai_generated: true,
                     import_batch_id: batchId
@@ -1969,6 +2418,8 @@ export async function quickScanAction(
     console.log('\n🚀 [Speed Scan] Starting index-only scan (no categorization)...')
 
     try {
+        const batch = await getBatchSummary(batchId, supabase)
+
         // Get AI settings
         const { data: settings } = await supabase
             .from('app_settings')
@@ -2044,6 +2495,11 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
                 const absoluteThumbnail = product.thumbnail_url
                     ? new URL(product.thumbnail_url, category.url).href
                     : null
+                const resolvedTaxonomy = resolveItemTaxonomy({
+                    name: product.name,
+                    lineType: batch.default_line_type,
+                    defaultLineType: batch.default_line_type,
+                })
 
                 await supabase
                     .from('staging_items')
@@ -2057,6 +2513,8 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
                         // Defer categorization to a separate AI step
                         category_id: null,
                         collection_id: null,
+                        line_type: resolvedTaxonomy.lineType,
+                        character_family: resolvedTaxonomy.characterFamily,
                         status: 'pending',
                         needs_enrichment: true,
                         // Leave these empty - will be filled by deepEnrichAction
@@ -2119,6 +2577,8 @@ export async function quickScanStreamAction(
             const ai = getGeminiClient()
 
             try {
+                const batch = await getBatchSummary(batchId, supabase)
+
                 // Get AI settings
                 const { data: settings } = await supabase.from('app_settings').select('ai_prompt_quick_list, ai_thinking_product_list').single()
 
@@ -2203,7 +2663,7 @@ Please clearly describe your thinking process as you analyze the page, for examp
                     try {
                         products = JSON.parse(jsonStr)
                         if (!Array.isArray(products)) products = []
-                    } catch (e) {
+                    } catch {
                         stream.update({ type: 'log', message: `Failed to parse products for ${category.name}`, level: 'warning' })
                         continue
                     }
@@ -2212,6 +2672,11 @@ Please clearly describe your thinking process as you analyze the page, for examp
                     for (const product of products) {
                         const absoluteUrl = product.product_url ? new URL(product.product_url, category.url).href : null
                         const absoluteThumbnail = product.thumbnail_url ? new URL(product.thumbnail_url, category.url).href : null
+                        const resolvedTaxonomy = resolveItemTaxonomy({
+                            name: product.name,
+                            lineType: batch.default_line_type,
+                            defaultLineType: batch.default_line_type,
+                        })
 
                         await supabase.from('staging_items').insert({
                             import_batch_id: batchId,
@@ -2223,6 +2688,8 @@ Please clearly describe your thinking process as you analyze the page, for examp
                             // Categorization happens in a follow-up step
                             category_id: null,
                             collection_id: null,
+                            line_type: resolvedTaxonomy.lineType,
+                            character_family: resolvedTaxonomy.characterFamily,
                             status: 'pending',
                             needs_enrichment: true,
                             description: null, material: null, weight: null, sku: null, replacement_cost: null
@@ -2255,6 +2722,465 @@ Please clearly describe your thinking process as you analyze the page, for examp
         })()
 
     return { output: stream.value }
+}
+
+// ============================================================
+// PDF Catalog Import Actions
+// ============================================================
+
+export interface PdfCatalogImportResult {
+    success: boolean
+    error: string | null
+    batchId: string | null
+    itemsFound: number
+    renderedPages: number[]
+    sourceLabel: string | null
+    modelId: string
+}
+
+export interface PdfPageImageMatchResult {
+    success: boolean
+    error: string | null
+    matchedCount: number
+    totalItems: number
+}
+
+export async function importPdfCatalogAction(formData: FormData): Promise<PdfCatalogImportResult> {
+    await requireAdmin()
+
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+        return {
+            success: false,
+            error: 'A PDF file is required',
+            batchId: null,
+            itemsFound: 0,
+            renderedPages: [],
+            sourceLabel: null,
+            modelId: DEFAULT_GEMINI_MODEL,
+        }
+    }
+
+    const sourceLabelInput = String(formData.get('sourceLabel') || '').trim()
+    const sourceLabel = sourceLabelInput || file.name
+    const defaultLineType = normalizeLineType(String(formData.get('defaultLineType') || 'Mainline'), 'Mainline')
+    const requestedModelId = String(formData.get('modelId') || '').trim() || DEFAULT_GEMINI_MODEL
+    const supabase = await createClient()
+    const serviceClient = createServiceClient()
+    const pdfBuffer = Buffer.from(await file.arrayBuffer())
+    const storagePath = `${IMPORT_DOCUMENT_PREFIX}/${Date.now()}-${buildSafeSlug(sourceLabel, 'catalog')}.pdf`
+
+    const uploadResult = await serviceClient.storage
+        .from(IMPORT_DOCUMENT_BUCKET)
+        .upload(storagePath, pdfBuffer, {
+            contentType: file.type || 'application/pdf',
+            upsert: false,
+        })
+
+    if (uploadResult.error) {
+        return {
+            success: false,
+            error: uploadResult.error.message,
+            batchId: null,
+            itemsFound: 0,
+            renderedPages: [],
+            sourceLabel,
+            modelId: requestedModelId,
+        }
+    }
+
+    const { batchId, error: batchError } = await createStagingBatchRecord({
+        sourceType: 'pdf',
+        sourceLabel,
+        sourceStoragePath: storagePath,
+        defaultLineType,
+    })
+
+    if (batchError || !batchId) {
+        return {
+            success: false,
+            error: batchError || 'Failed to create PDF import batch',
+            batchId: null,
+            itemsFound: 0,
+            renderedPages: [],
+            sourceLabel,
+            modelId: requestedModelId,
+        }
+    }
+
+    const ai = getGeminiClient()
+    let uploadedGeminiFileName: string | undefined
+
+    try {
+        await supabase
+            .from('staging_imports')
+            .update({
+                status: 'scanning',
+                current_category: 'Parsing PDF catalog...',
+                items_scraped: 0,
+                items_total: 0,
+            })
+            .eq('id', batchId)
+
+        const geminiFile = await ai.files.upload({
+            file: new Blob([pdfBuffer], { type: file.type || 'application/pdf' }),
+            config: {
+                mimeType: file.type || 'application/pdf',
+                displayName: sourceLabel,
+            },
+        })
+        uploadedGeminiFileName = geminiFile.name
+
+        const activeFile = await waitForGeminiFileActive(ai, geminiFile.name!)
+        const systemInstruction = await getSystemInstructionIfEnabled()
+
+        const prompt = `Extract every sellable jewelry variation from this PDF catalog.
+
+Return a JSON array only. Each object must use these keys:
+- style_code
+- name
+- description
+- material
+- color
+- weight
+- size
+- category_form
+- character_family
+- line_type
+- rrp
+- source_page
+
+Rules:
+- Use one row per sellable variant / style code.
+- source_page must be the 1-based PDF page number where the style appears.
+- category_form should be the closest physical form such as Earrings, Rings, or Brooch.
+- If the PDF clearly indicates a collaboration line, set line_type to Collaboration. Otherwise default to ${defaultLineType}.
+- If character_family is explicit or strongly implied, use names like Orchid, Daffodil, Botanic Elegy, Oceanspine, Sea Passiflora.
+- Use null for missing values and never invent pricing or SKU data.
+- rrp should be numeric when possible, without currency symbols.`
+
+        const response = await ai.models.generateContent({
+            model: requestedModelId,
+            contents: [
+                { text: prompt },
+                createPartFromUri(activeFile.uri!, activeFile.mimeType || 'application/pdf'),
+            ],
+            config: {
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+                ...(systemInstruction && { systemInstruction }),
+            },
+        })
+
+        const parsedPayload = extractJsonPayload<ParsedPdfCatalogItem[] | { items?: ParsedPdfCatalogItem[] }>(response.text || '[]')
+        const parsedItems = Array.isArray(parsedPayload) ? parsedPayload : (parsedPayload.items || [])
+
+        if (!parsedItems.length) {
+            await supabase
+                .from('staging_imports')
+                .update({
+                    status: 'failed',
+                    current_category: 'No items extracted from PDF',
+                })
+                .eq('id', batchId)
+
+            return {
+                success: false,
+                error: 'No items extracted from PDF catalog',
+                batchId,
+                itemsFound: 0,
+                renderedPages: [],
+                sourceLabel,
+                modelId: requestedModelId,
+            }
+        }
+
+        const { data: categories, error: categoriesError } = await supabase
+            .from('categories')
+            .select('id, name')
+            .order('name')
+
+        if (categoriesError) {
+            throw new Error(categoriesError.message)
+        }
+
+        const renderedPages = new Set<number>()
+        let insertedCount = 0
+
+        for (const rawItem of parsedItems) {
+            const normalizedItem = normalizePdfCatalogItem(rawItem, defaultLineType)
+            const uniqueSku = await ensureUniqueSku(normalizedItem.sku, supabase)
+
+            const { error: insertError } = await supabase
+                .from('staging_items')
+                .insert({
+                    import_batch_id: batchId,
+                    name: normalizedItem.name,
+                    description: normalizedItem.description,
+                    rental_price: normalizedItem.rental_price,
+                    replacement_cost: normalizedItem.replacement_cost,
+                    sku: uniqueSku,
+                    material: normalizedItem.material,
+                    color: normalizedItem.color,
+                    weight: normalizedItem.weight,
+                    image_urls: [],
+                    source_url: null,
+                    category_id: resolveCategoryId(normalizedItem.categoryGuess, categories || []),
+                    collection_id: null,
+                    line_type: normalizedItem.line_type,
+                    character_family: normalizedItem.character_family,
+                    source_page: normalizedItem.source_page,
+                    specs: normalizedItem.specs || {},
+                    review_notes: normalizedItem.source_page
+                        ? null
+                        : 'No source page detected during PDF extraction. Review before import.',
+                    status: 'pending',
+                    needs_enrichment: false,
+                })
+
+            if (insertError) {
+                throw new Error(insertError.message)
+            }
+
+            if (normalizedItem.source_page) {
+                renderedPages.add(normalizedItem.source_page)
+            }
+            insertedCount += 1
+        }
+
+        await supabase
+            .from('staging_imports')
+            .update({
+                status: 'completed',
+                items_scraped: insertedCount,
+                items_total: insertedCount,
+                current_category: 'PDF parsed',
+            })
+            .eq('id', batchId)
+
+        revalidatePath('/admin/items')
+
+        return {
+            success: true,
+            error: null,
+            batchId,
+            itemsFound: insertedCount,
+            renderedPages: Array.from(renderedPages).sort((a, b) => a - b),
+            sourceLabel,
+            modelId: requestedModelId,
+        }
+    } catch (error) {
+        await supabase
+            .from('staging_imports')
+            .update({
+                status: 'failed',
+                current_category: error instanceof Error ? error.message.slice(0, 120) : 'PDF import failed',
+            })
+            .eq('id', batchId)
+
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'PDF import failed',
+            batchId,
+            itemsFound: 0,
+            renderedPages: [],
+            sourceLabel,
+            modelId: requestedModelId,
+        }
+    } finally {
+        if (uploadedGeminiFileName) {
+            await ai.files.delete({ name: uploadedGeminiFileName }).catch(() => undefined)
+        }
+    }
+}
+
+export async function matchPdfCatalogPageImagesAction(input: {
+    batchId: string
+    pageNumber: number
+    pageImageDataUrl: string
+    modelId?: string | null
+}): Promise<PdfPageImageMatchResult> {
+    await requireAdmin()
+
+    const supabase = await createClient()
+    const serviceClient = createServiceClient()
+    const batch = await getBatchSummary(input.batchId, supabase)
+    const { data: items, error } = await supabase
+        .from('staging_items')
+        .select('id, name, sku, character_family, review_notes')
+        .eq('import_batch_id', input.batchId)
+        .eq('status', 'pending')
+        .eq('source_page', input.pageNumber)
+        .order('created_at', { ascending: true })
+
+    if (error) {
+        return { success: false, error: error.message, matchedCount: 0, totalItems: 0 }
+    }
+
+    if (!items || items.length === 0) {
+        return { success: true, error: null, matchedCount: 0, totalItems: 0 }
+    }
+
+    try {
+        const { buffer, mimeType } = parseDataUrl(input.pageImageDataUrl)
+        const imageMeta = await sharp(buffer).metadata()
+        const width = imageMeta.width || 0
+        const height = imageMeta.height || 0
+
+        if (!width || !height) {
+            throw new Error('Failed to read rendered PDF page image')
+        }
+
+        const modelId = input.modelId?.trim() || DEFAULT_GEMINI_MODEL
+        const systemInstruction = await getSystemInstructionIfEnabled()
+        const ai = getGeminiClient()
+        const prompt = `Match catalog items to product photos on a single PDF page image.
+
+Return a JSON array only. Each object must use:
+- itemId
+- found
+- confidence
+- box_2d
+- note
+
+Rules:
+- box_2d must be [ymin, xmin, ymax, xmax] normalized from 0 to 1000.
+- Return one best product-photo box per item.
+- If an item is not clearly visible as a standalone product photo, set found to false and note why.
+- Confidence must be a number between 0 and 1.
+
+Batch: ${getBatchSourceLabel(batch)}
+Targets:
+${items.map(item => `- ${item.id}: ${item.sku || item.name} (${item.character_family})`).join('\n')}`
+
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents: [
+                { text: prompt },
+                {
+                    inlineData: {
+                        mimeType,
+                        data: buffer.toString('base64'),
+                    },
+                },
+            ],
+            config: {
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+                ...(systemInstruction && { systemInstruction }),
+            },
+        })
+
+        const parsedMatches = extractJsonPayload<PdfPageMatch[] | { matches?: PdfPageMatch[] }>(response.text || '[]')
+        const matches = Array.isArray(parsedMatches) ? parsedMatches : (parsedMatches.matches || [])
+        const matchesById = new Map(matches.map(match => [match.itemId, match]))
+
+        let matchedCount = 0
+
+        for (const item of items) {
+            const match = matchesById.get(item.id)
+            const confidence = typeof match?.confidence === 'number' ? match.confidence : 0
+            const box = match?.box_2d
+
+            if (!match?.found || !box || box.length !== 4 || confidence < 0.55) {
+                await supabase
+                    .from('staging_items')
+                    .update({
+                        review_notes: appendReviewNote(
+                            item.review_notes,
+                            match?.note?.trim() || `No confident image match found on page ${input.pageNumber}.`
+                        ),
+                    })
+                    .eq('id', item.id)
+                continue
+            }
+
+            const [yMinRaw, xMinRaw, yMaxRaw, xMaxRaw] = box
+            const padding = 0.04
+            const xMin = clampBoxCoordinate(((xMinRaw / 1000) - padding) * width, width)
+            const xMax = clampBoxCoordinate(((xMaxRaw / 1000) + padding) * width, width)
+            const yMin = clampBoxCoordinate(((yMinRaw / 1000) - padding) * height, height)
+            const yMax = clampBoxCoordinate(((yMaxRaw / 1000) + padding) * height, height)
+            const cropWidth = Math.max(1, Math.round(xMax - xMin))
+            const cropHeight = Math.max(1, Math.round(yMax - yMin))
+
+            if (cropWidth < 24 || cropHeight < 24) {
+                await supabase
+                    .from('staging_items')
+                    .update({
+                        review_notes: appendReviewNote(
+                            item.review_notes,
+                            `Detected image box was too small to crop on page ${input.pageNumber}.`
+                        ),
+                    })
+                    .eq('id', item.id)
+                continue
+            }
+
+            const croppedBuffer = await sharp(buffer)
+                .extract({
+                    left: Math.round(xMin),
+                    top: Math.round(yMin),
+                    width: cropWidth,
+                    height: cropHeight,
+                })
+                .jpeg({ quality: 90 })
+                .toBuffer()
+
+            const previewPath = `${IMPORT_PREVIEW_PREFIX}/${input.batchId}/page-${input.pageNumber}/${buildSafeSlug(item.sku || item.name, 'preview')}-${item.id.slice(0, 8)}.jpg`
+            const uploadResult = await serviceClient.storage
+                .from('rental_items')
+                .upload(previewPath, croppedBuffer, {
+                    contentType: 'image/jpeg',
+                    upsert: true,
+                })
+
+            if (uploadResult.error) {
+                await supabase
+                    .from('staging_items')
+                    .update({
+                        review_notes: appendReviewNote(
+                            item.review_notes,
+                            `Detected image but failed to store preview on page ${input.pageNumber}.`
+                        ),
+                    })
+                    .eq('id', item.id)
+                continue
+            }
+
+            const { data: publicUrl } = serviceClient.storage
+                .from('rental_items')
+                .getPublicUrl(uploadResult.data.path)
+
+            await supabase
+                .from('staging_items')
+                .update({
+                    image_urls: [publicUrl.publicUrl],
+                    review_notes: match.note?.trim()
+                        ? appendReviewNote(item.review_notes, match.note.trim())
+                        : item.review_notes,
+                })
+                .eq('id', item.id)
+
+            matchedCount += 1
+        }
+
+        revalidatePath('/admin/items')
+
+        return {
+            success: true,
+            error: null,
+            matchedCount,
+            totalItems: items.length,
+        }
+    } catch (actionError) {
+        return {
+            success: false,
+            error: actionError instanceof Error ? actionError.message : 'Failed to match PDF page images',
+            matchedCount: 0,
+            totalItems: items.length,
+        }
+    }
 }
 
 // ============================================================
@@ -2546,7 +3472,7 @@ export async function batchDeepEnrichAction(
     console.log(`   📦 Grouped into ${urlGroups.size} unique product URLs`)
 
     let processedCount = 0
-    for (const [url, groupItems] of urlGroups) {
+    for (const [, groupItems] of urlGroups) {
         // Only enrich the first item in each group (parent)
         const parentItem = groupItems[0]
 

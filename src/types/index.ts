@@ -1,10 +1,18 @@
 import { Database } from './database.types'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
 
 export * from './database.types'
+
+export const ITEM_LINE_TYPES = ['Mainline', 'Collaboration', 'Archive'] as const
+export type ItemLineType = typeof ITEM_LINE_TYPES[number]
+export const IMPORT_SOURCE_TYPES = ['url', 'pdf'] as const
+export type ImportSourceType = typeof IMPORT_SOURCE_TYPES[number]
 
 // Table Row types
 export type Item = Omit<Database['public']['Tables']['items']['Row'], 'status'> & {
     status: 'active' | 'maintenance' | 'retired'
+    line_type: ItemLineType
+    character_family: string
     category_id: string | null
     collection_id: string | null
     material: string | null
@@ -33,11 +41,20 @@ export type BillingProfile = Database['public']['Tables']['billing_profiles']['R
 export type BillingProfileInsert = Database['public']['Tables']['billing_profiles']['Insert']
 export type BillingProfileUpdate = Database['public']['Tables']['billing_profiles']['Update']
 
-export type StagingImport = Database['public']['Tables']['staging_imports']['Row']
+export type StagingImport = Database['public']['Tables']['staging_imports']['Row'] & {
+    source_type: ImportSourceType
+    source_url: string | null
+    source_label: string | null
+    source_storage_path: string | null
+    default_line_type: ItemLineType
+}
 export type StagingImportInsert = Database['public']['Tables']['staging_imports']['Insert']
 export type StagingImportUpdate = Database['public']['Tables']['staging_imports']['Update']
 
-export type StagingItem = Database['public']['Tables']['staging_items']['Row']
+export type StagingItem = Database['public']['Tables']['staging_items']['Row'] & {
+    line_type: ItemLineType
+    character_family: string
+}
 export type StagingItemInsert = Database['public']['Tables']['staging_items']['Insert']
 export type StagingItemUpdate = Database['public']['Tables']['staging_items']['Update']
 
@@ -88,11 +105,10 @@ export const ITEM_STATUS_OPTIONS = [
 ] as const
 
 export const RESERVATION_STATUS_OPTIONS = [
-    { value: 'pending', label: 'Pending' },
-    { value: 'confirmed', label: 'Confirmed' },
-    { value: 'active', label: 'Active' },
-    { value: 'returned', label: 'Returned' },
-    { value: 'cancelled', label: 'Cancelled' },
+    { value: RESERVATION_STATUSES.PENDING_REQUEST, label: 'Pending Request' },
+    { value: RESERVATION_STATUSES.UPCOMING, label: 'Upcoming' },
+    { value: RESERVATION_STATUSES.ONGOING, label: 'Ongoing' },
+    { value: RESERVATION_STATUSES.PAST_LOAN, label: 'Past-loan' },
 ] as const
 
 // Supported Gemini Models
@@ -101,4 +117,3 @@ export const GEMINI_MODELS = [
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', type: 'flash' },
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Smarter)', type: 'pro' },
 ]
-

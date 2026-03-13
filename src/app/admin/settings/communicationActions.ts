@@ -197,6 +197,8 @@ export async function sendTestEmail(params: SendTestEmailParams) {
                         sku: item.sku,
                         rentalPrice: item.price,
                         days: testData.totalDays,
+                        lineTotal: item.price * testData.totalDays,
+                        description: undefined,
                         startDate: testData.startDate,
                         endDate: testData.endDate,
                         imageBase64,
@@ -216,6 +218,11 @@ export async function sendTestEmail(params: SendTestEmailParams) {
                 bankInfo: billingProfile?.bank_info,
                 footerText: params.invoiceFooter || settings?.invoice_footer_text || 'Thank you for your business!',
                 notes: params.invoiceNotes || settings?.invoice_notes_default || undefined,
+                subtotalAmount: testData.totalAmount,
+                discountPercentage: 0,
+                discountAmount: 0,
+                depositAmount: 0,
+                totalDue: testData.totalAmount,
             })
 
             // Send test email with PDF attachment
@@ -375,4 +382,3 @@ function generateShippingEmailHtml(body: string, footer: string, attachmentsCoun
 </html>
     `
 }
-

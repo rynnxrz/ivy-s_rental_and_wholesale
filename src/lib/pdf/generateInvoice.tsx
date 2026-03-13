@@ -1,10 +1,10 @@
 import React from 'react';
 import { renderToBuffer } from '@react-pdf/renderer';
-import { InvoicePdf, InvoiceItem, InvoiceProps } from './InvoicePdf';
+import { InvoicePdf, InvoiceData, InvoiceItem } from './InvoicePdf';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Re-export types for convenience
-export type { InvoiceItem, InvoiceProps };
+export type { InvoiceData, InvoiceItem };
 
 interface GenerateInvoiceParams {
     invoiceId: string;
@@ -19,6 +19,11 @@ interface GenerateInvoiceParams {
     bankInfo?: string;
     footerText?: string;
     notes?: string;
+    subtotalAmount: number;
+    discountPercentage: number;
+    discountAmount: number;
+    depositAmount: number;
+    totalDue: number;
 }
 
 /**
@@ -119,8 +124,7 @@ export async function fetchImageAsBase64(
  * Supports multiple items with thumbnails.
  */
 export async function generateInvoicePdf(params: GenerateInvoiceParams): Promise<Buffer> {
-
-    return await renderToBuffer(<InvoicePdf {...params} />);
+    return await renderToBuffer(<InvoicePdf data={params} />);
 }
 
 // Legacy single-item interface for backward compatibility
@@ -143,6 +147,11 @@ interface LegacyGenerateInvoiceParams {
     footerText?: string;
     notes?: string;
     itemImageUrl?: string;
+    subtotalAmount?: number;
+    discountPercentage?: number;
+    discountAmount?: number;
+    depositAmount?: number;
+    totalDue?: number;
 }
 
 /**
@@ -155,6 +164,8 @@ export async function generateInvoicePdfLegacy(params: LegacyGenerateInvoicePara
         sku: params.sku,
         rentalPrice: params.rentalPrice,
         days: params.days,
+        lineTotal: params.rentalPrice * params.days,
+        description: '',
         startDate: params.startDate,
         endDate: params.endDate,
         imageBase64: params.itemImageUrl, // In legacy, this was a URL, but should work as base64 too
@@ -173,5 +184,10 @@ export async function generateInvoicePdfLegacy(params: LegacyGenerateInvoicePara
         bankInfo: params.bankInfo,
         footerText: params.footerText,
         notes: params.notes,
+        subtotalAmount: params.subtotalAmount ?? (params.rentalPrice * params.days),
+        discountPercentage: params.discountPercentage ?? 0,
+        discountAmount: params.discountAmount ?? 0,
+        depositAmount: params.depositAmount ?? 0,
+        totalDue: params.totalDue ?? (params.rentalPrice * params.days),
     });
 }

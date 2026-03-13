@@ -2,6 +2,12 @@
 
 import { createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import {
+    buildReservationContractMetadata,
+    isMissingReservationContractColumnsError,
+    stripReservationContractMetadata,
+} from '@/lib/reservations/contract'
 
 // Public email domains to ignore for organization detection
 const PUBLIC_EMAIL_DOMAINS = new Set([
@@ -28,6 +34,12 @@ interface GuestBookingData {
     company_name?: string
     start_date: string
     end_date: string
+    event_location?: string
+    country?: string
+    city_region?: string
+    address_line1?: string
+    address_line2?: string
+    postcode?: string
     access_password?: string
 }
 
@@ -118,15 +130,45 @@ export async function createGuestBooking(data: GuestBookingData) {
     }
 
     // 4. Create reservation
-    const { error: reservationError } = await supabase
+    const reservationPayload = {
+        item_id: data.item_id,
+        renter_id: profileId,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        status: RESERVATION_STATUSES.PENDING_REQUEST,
+        country: data.country || null,
+        city_region: data.city_region || null,
+        address_line1: data.address_line1 || null,
+        address_line2: data.address_line2 || null,
+        postcode: data.postcode || null,
+        ...buildReservationContractMetadata({
+            startDate: data.start_date,
+            endDate: data.end_date,
+            eventLocation: data.event_location,
+            addressLine1: data.address_line1 || null,
+            addressLine2: data.address_line2 || null,
+            cityRegion: data.city_region || null,
+            postcode: data.postcode || null,
+            country: data.country || null,
+        }),
+    }
+
+    let { error: reservationError } = await supabase
         .from('reservations')
-        .insert({
-            item_id: data.item_id,
-            renter_id: profileId,
-            start_date: data.start_date,
-            end_date: data.end_date,
-            status: 'pending'
-        })
+        .insert(reservationPayload)
+
+    if (reservationError && isMissingReservationContractColumnsError(reservationError)) {
+        console.warn(
+            '[Reservations] Missing contract metadata columns. Falling back to legacy guest booking insert.',
+            reservationError
+        )
+
+        const fallback = await supabase
+            .from('reservations')
+            .insert(stripReservationContractMetadata(reservationPayload))
+
+        reservationError = fallback.error ?? null
+    }
 
     if (reservationError) {
         console.error('Reservation creation failed:', reservationError)
