@@ -40,8 +40,8 @@ export default async function CatalogPage() {
     try {
         const [
             { data: items, error: itemsError },
-            { data: cats, error: catsError },
-            { data: cols, error: colsError }
+            { data: cats },
+            { data: cols }
         ] = await getCachedCatalogData()
 
         if (itemsError) throw itemsError

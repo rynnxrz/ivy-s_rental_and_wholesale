@@ -22,6 +22,7 @@ import { Upload, X, Plus, CheckCircle2, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { createItem, updateItem, uploadItemImage, createCategory, createCollection } from '@/actions/items'
 import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
+import { OFFICIAL_CHARACTERS } from '@/lib/items/catalog-rules'
 import { toast } from 'sonner'
 
 const itemSchema = z.object({
@@ -29,7 +30,7 @@ const itemSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     description: z.string().optional(),
     line_type: z.enum(['Mainline', 'Collaboration', 'Archive']),
-    character_family: z.string().trim().min(1, 'Character / Family is required'),
+    character_family: z.string().trim().min(1, 'Character is required'),
     category_id: z.string().optional(),
     collection_id: z.string().optional(),
     material: z.string().optional(),
@@ -41,7 +42,7 @@ const itemSchema = z.object({
     status: z.enum(['active', 'maintenance', 'retired']),
 })
 
-type ItemFormData = z.infer<typeof itemSchema>
+export type ItemFormData = z.infer<typeof itemSchema>
 
 interface Category {
     id: string
@@ -96,6 +97,10 @@ export const ItemForm = ({
     // Local state for categories/collections to support immediate UI updates after quick add
     const [categories, setCategories] = useState(initialCategories)
     const [collections, setCollections] = useState(initialCollections)
+    const initialCharacterFamily = initialData?.character_family ?? item?.character_family ?? ''
+    const defaultCharacterFamily = OFFICIAL_CHARACTERS.includes(initialCharacterFamily as typeof OFFICIAL_CHARACTERS[number])
+        ? initialCharacterFamily
+        : ''
 
     const {
         register,
@@ -110,7 +115,7 @@ export const ItemForm = ({
             name: initialData?.name ?? item?.name ?? '',
             description: initialData?.description ?? item?.description ?? '',
             line_type: initialData?.line_type ?? item?.line_type ?? 'Mainline',
-            character_family: initialData?.character_family ?? item?.character_family ?? (isStaging ? 'Uncategorized' : ''),
+            character_family: defaultCharacterFamily,
             category_id: initialData?.category_id ?? item?.category_id ?? '',
             collection_id: initialData?.collection_id ?? item?.collection_id ?? '',
             material: initialData?.material ?? item?.material ?? '',
@@ -135,30 +140,30 @@ export const ItemForm = ({
     }
 
     const handleQuickAddCategory = async () => {
-        const name = prompt("Enter new category name:")
+        const name = prompt("Enter new jewelry type name:")
         if (!name) return
 
         const result = await createCategory(name)
         if (result.success && result.data) {
             setCategories([...categories, result.data])
             setValue('category_id', result.data.id)
-            toast.success(`Category "${name}" created`)
+            toast.success(`Jewelry type "${name}" created`)
         } else {
-            toast.error("Failed to create category")
+            toast.error("Failed to create jewelry type")
         }
     }
 
     const handleQuickAddCollection = async () => {
-        const name = prompt("Enter new collection name:")
+        const name = prompt("Enter new website collection name:")
         if (!name) return
 
         const result = await createCollection(name)
         if (result.success && result.data) {
             setCollections([...collections, result.data])
             setValue('collection_id', result.data.id)
-            toast.success(`Collection "${name}" created`)
+            toast.success(`Website collection "${name}" created`)
         } else {
-            toast.error("Failed to create collection")
+            toast.error("Failed to create website collection")
         }
     }
 
@@ -380,29 +385,40 @@ export const ItemForm = ({
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="character_family">Character / Family *</Label>
-                                <Input
-                                    id="character_family"
-                                    {...register('character_family')}
-                                    placeholder="e.g., Orchid, Daffodil"
-                                />
+                                <Label htmlFor="character_family">Character *</Label>
+                                <Select
+                                    value={OFFICIAL_CHARACTERS.includes(watch('character_family') as typeof OFFICIAL_CHARACTERS[number]) ? watch('character_family') : 'none'}
+                                    onValueChange={(value) => setValue('character_family', value === 'none' ? '' : value)}
+                                >
+                                    <SelectTrigger id="character_family">
+                                        <SelectValue placeholder="Choose Character" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Choose Character</SelectItem>
+                                        {OFFICIAL_CHARACTERS.map((character) => (
+                                            <SelectItem key={character} value={character}>
+                                                {character}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 {errors.character_family && (
                                     <p className="text-sm text-red-500">{errors.character_family.message}</p>
                                 )}
                             </div>
                         </div>
 
-                        {/* Collections & Categories */}
+                        {/* Website Collections & Jewelry Types */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="category_id">Category</Label>
+                                <Label htmlFor="category_id">Jewelry Type</Label>
                                 <div className="flex gap-2">
                                     <Select
                                         value={watch('category_id') || "none"}
                                         onValueChange={(value) => setValue('category_id', value === "none" ? "" : value)}
                                     >
                                         <SelectTrigger className="flex-1">
-                                            <SelectValue placeholder="Select Category" />
+                                            <SelectValue placeholder="Select Jewelry Type" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">None</SelectItem>
@@ -411,21 +427,21 @@ export const ItemForm = ({
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCategory} title="Quick Add Category">
+                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCategory} title="Quick Add Jewelry Type">
                                         <Plus className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="collection_id">Collection</Label>
+                                <Label htmlFor="collection_id">Website Collection</Label>
                                 <div className="flex gap-2">
                                     <Select
                                         value={watch('collection_id') || "none"}
                                         onValueChange={(value) => setValue('collection_id', value === "none" ? "" : value)}
                                     >
                                         <SelectTrigger className="flex-1">
-                                            <SelectValue placeholder="Select Collection" />
+                                            <SelectValue placeholder="Select Website Collection" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">None</SelectItem>
@@ -434,7 +450,7 @@ export const ItemForm = ({
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCollection} title="Quick Add Collection">
+                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCollection} title="Quick Add Website Collection">
                                         <Plus className="h-4 w-4" />
                                     </Button>
                                 </div>

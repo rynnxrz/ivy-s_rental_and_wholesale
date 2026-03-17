@@ -11,8 +11,9 @@ import {
     computeInvoicePricing,
     computeRentalChargeFromRetail,
 } from '@/lib/invoice/pricing'
-import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import { RESERVATION_STATUSES, isArchivedReservation } from '@/lib/constants/reservation-status'
 import { buildInvoicePdfBuffer } from '@/lib/invoice/document'
+import { buildPublicPaymentUrl } from '@/lib/public-url'
 
 // ============================================================
 // Invoice Types (until types are regenerated from Supabase)
@@ -84,6 +85,43 @@ interface ReservationPricingOverrides {
     depositAmountOverride: number | null
 }
 
+async function resolveActiveReservationIdsForInvoiceGroup(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    reservationId: string,
+    groupId?: string | null
+) {
+    let reservationRows: Array<{ id: string; status: string | null; admin_notes: string | null }> = []
+
+    if (groupId) {
+        const { data, error } = await supabase
+            .from('reservations')
+            .select('id, status, admin_notes')
+            .eq('group_id', groupId)
+
+        if (error) {
+            return { data: null as string[] | null, error: error.message }
+        }
+
+        reservationRows = data ?? []
+    } else {
+        const { data, error } = await supabase
+            .from('reservations')
+            .select('id, status, admin_notes')
+            .eq('id', reservationId)
+
+        if (error) {
+            return { data: null as string[] | null, error: error.message }
+        }
+
+        reservationRows = data ?? []
+    }
+
+    return {
+        data: reservationRows.filter((row) => !isArchivedReservation(row)).map((row) => row.id),
+        error: null as string | null,
+    }
+}
+
 function sanitizeOptionalNumber(value: unknown): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) {
         return value
@@ -109,20 +147,6 @@ function resolveReservationPricingOverrides(reservation: Record<string, unknown>
         discountPercentage: discountFromReservation,
         depositAmountOverride: depositFromReservation,
     }
-}
-
-function buildPaymentUrl(reservationId: string, invoiceId?: string): string | undefined {
-    const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-
-    if (!appUrl) return undefined
-    const baseUrl = appUrl.replace(/\/$/, '')
-    if (invoiceId) {
-        return `${baseUrl}/payment-confirmation/${invoiceId}`
-    }
-    return `${baseUrl}/payment/${reservationId}`
 }
 
 function isMissingReservationPricingColumnsError(error: { message?: string | null } | null | undefined) {
@@ -403,6 +427,7 @@ export async function generateInvoiceFromReservation(
     pricingOverrides?: {
         discountPercentage?: number
         depositAmountOverride?: number | null
+        reservationIds?: string[]
     }
 ) {
     await requireAdmin()
@@ -422,6 +447,7 @@ export async function generateInvoiceFromReservation(
     // Get all reservations in the same group
     const primaryReservation = reservations[0]
     const groupId = primaryReservation.group_id
+    const requestedReservationIds = Array.from(new Set(pricingOverrides?.reservationIds ?? [reservationId]))
 
     let allReservations: Array<Record<string, unknown>> = [primaryReservation as Record<string, unknown>]
     if (groupId) {
@@ -439,6 +465,23 @@ export async function generateInvoiceFromReservation(
         if (groupRes) {
             allReservations = groupRes as unknown as Array<Record<string, unknown>>
         }
+    }
+
+    const allReservationIdSet = new Set(allReservations.map((reservation) => String(reservation.id)))
+    const hasInvalidReservationId = requestedReservationIds.some((requestedId) => !allReservationIdSet.has(requestedId))
+    if (hasInvalidReservationId) {
+        return { success: false, error: 'One or more selected items are no longer part of this request', data: null }
+    }
+
+    const reservationOrder = new Map(requestedReservationIds.map((requestedId, index) => [requestedId, index]))
+    const filteredReservations = [...allReservations]
+        .filter((reservation) => requestedReservationIds.includes(String(reservation.id)))
+        .sort((left, right) => {
+            return (reservationOrder.get(String(left.id)) ?? 0) - (reservationOrder.get(String(right.id)) ?? 0)
+        })
+
+    if (filteredReservations.length === 0) {
+        return { success: false, error: 'Keep at least one item in the invoice before generating it', data: null }
     }
 
     // Get profile from primary reservation
@@ -469,7 +512,7 @@ export async function generateInvoiceFromReservation(
     let totalAmount = 0
     let replacementCostTotal = 0
 
-    for (const res of allReservations) {
+    for (const res of filteredReservations) {
         const itemRecord = res.items as {
             id: string
             name: string
@@ -616,18 +659,17 @@ export async function markInvoiceAsPaid(invoiceId: string) {
             .eq('id', invoice.reservation_id)
             .single()
 
-        if (reservation?.group_id) {
-            // Update all reservations in the group
+        const activeReservationIdsResult = await resolveActiveReservationIdsForInvoiceGroup(
+            supabase,
+            invoice.reservation_id,
+            reservation?.group_id
+        )
+
+        if (activeReservationIdsResult.data?.length) {
             await supabase
                 .from('reservations')
                 .update({ status: RESERVATION_STATUSES.UPCOMING })
-                .eq('group_id', reservation.group_id)
-        } else {
-            // Update single reservation
-            await supabase
-                .from('reservations')
-                .update({ status: RESERVATION_STATUSES.UPCOMING })
-                .eq('id', invoice.reservation_id)
+                .in('id', activeReservationIdsResult.data)
         }
 
         revalidatePath('/admin/reservations')
@@ -930,7 +972,10 @@ export async function sendInvoiceEmail(reservationId: string) {
     const start = new Date(reservation.start_date)
     const end = new Date(reservation.end_date)
     const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    const paymentUrl = buildPaymentUrl(reservationId, invoice.id)
+    const paymentUrl = buildPublicPaymentUrl({
+        reservationId,
+        invoiceId: invoice.id,
+    })
     const recipientEmail = invoice.customer_email || profile?.email
 
     if (!recipientEmail) {

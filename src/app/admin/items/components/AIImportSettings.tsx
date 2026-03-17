@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch'
 import { Loader2, RotateCcw, Copy, Check, Send, Trash2, MessageSquare, Bot, User, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { AvailableModel, getDefaultPromptsAction, testAIChatAction, getModelThinkingLevelsAction, testSpeedScanAction } from '@/actions/items'
-import { saveAISettingsAction, restoreDefaultAISettingsAction } from '@/app/admin/settings/actions'
+import { saveAISettingsAction } from '@/app/admin/settings/actions'
 import { readStreamableValue } from '@/lib/ai-stream'
 
 interface AIImportSettingsProps {
@@ -626,7 +626,7 @@ export function AIImportSettings({
                                             )}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Limits the maximum tokens in the AI response. Leave empty to use the model's default max.
+                                            Limits the maximum tokens in the AI response. Leave empty to use the model&apos;s default max.
                                         </p>
                                     </div>
 

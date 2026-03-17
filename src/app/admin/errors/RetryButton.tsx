@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
 import { retrySystemError } from './actions'
@@ -25,7 +25,7 @@ export function RetryButton({ errorId, retryCount, resolved }: RetryButtonProps)
                     } else {
                         toast.success(result.message)
                     }
-                } catch (e) {
+                } catch {
                     toast.error('Failed to retry action')
                 }
             })()

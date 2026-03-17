@@ -21,7 +21,9 @@ import { FileCheck } from 'lucide-react'
 import { ImportRequestButton } from './ImportRequestButton'
 import { RealtimeReservationsListener } from './RealtimeReservationsListener'
 import {
+    ARCHIVED_STATUS,
     RESERVATION_STATUSES,
+    isArchivedReservation,
     normalizeLegacyReservationStatus,
 } from '@/lib/constants/reservation-status'
 import type { BillingProfile } from '@/types'
@@ -39,17 +41,6 @@ const STATUS_FILTERS = {
     ongoing: RESERVATION_STATUSES.ONGOING,
     past_loan: RESERVATION_STATUSES.PAST_LOAN,
 } as const
-
-const ARCHIVED_STATUS = 'archived'
-const ARCHIVED_NOTE_PREFIX = '[ARCHIVED]'
-
-function hasArchivedMarker(adminNotes: string | null | undefined) {
-    return typeof adminNotes === 'string' && adminNotes.trim().startsWith(ARCHIVED_NOTE_PREFIX)
-}
-
-function isArchivedReservation(row: { status?: string | null; admin_notes?: string | null }) {
-    return row.status === ARCHIVED_STATUS || hasArchivedMarker(row.admin_notes)
-}
 
 export default async function AdminReservationsPage({ searchParams }: PageProps) {
     const resolvedSearchParams = await searchParams
@@ -104,14 +95,17 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
     const filteredReservations = baseReservations.filter((reservation) => {
         if (customerEmail) return true
 
+        const reservationIsArchived = isArchivedReservation(reservation)
+
         if (filter === 'archived') {
-            return isArchivedReservation(reservation)
+            return reservationIsArchived
         }
+
+        if (reservationIsArchived) return false
 
         if (filter === 'past_loan') {
             return (
                 normalizeLegacyReservationStatus(reservation.status) === RESERVATION_STATUSES.PAST_LOAN
-                && !isArchivedReservation(reservation)
             )
         }
 
@@ -227,6 +221,8 @@ type ReservationGroup = {
     admin_notes?: string | null
     start_date: string
     end_date: string
+    original_start_date?: string | null
+    original_end_date?: string | null
     created_at: string
     group_id: string | null
     event_location?: string | null
@@ -276,21 +272,22 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
 
                     // Specific calculation per item to be accurate
                     let groupTotal = 0
-                    const approveItems = group.map(r => {
-                        const s = new Date(r.start_date)
-                        const e = new Date(r.end_date)
-                        const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
-                        const retailPrice = r.items?.replacement_cost || r.items?.rental_price || 0
+                        const approveItems = group.map(r => {
+                            const s = new Date(r.start_date)
+                            const e = new Date(r.end_date)
+                            const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                            const retailPrice = r.items?.replacement_cost || r.items?.rental_price || 0
                         groupTotal += computeRentalChargeFromRetail({
                             retailPrice,
                             rentalDays: d,
-                        })
-                        return {
-                            name: r.items?.name || 'Unknown',
-                            retailPrice,
-                            days: d,
-                            imageUrl: r.items?.image_paths?.[0]
-                        }
+                            })
+                            return {
+                                reservationId: r.id,
+                                name: r.items?.name || 'Unknown',
+                                retailPrice,
+                                days: d,
+                                imageUrl: r.items?.image_paths?.[0]
+                            }
                     })
 
                     // Check if multiple items
@@ -403,6 +400,8 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                                             customerCompany={primary.profiles?.company_name}
                                             eventLocation={primary.event_location}
                                             billingProfiles={billingProfiles}
+                                            originalStartDate={primary.original_start_date || primary.start_date}
+                                            originalEndDate={primary.original_end_date || primary.end_date}
                                         />
                                     )}
                                     {status === RESERVATION_STATUSES.UPCOMING && (

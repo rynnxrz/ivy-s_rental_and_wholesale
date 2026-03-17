@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { AlertCircle, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 import Link from 'next/link'
 
 export function SystemStatusWidget() {

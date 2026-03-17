@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, XCircle, Send, Download, Pencil, Loader2 } from 'lucide-react'
+import { CheckCircle, XCircle, Send, Download, Loader2 } from 'lucide-react'
 import { markInvoiceAsPaid, updateInvoiceStatus, voidInvoice, downloadInvoicePdf } from '@/actions/invoice'
 
 type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'VOID' | 'OVERDUE'

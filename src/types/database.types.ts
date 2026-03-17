@@ -674,6 +674,54 @@ export type Database = {
         }
         Relationships: []
       }
+      staging_import_events: {
+        Row: {
+          created_at: string
+          id: string
+          import_batch_id: string
+          item_ref: string | null
+          level: string
+          message: string
+          payload: Json
+          step: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          import_batch_id: string
+          item_ref?: string | null
+          level?: string
+          message: string
+          payload?: Json
+          step: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          import_batch_id?: string
+          item_ref?: string | null
+          level?: string
+          message?: string
+          payload?: Json
+          step?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staging_import_events_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            isOneToOne: false
+            referencedRelation: "staging_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_import_events_item_ref_fkey"
+            columns: ["item_ref"]
+            isOneToOne: false
+            referencedRelation: "staging_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staging_items: {
         Row: {
           category_id: string | null
@@ -685,6 +733,7 @@ export type Database = {
           enriched_at: string | null
           id: string
           image_urls: string[] | null
+          import_metadata: Json
           import_batch_id: string | null
           is_variant: boolean | null
           line_type: string
@@ -713,6 +762,7 @@ export type Database = {
           enriched_at?: string | null
           id?: string
           image_urls?: string[] | null
+          import_metadata?: Json
           import_batch_id?: string | null
           is_variant?: boolean | null
           line_type?: string
@@ -741,6 +791,7 @@ export type Database = {
           enriched_at?: string | null
           id?: string
           image_urls?: string[] | null
+          import_metadata?: Json
           import_batch_id?: string | null
           is_variant?: boolean | null
           line_type?: string

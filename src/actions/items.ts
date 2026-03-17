@@ -2,17 +2,29 @@
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ItemInsert, ItemLineType, ItemUpdate } from '@/types'
+import type {
+    GuidedImportIssue,
+    GuidedImportQuestion,
+    GuidedImportRun,
+    GuidedImportSection,
+    ItemInsert,
+    ItemLineType,
+    ItemUpdate,
+    StagingImportEvent,
+} from '@/types'
 import { requireAdmin } from '@/lib/auth/guards'
 import {
-    createFamilySummary,
+    createCharacterSummary,
     inferCharacterFamilyFromText,
+    inferJewelryTypeFromText,
     inferLineTypeFromText,
     normalizeLineType,
-    resolveItemTaxonomy,
+    OFFICIAL_CHARACTERS,
+    resolveCatalogFields,
     sanitizeCharacterFamily,
-    UNCATEGORIZED_FAMILY,
-} from '@/lib/items/taxonomy'
+    UNCATEGORIZED_CHARACTER,
+} from '@/lib/items/catalog-rules'
+import { parsePdfCatalog } from '@/lib/pdf/catalog-parser'
 
 const slugify = (value: string, prefix: string) => {
     const base = value
@@ -25,7 +37,7 @@ const slugify = (value: string, prefix: string) => {
 }
 
 const normalizeItemPayload = (item: ItemInsert | ItemUpdate): ItemInsert | ItemUpdate => {
-    const { lineType, characterFamily } = resolveItemTaxonomy({
+    const { lineType, characterFamily } = resolveCatalogFields({
         name: typeof item.name === 'string' ? item.name : undefined,
         description: typeof item.description === 'string' ? item.description : undefined,
         lineType: typeof item.line_type === 'string' ? item.line_type : undefined,
@@ -190,12 +202,12 @@ export async function runItemTaxonomyBackfill() {
             error: null,
             updated: 0,
             total: 0,
-            summary: createFamilySummary(),
+            summary: createCharacterSummary(),
         }
     }
 
     let updated = 0
-    const summary = createFamilySummary()
+    const summary = createCharacterSummary()
 
     for (const item of items) {
         const inferredLineType = inferLineTypeFromText(item.name || '', item.line_type)
@@ -207,8 +219,8 @@ export async function runItemTaxonomyBackfill() {
         if (summary[inferredCharacter] !== undefined) {
             summary[inferredCharacter] += 1
         } else {
-            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_FAMILY)] ??= 0
-            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_FAMILY)] += 1
+            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_CHARACTER)] ??= 0
+            summary[sanitizeCharacterFamily(inferredCharacter, UNCATEGORIZED_CHARACTER)] += 1
         }
 
         const hasLineChanged = item.line_type !== inferredLineType
@@ -313,7 +325,7 @@ export async function createCollection(name: string) {
 // AI Import Actions
 // ============================================================
 
-import { createPartFromUri, FileState, GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
 import { createStreamableValue } from '@/lib/ai-stream'
 import { DEFAULT_GEMINI_MODEL } from '@/lib/ai/model-selection'
 import sharp from 'sharp'
@@ -343,21 +355,7 @@ type BatchSummary = {
     default_line_type: ItemLineType
 }
 
-type ParsedPdfCatalogItem = {
-    style_code?: string | null
-    sku?: string | null
-    name?: string | null
-    description?: string | null
-    material?: string | null
-    color?: string | null
-    weight?: string | null
-    size?: string | null
-    category_form?: string | null
-    character_family?: string | null
-    line_type?: string | null
-    rrp?: number | string | null
-    source_page?: number | null
-}
+type ImportEventStep = 'file_read' | 'pdf_parse' | 'draft_build' | 'questions' | 'website_match' | 'image_match' | 'review_ready' | 'inventory_import'
 
 type PdfPageMatch = {
     itemId: string
@@ -366,8 +364,6 @@ type PdfPageMatch = {
     box_2d?: [number, number, number, number] | null
     note?: string | null
 }
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 const buildSafeSlug = (value: string, fallback = 'file') => {
     const slug = value
@@ -384,21 +380,6 @@ const extractJsonPayload = <T>(rawText: string): T => {
     const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
     const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim()
     return JSON.parse(jsonStr) as T
-}
-
-const parsePriceValue = (value: number | string | null | undefined): number => {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value
-    }
-
-    if (typeof value === 'string') {
-        const numeric = Number.parseFloat(value.replace(/[^0-9.]+/g, ''))
-        if (Number.isFinite(numeric)) {
-            return numeric
-        }
-    }
-
-    return 0
 }
 
 const appendReviewNote = (existing: string | null | undefined, note: string): string => {
@@ -447,24 +428,6 @@ const getBatchSourceLabel = (batch: Pick<BatchSummary, 'source_label' | 'source_
     }
 
     return 'Imported catalog'
-}
-
-async function waitForGeminiFileActive(ai: GoogleGenAI, fileName: string) {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-        const file = await ai.files.get({ name: fileName })
-
-        if (file.state === FileState.ACTIVE) {
-            return file
-        }
-
-        if (file.state === FileState.FAILED) {
-            throw new Error(file.error?.message || `Gemini file processing failed for ${fileName}`)
-        }
-
-        await sleep(1500)
-    }
-
-    throw new Error(`Gemini file did not become active in time: ${fileName}`)
 }
 
 async function createStagingBatchRecord(input: {
@@ -518,6 +481,149 @@ async function getBatchSummary(
         source_storage_path: data.source_storage_path,
         default_line_type: normalizeLineType(data.default_line_type, 'Mainline'),
     }
+}
+
+async function logImportEvent(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    input: {
+        batchId: string
+        step: ImportEventStep
+        level?: 'info' | 'success' | 'warning' | 'error'
+        message: string
+        payload?: Record<string, unknown>
+        itemRef?: string | null
+    }
+) {
+    await supabase
+        .from('staging_import_events')
+        .insert({
+            import_batch_id: input.batchId,
+            step: input.step,
+            level: input.level || 'info',
+            message: input.message,
+            payload: input.payload || {},
+            item_ref: input.itemRef || null,
+        })
+}
+
+const normalizeSectionKey = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') || 'untitled-section'
+
+const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+
+const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+const buildItemIssues = (input: {
+    characterFamily: string
+    categoryId: string | null
+    sourcePage: number | null
+    skuAdjusted: boolean
+}): GuidedImportIssue['type'][] => {
+    const issues: GuidedImportIssue['type'][] = []
+
+    if (!OFFICIAL_CHARACTERS.includes(input.characterFamily as (typeof OFFICIAL_CHARACTERS)[number])) {
+        issues.push('character')
+    }
+    if (!input.categoryId) {
+        issues.push('jewelry_type')
+    }
+    if (!input.sourcePage) {
+        issues.push('source_page')
+    }
+    if (input.skuAdjusted) {
+        issues.push('duplicate_sku')
+    }
+
+    return issues
+}
+
+const issueToMessage = (issue: GuidedImportIssue['type']) => {
+    switch (issue) {
+        case 'character':
+            return 'Choose the correct Character before importing.'
+        case 'jewelry_type':
+            return 'Choose the correct Jewelry Type before importing.'
+        case 'source_page':
+            return 'This item is missing a PDF page number.'
+        case 'duplicate_sku':
+            return 'This SKU already exists and needs review.'
+        case 'website_match':
+            return 'Could not match this item to the website.'
+        default:
+            return 'This item needs review.'
+    }
+}
+
+function createImportQuestions(
+    batchId: string,
+    items: Array<{
+        id: string
+        name: string
+        character_family: string
+        category_id: string | null
+        source_page: number | null
+        import_metadata?: { issues?: string[] | null }
+    }>,
+    categories: Array<{ id: string; name: string }>
+): GuidedImportQuestion[] {
+    const questions: GuidedImportQuestion[] = []
+
+    for (const item of items) {
+        const issues = item.import_metadata?.issues || []
+        if (issues.includes('character')) {
+            questions.push({
+                id: `${item.id}-character`,
+                batchId,
+                itemId: item.id,
+                type: 'character',
+                prompt: `Choose the Character for "${item.name}".`,
+                currentValue: null,
+                options: [...OFFICIAL_CHARACTERS],
+            })
+        }
+
+        if (issues.includes('jewelry_type')) {
+            questions.push({
+                id: `${item.id}-jewelry-type`,
+                batchId,
+                itemId: item.id,
+                type: 'jewelry_type',
+                prompt: `Choose the Jewelry Type for "${item.name}".`,
+                currentValue: null,
+                options: categories.map(category => category.name),
+            })
+        }
+
+        if (issues.includes('source_page')) {
+            questions.push({
+                id: `${item.id}-source-page`,
+                batchId,
+                itemId: item.id,
+                type: 'source_page',
+                prompt: `Add the PDF page number for "${item.name}".`,
+                currentValue: null,
+            })
+        }
+    }
+
+    return questions
+}
+
+function createImportIssues(
+    batchId: string,
+    items: Array<{
+        id: string
+        import_metadata?: { issues?: string[] | null }
+    }>
+): GuidedImportIssue[] {
+    return items.flatMap(item =>
+        (item.import_metadata?.issues || []).map(issue => ({
+            batchId,
+            itemId: item.id,
+            type: issue as GuidedImportIssue['type'],
+            message: issueToMessage(issue as GuidedImportIssue['type']),
+        }))
+    )
 }
 
 async function promotePreviewImageToInventory(
@@ -574,35 +680,6 @@ function resolveCategoryId(
     })
 
     return category?.id || null
-}
-
-function normalizePdfCatalogItem(item: ParsedPdfCatalogItem, defaultLineType: ItemLineType) {
-    const resolvedTaxonomy = resolveItemTaxonomy({
-        name: item.name,
-        description: item.description,
-        lineType: item.line_type,
-        characterFamily: item.character_family,
-        defaultLineType,
-    })
-
-    const size = item.size?.trim()
-    const specs = size ? { size } : null
-
-    return {
-        sku: item.style_code?.trim() || item.sku?.trim() || null,
-        name: item.name?.trim() || item.description?.trim() || 'Imported Catalog Item',
-        description: item.description?.trim() || null,
-        material: item.material?.trim() || null,
-        color: item.color?.trim() || null,
-        weight: item.weight?.trim() || null,
-        replacement_cost: parsePriceValue(item.rrp),
-        rental_price: 0,
-        categoryGuess: item.category_form?.trim() || null,
-        line_type: resolvedTaxonomy.lineType,
-        character_family: resolvedTaxonomy.characterFamily,
-        source_page: typeof item.source_page === 'number' && item.source_page > 0 ? item.source_page : null,
-        specs,
-    }
 }
 
 // ============================================================
@@ -1860,7 +1937,7 @@ export async function scanCategoriesAction(
                 for (const item of scrapedItems) {
                     // Check SKU uniqueness
                     const uniqueSku = await ensureUniqueSku(item.sku, supabase)
-                    const resolvedTaxonomy = resolveItemTaxonomy({
+                    const resolvedTaxonomy = resolveCatalogFields({
                         name: item.name,
                         description: item.description,
                         defaultLineType,
@@ -2017,7 +2094,27 @@ export async function getStagingItemsAction(batchId: string) {
         return { data: null, error: error.message }
     }
 
-    return { data, error: null }
+    const visibleItems = (data || []).filter(item => {
+        const metadata = (item.import_metadata as { selected_by_user?: boolean } | null) || {}
+        return metadata.selected_by_user !== false
+    })
+
+    const sorted = [...visibleItems].sort((a, b) => {
+        const aIssues = Array.isArray((a.import_metadata as { issues?: unknown[] } | null)?.issues)
+            ? (a.import_metadata as { issues?: unknown[] }).issues!.length
+            : 0
+        const bIssues = Array.isArray((b.import_metadata as { issues?: unknown[] } | null)?.issues)
+            ? (b.import_metadata as { issues?: unknown[] }).issues!.length
+            : 0
+
+        if (aIssues !== bIssues) {
+            return bIssues - aIssues
+        }
+
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+    })
+
+    return { data: sorted, error: null }
 }
 
 // ============================================================
@@ -2054,15 +2151,20 @@ export async function getImportBatchesAction() {
     // Get pending item count for each batch
     const batchesWithCounts = await Promise.all(
         (data || []).map(async (batch) => {
-            const { count } = await supabase
+            const { data: pendingItems } = await supabase
                 .from('staging_items')
-                .select('*', { count: 'exact', head: true })
+                .select('import_metadata')
                 .eq('import_batch_id', batch.id)
                 .eq('status', 'pending')
 
+            const pendingCount = (pendingItems || []).filter((item) => {
+                const metadata = (item.import_metadata || {}) as Record<string, unknown>
+                return metadata.selected_by_user !== false
+            }).length
+
             return {
                 ...batch,
-                pending_count: count || 0
+                pending_count: pendingCount
             }
         })
     )
@@ -2124,7 +2226,7 @@ export async function updateStagingItemAction(
         return { success: false, error: existingError?.message || 'Failed to load staging item', data: null }
     }
 
-    const resolvedTaxonomy = resolveItemTaxonomy({
+    const resolvedTaxonomy = resolveCatalogFields({
         name: updates.name ?? existingItem.name,
         description: updates.description ?? existingItem.description,
         lineType: updates.line_type ?? existingItem.line_type,
@@ -2242,14 +2344,26 @@ export async function commitStagingItemsAction(batchId: string) {
         return { success: false, error: fetchError.message, importedCount: 0 }
     }
 
-    if (!stagingItems || stagingItems.length === 0) {
+    const selectedItems = (stagingItems || []).filter(staging => {
+        const metadata = (staging.import_metadata || {}) as Record<string, unknown>
+        return metadata.selected_by_user !== false
+    })
+
+    if (!selectedItems || selectedItems.length === 0) {
         return { success: false, error: 'No pending items to import', importedCount: 0 }
     }
 
-    // 2. Migrate images for each item first (before atomic commit)
-    console.log(`Migrating images for ${stagingItems.length} items...`)
+    await logImportEvent(supabase, {
+        batchId,
+        step: 'inventory_import',
+        message: `Starting inventory import for ${selectedItems.length} draft items.`,
+        payload: { totalItems: selectedItems.length },
+    })
 
-    for (const staging of stagingItems) {
+    // 2. Migrate images for each item first (before atomic commit)
+    console.log(`Migrating images for ${selectedItems.length} items...`)
+
+    for (const staging of selectedItems) {
         if (staging.image_urls && staging.image_urls.length > 0) {
             const migratedUrls: string[] = []
 
@@ -2289,7 +2403,10 @@ export async function commitStagingItemsAction(batchId: string) {
             .eq('import_batch_id', batchId)
             .eq('status', 'pending')
 
-        for (const staging of (updatedItems || [])) {
+        for (const staging of (updatedItems || []).filter(item => {
+            const metadata = (item.import_metadata || {}) as Record<string, unknown>
+            return metadata.selected_by_user !== false
+        })) {
             const { error: insertError } = await supabase
                 .from('items')
                 .insert({
@@ -2332,6 +2449,16 @@ export async function commitStagingItemsAction(batchId: string) {
 
         revalidatePath('/admin/items')
 
+        await logImportEvent(supabase, {
+            batchId,
+            step: 'inventory_import',
+            level: errors.length === 0 ? 'success' : 'warning',
+            message: errors.length === 0
+                ? `Imported ${importedCount} items to inventory.`
+                : `Imported ${importedCount} items with ${errors.length} errors.`,
+            payload: { importedCount, errors },
+        })
+
         return {
             success: errors.length === 0,
             error: errors.length > 0 ? `Imported ${importedCount} items with ${errors.length} errors` : null,
@@ -2351,6 +2478,14 @@ export async function commitStagingItemsAction(batchId: string) {
     }
 
     revalidatePath('/admin/items')
+
+    await logImportEvent(supabase, {
+        batchId,
+        step: 'inventory_import',
+        level: 'success',
+        message: `Imported ${result.imported_count} items to inventory.`,
+        payload: { importedCount: result.imported_count },
+    })
 
     return {
         success: true,
@@ -2495,7 +2630,7 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
                 const absoluteThumbnail = product.thumbnail_url
                     ? new URL(product.thumbnail_url, category.url).href
                     : null
-                const resolvedTaxonomy = resolveItemTaxonomy({
+                const resolvedTaxonomy = resolveCatalogFields({
                     name: product.name,
                     lineType: batch.default_line_type,
                     defaultLineType: batch.default_line_type,
@@ -2672,7 +2807,7 @@ Please clearly describe your thinking process as you analyze the page, for examp
                     for (const product of products) {
                         const absoluteUrl = product.product_url ? new URL(product.product_url, category.url).href : null
                         const absoluteThumbnail = product.thumbnail_url ? new URL(product.thumbnail_url, category.url).href : null
-                        const resolvedTaxonomy = resolveItemTaxonomy({
+                        const resolvedTaxonomy = resolveCatalogFields({
                             name: product.name,
                             lineType: batch.default_line_type,
                             defaultLineType: batch.default_line_type,
@@ -2732,10 +2867,15 @@ export interface PdfCatalogImportResult {
     success: boolean
     error: string | null
     batchId: string | null
+    batchIds: string[]
     itemsFound: number
     renderedPages: number[]
     sourceLabel: string | null
     modelId: string
+    questions: GuidedImportQuestion[]
+    issues: GuidedImportIssue[]
+    sections: GuidedImportSection[]
+    runs: GuidedImportRun[]
 }
 
 export interface PdfPageImageMatchResult {
@@ -2748,249 +2888,333 @@ export interface PdfPageImageMatchResult {
 export async function importPdfCatalogAction(formData: FormData): Promise<PdfCatalogImportResult> {
     await requireAdmin()
 
-    const file = formData.get('file')
-    if (!(file instanceof File)) {
+    const files = formData.getAll('files').filter((entry): entry is File => entry instanceof File)
+    const singleFile = formData.get('file')
+    const inputFiles = files.length > 0
+        ? files
+        : (singleFile instanceof File ? [singleFile] : [])
+
+    if (inputFiles.length === 0) {
         return {
             success: false,
             error: 'A PDF file is required',
             batchId: null,
+            batchIds: [],
             itemsFound: 0,
             renderedPages: [],
             sourceLabel: null,
             modelId: DEFAULT_GEMINI_MODEL,
+            questions: [],
+            issues: [],
+            sections: [],
+            runs: [],
         }
     }
 
-    const sourceLabelInput = String(formData.get('sourceLabel') || '').trim()
-    const sourceLabel = sourceLabelInput || file.name
     const defaultLineType = normalizeLineType(String(formData.get('defaultLineType') || 'Mainline'), 'Mainline')
     const requestedModelId = String(formData.get('modelId') || '').trim() || DEFAULT_GEMINI_MODEL
     const supabase = await createClient()
     const serviceClient = createServiceClient()
-    const pdfBuffer = Buffer.from(await file.arrayBuffer())
-    const storagePath = `${IMPORT_DOCUMENT_PREFIX}/${Date.now()}-${buildSafeSlug(sourceLabel, 'catalog')}.pdf`
+    const { data: categories, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, name')
+        .order('name')
 
-    const uploadResult = await serviceClient.storage
-        .from(IMPORT_DOCUMENT_BUCKET)
-        .upload(storagePath, pdfBuffer, {
-            contentType: file.type || 'application/pdf',
-            upsert: false,
-        })
-
-    if (uploadResult.error) {
+    if (categoriesError) {
         return {
             success: false,
-            error: uploadResult.error.message,
+            error: categoriesError.message,
             batchId: null,
+            batchIds: [],
             itemsFound: 0,
             renderedPages: [],
-            sourceLabel,
+            sourceLabel: null,
             modelId: requestedModelId,
+            questions: [],
+            issues: [],
+            sections: [],
+            runs: [],
         }
     }
 
-    const { batchId, error: batchError } = await createStagingBatchRecord({
-        sourceType: 'pdf',
-        sourceLabel,
-        sourceStoragePath: storagePath,
-        defaultLineType,
-    })
+    const batchIds: string[] = []
+    const renderedPages = new Set<number>()
+    const questions: GuidedImportQuestion[] = []
+    const issues: GuidedImportIssue[] = []
+    const sections: GuidedImportSection[] = []
+    const runs: GuidedImportRun[] = []
+    const errors: string[] = []
+    let totalItemsFound = 0
+    let firstBatchId: string | null = null
+    let firstSourceLabel: string | null = null
 
-    if (batchError || !batchId) {
-        return {
-            success: false,
-            error: batchError || 'Failed to create PDF import batch',
-            batchId: null,
-            itemsFound: 0,
-            renderedPages: [],
-            sourceLabel,
-            modelId: requestedModelId,
-        }
-    }
+    for (const [index, file] of inputFiles.entries()) {
+        const sourceLabelInput = String(formData.get(`sourceLabel:${index}`) || formData.get('sourceLabel') || '').trim()
+        const sourceLabel = sourceLabelInput || file.name
+        const pdfBuffer = Buffer.from(await file.arrayBuffer())
+        const storagePath = `${IMPORT_DOCUMENT_PREFIX}/${Date.now()}-${buildSafeSlug(sourceLabel, 'catalog')}.pdf`
 
-    const ai = getGeminiClient()
-    let uploadedGeminiFileName: string | undefined
-
-    try {
-        await supabase
-            .from('staging_imports')
-            .update({
-                status: 'scanning',
-                current_category: 'Parsing PDF catalog...',
-                items_scraped: 0,
-                items_total: 0,
+        const uploadResult = await serviceClient.storage
+            .from(IMPORT_DOCUMENT_BUCKET)
+            .upload(storagePath, pdfBuffer, {
+                contentType: file.type || 'application/pdf',
+                upsert: false,
             })
-            .eq('id', batchId)
 
-        const geminiFile = await ai.files.upload({
-            file: new Blob([pdfBuffer], { type: file.type || 'application/pdf' }),
-            config: {
-                mimeType: file.type || 'application/pdf',
-                displayName: sourceLabel,
-            },
-        })
-        uploadedGeminiFileName = geminiFile.name
+        if (uploadResult.error) {
+            errors.push(`${sourceLabel}: ${uploadResult.error.message}`)
+            continue
+        }
 
-        const activeFile = await waitForGeminiFileActive(ai, geminiFile.name!)
-        const systemInstruction = await getSystemInstructionIfEnabled()
-
-        const prompt = `Extract every sellable jewelry variation from this PDF catalog.
-
-Return a JSON array only. Each object must use these keys:
-- style_code
-- name
-- description
-- material
-- color
-- weight
-- size
-- category_form
-- character_family
-- line_type
-- rrp
-- source_page
-
-Rules:
-- Use one row per sellable variant / style code.
-- source_page must be the 1-based PDF page number where the style appears.
-- category_form should be the closest physical form such as Earrings, Rings, or Brooch.
-- If the PDF clearly indicates a collaboration line, set line_type to Collaboration. Otherwise default to ${defaultLineType}.
-- If character_family is explicit or strongly implied, use names like Orchid, Daffodil, Botanic Elegy, Oceanspine, Sea Passiflora.
-- Use null for missing values and never invent pricing or SKU data.
-- rrp should be numeric when possible, without currency symbols.`
-
-        const response = await ai.models.generateContent({
-            model: requestedModelId,
-            contents: [
-                { text: prompt },
-                createPartFromUri(activeFile.uri!, activeFile.mimeType || 'application/pdf'),
-            ],
-            config: {
-                responseMimeType: 'application/json',
-                temperature: 0.1,
-                ...(systemInstruction && { systemInstruction }),
-            },
+        const { batchId, error: batchError } = await createStagingBatchRecord({
+            sourceType: 'pdf',
+            sourceLabel,
+            sourceStoragePath: storagePath,
+            defaultLineType,
         })
 
-        const parsedPayload = extractJsonPayload<ParsedPdfCatalogItem[] | { items?: ParsedPdfCatalogItem[] }>(response.text || '[]')
-        const parsedItems = Array.isArray(parsedPayload) ? parsedPayload : (parsedPayload.items || [])
+        if (batchError || !batchId) {
+            errors.push(`${sourceLabel}: ${batchError || 'Failed to create import run'}`)
+            continue
+        }
 
-        if (!parsedItems.length) {
+        if (!firstBatchId) {
+            firstBatchId = batchId
+            firstSourceLabel = sourceLabel
+        }
+
+        batchIds.push(batchId)
+        await logImportEvent(supabase, {
+            batchId,
+            step: 'file_read',
+            level: 'success',
+            message: `Read ${sourceLabel}.`,
+            payload: { fileName: file.name, fileSize: file.size },
+        })
+
+        try {
+            await supabase
+                .from('staging_imports')
+                .update({
+                    status: 'scanning',
+                    current_category: 'Reading PDF file...',
+                    items_scraped: 0,
+                    items_total: 0,
+                })
+                .eq('id', batchId)
+
+            const parsedDocument = await parsePdfCatalog(new Uint8Array(pdfBuffer), defaultLineType)
+
+            await logImportEvent(supabase, {
+                batchId,
+                step: 'pdf_parse',
+                level: parsedDocument.items.length > 0 ? 'success' : 'warning',
+                message: parsedDocument.items.length > 0
+                    ? `Found ${parsedDocument.items.length} item rows in the PDF.`
+                    : 'No sellable item rows were found in the PDF.',
+                payload: {
+                    sectionCount: parsedDocument.sections.length,
+                    itemsFound: parsedDocument.items.length,
+                },
+            })
+
+            if (parsedDocument.items.length === 0) {
+                runs.push({
+                    batchId,
+                    sourceLabel,
+                    sourceType: 'pdf',
+                    defaultLineType,
+                    itemsFound: 0,
+                })
+                await supabase
+                    .from('staging_imports')
+                    .update({
+                        status: 'failed',
+                        current_category: 'No items found in PDF',
+                    })
+                    .eq('id', batchId)
+                errors.push(`${sourceLabel}: No items extracted from PDF`)
+                continue
+            }
+
+            const insertedItems: Array<{
+                id: string
+                name: string
+                character_family: string
+                category_id: string | null
+                source_page: number | null
+                import_metadata: { issues?: string[] | null }
+            }> = []
+
+            for (const parsedItem of parsedDocument.items) {
+                const categoryGuess = parsedItem.category_form || inferJewelryTypeFromText(`${parsedItem.section_heading} ${parsedItem.name}`)
+                const categoryId = resolveCategoryId(categoryGuess, categories || [])
+                const normalizedCharacter = sanitizeCharacterFamily(parsedItem.character_family, UNCATEGORIZED_CHARACTER)
+                const uniqueSku = await ensureUniqueSku(parsedItem.sku, supabase)
+                const itemIssues = buildItemIssues({
+                    characterFamily: normalizedCharacter,
+                    categoryId,
+                    sourcePage: parsedItem.source_page,
+                    skuAdjusted: uniqueSku !== parsedItem.sku,
+                })
+                const issueMessages = itemIssues.map(issueToMessage)
+
+                const { data: insertedItem, error: insertError } = await supabase
+                    .from('staging_items')
+                    .insert({
+                        import_batch_id: batchId,
+                        name: parsedItem.name,
+                        description: parsedItem.description,
+                        rental_price: 0,
+                        replacement_cost: parsedItem.rrp || 0,
+                        sku: uniqueSku,
+                        material: parsedItem.material,
+                        color: parsedItem.color,
+                        weight: parsedItem.weight,
+                        image_urls: [],
+                        source_url: null,
+                        category_id: categoryId,
+                        collection_id: null,
+                        line_type: parsedItem.line_type,
+                        character_family: normalizedCharacter,
+                        source_page: parsedItem.source_page,
+                        specs: {
+                            size: parsedItem.size,
+                            accessories: parsedItem.accessories,
+                        },
+                        review_notes: issueMessages.length > 0 ? issueMessages.join(' ') : null,
+                        status: 'pending',
+                        needs_enrichment: false,
+                        import_metadata: {
+                            pdf_heading: parsedItem.section_heading,
+                            issues: itemIssues,
+                            selected_by_user: true,
+                            section_key: normalizeSectionKey(parsedItem.section_heading),
+                        },
+                    })
+                    .select('id, name, character_family, category_id, source_page, import_metadata')
+                    .single()
+
+                if (insertError || !insertedItem) {
+                    throw new Error(insertError?.message || `Failed to insert ${parsedItem.name}`)
+                }
+
+                if (itemIssues.length > 0) {
+                    await logImportEvent(supabase, {
+                        batchId,
+                        step: 'draft_build',
+                        level: 'warning',
+                        message: `${parsedItem.name} needs review before import.`,
+                        payload: { issues: itemIssues, sku: uniqueSku },
+                        itemRef: insertedItem.id,
+                    })
+                }
+
+                insertedItems.push({
+                    id: insertedItem.id,
+                    name: insertedItem.name,
+                    character_family: insertedItem.character_family,
+                    category_id: insertedItem.category_id,
+                    source_page: insertedItem.source_page,
+                    import_metadata: insertedItem.import_metadata as { issues?: string[] | null },
+                })
+
+                if (parsedItem.source_page) {
+                    renderedPages.add(parsedItem.source_page)
+                }
+                totalItemsFound += 1
+            }
+
+            const batchQuestions = createImportQuestions(batchId, insertedItems, categories || [])
+            const batchIssues = createImportIssues(batchId, insertedItems)
+            const batchSections = parsedDocument.sections.map(section => ({
+                ...section,
+                batchId,
+            }))
+
+            questions.push(...batchQuestions)
+            issues.push(...batchIssues)
+            sections.push(...batchSections)
+            runs.push({
+                batchId,
+                sourceLabel,
+                sourceType: 'pdf',
+                defaultLineType,
+                itemsFound: insertedItems.length,
+            })
+
+            await logImportEvent(supabase, {
+                batchId,
+                step: 'questions',
+                level: batchQuestions.length > 0 ? 'warning' : 'success',
+                message: batchQuestions.length > 0
+                    ? `${batchQuestions.length} answers are needed before import.`
+                    : 'No follow-up questions are needed.',
+                payload: { questionCount: batchQuestions.length },
+            })
+
+            await supabase
+                .from('staging_imports')
+                .update({
+                    status: 'completed',
+                    items_scraped: insertedItems.length,
+                    items_total: insertedItems.length,
+                    current_category: batchQuestions.length > 0 ? 'Needs answers' : 'Ready for review',
+                })
+                .eq('id', batchId)
+
+            await logImportEvent(supabase, {
+                batchId,
+                step: 'review_ready',
+                level: 'success',
+                message: `Import draft is ready for review for ${sourceLabel}.`,
+                payload: {
+                    itemCount: insertedItems.length,
+                    sectionCount: batchSections.length,
+                    issueCount: batchIssues.length,
+                },
+            })
+        } catch (error) {
+            runs.push({
+                batchId,
+                sourceLabel,
+                sourceType: 'pdf',
+                defaultLineType,
+                itemsFound: 0,
+            })
             await supabase
                 .from('staging_imports')
                 .update({
                     status: 'failed',
-                    current_category: 'No items extracted from PDF',
+                    current_category: error instanceof Error ? error.message.slice(0, 120) : 'PDF import failed',
                 })
                 .eq('id', batchId)
 
-            return {
-                success: false,
-                error: 'No items extracted from PDF catalog',
+            await logImportEvent(supabase, {
                 batchId,
-                itemsFound: 0,
-                renderedPages: [],
-                sourceLabel,
-                modelId: requestedModelId,
-            }
-        }
-
-        const { data: categories, error: categoriesError } = await supabase
-            .from('categories')
-            .select('id, name')
-            .order('name')
-
-        if (categoriesError) {
-            throw new Error(categoriesError.message)
-        }
-
-        const renderedPages = new Set<number>()
-        let insertedCount = 0
-
-        for (const rawItem of parsedItems) {
-            const normalizedItem = normalizePdfCatalogItem(rawItem, defaultLineType)
-            const uniqueSku = await ensureUniqueSku(normalizedItem.sku, supabase)
-
-            const { error: insertError } = await supabase
-                .from('staging_items')
-                .insert({
-                    import_batch_id: batchId,
-                    name: normalizedItem.name,
-                    description: normalizedItem.description,
-                    rental_price: normalizedItem.rental_price,
-                    replacement_cost: normalizedItem.replacement_cost,
-                    sku: uniqueSku,
-                    material: normalizedItem.material,
-                    color: normalizedItem.color,
-                    weight: normalizedItem.weight,
-                    image_urls: [],
-                    source_url: null,
-                    category_id: resolveCategoryId(normalizedItem.categoryGuess, categories || []),
-                    collection_id: null,
-                    line_type: normalizedItem.line_type,
-                    character_family: normalizedItem.character_family,
-                    source_page: normalizedItem.source_page,
-                    specs: normalizedItem.specs || {},
-                    review_notes: normalizedItem.source_page
-                        ? null
-                        : 'No source page detected during PDF extraction. Review before import.',
-                    status: 'pending',
-                    needs_enrichment: false,
-                })
-
-            if (insertError) {
-                throw new Error(insertError.message)
-            }
-
-            if (normalizedItem.source_page) {
-                renderedPages.add(normalizedItem.source_page)
-            }
-            insertedCount += 1
-        }
-
-        await supabase
-            .from('staging_imports')
-            .update({
-                status: 'completed',
-                items_scraped: insertedCount,
-                items_total: insertedCount,
-                current_category: 'PDF parsed',
+                step: 'pdf_parse',
+                level: 'error',
+                message: error instanceof Error ? error.message : 'PDF import failed',
             })
-            .eq('id', batchId)
-
-        revalidatePath('/admin/items')
-
-        return {
-            success: true,
-            error: null,
-            batchId,
-            itemsFound: insertedCount,
-            renderedPages: Array.from(renderedPages).sort((a, b) => a - b),
-            sourceLabel,
-            modelId: requestedModelId,
+            errors.push(`${sourceLabel}: ${error instanceof Error ? error.message : 'PDF import failed'}`)
         }
-    } catch (error) {
-        await supabase
-            .from('staging_imports')
-            .update({
-                status: 'failed',
-                current_category: error instanceof Error ? error.message.slice(0, 120) : 'PDF import failed',
-            })
-            .eq('id', batchId)
+    }
 
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'PDF import failed',
-            batchId,
-            itemsFound: 0,
-            renderedPages: [],
-            sourceLabel,
-            modelId: requestedModelId,
-        }
-    } finally {
-        if (uploadedGeminiFileName) {
-            await ai.files.delete({ name: uploadedGeminiFileName }).catch(() => undefined)
-        }
+    revalidatePath('/admin/items')
+
+    return {
+        success: runs.length > 0,
+        error: errors.length > 0 ? errors.join(' | ') : null,
+        batchId: firstBatchId,
+        batchIds,
+        itemsFound: totalItemsFound,
+        renderedPages: Array.from(renderedPages).sort((a, b) => a - b),
+        sourceLabel: firstSourceLabel,
+        modelId: requestedModelId,
+        questions,
+        issues,
+        sections,
+        runs,
     }
 }
 
@@ -3181,6 +3405,324 @@ ${items.map(item => `- ${item.id}: ${item.sku || item.name} (${item.character_fa
             totalItems: items.length,
         }
     }
+}
+
+export async function getImportRunEventsAction(batchId: string): Promise<{
+    success: boolean
+    error: string | null
+    events: StagingImportEvent[]
+}> {
+    await requireAdmin()
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('staging_import_events')
+        .select('*')
+        .eq('import_batch_id', batchId)
+        .order('created_at', { ascending: true })
+
+    if (error) {
+        return { success: false, error: error.message, events: [] }
+    }
+
+    return { success: true, error: null, events: (data || []) as StagingImportEvent[] }
+}
+
+export async function answerImportQuestionsAction(input: {
+    batchId: string
+    sectionSelections?: Record<string, boolean>
+    answers?: Array<{
+        itemId: string
+        type: 'character' | 'jewelry_type' | 'source_page'
+        value: string | number
+    }>
+}): Promise<{ success: boolean; error: string | null }> {
+    await requireAdmin()
+    const supabase = await createClient()
+
+    if (input.sectionSelections) {
+        const { data: items, error } = await supabase
+            .from('staging_items')
+            .select('id, import_metadata')
+            .eq('import_batch_id', input.batchId)
+
+        if (error) {
+            return { success: false, error: error.message }
+        }
+
+        for (const item of items || []) {
+            const metadata = (item.import_metadata || {}) as Record<string, unknown>
+            const sectionKey = typeof metadata.section_key === 'string' ? metadata.section_key : ''
+            const selectedByUser = input.sectionSelections[sectionKey] ?? true
+
+            await supabase
+                .from('staging_items')
+                .update({
+                    import_metadata: {
+                        ...metadata,
+                        selected_by_user: selectedByUser,
+                    },
+                })
+                .eq('id', item.id)
+        }
+    }
+
+    if (input.answers && input.answers.length > 0) {
+        const { data: categories } = await supabase
+            .from('categories')
+            .select('id, name')
+
+        for (const answer of input.answers) {
+            const { data: item, error } = await supabase
+                .from('staging_items')
+                .select('id, import_metadata')
+                .eq('id', answer.itemId)
+                .single()
+
+            if (error || !item) {
+                return { success: false, error: error?.message || 'Failed to load draft item' }
+            }
+
+            const metadata = (item.import_metadata || {}) as Record<string, unknown>
+            const currentIssues = Array.isArray(metadata.issues) ? metadata.issues.map(issue => String(issue)) : []
+            const nextIssues = currentIssues.filter(issue => {
+                if (answer.type === 'character') return issue !== 'character'
+                if (answer.type === 'jewelry_type') return issue !== 'jewelry_type'
+                if (answer.type === 'source_page') return issue !== 'source_page'
+                return true
+            })
+
+            const updatePayload: Record<string, unknown> = {
+                import_metadata: {
+                    ...metadata,
+                    issues: nextIssues,
+                },
+            }
+
+            if (answer.type === 'character') {
+                updatePayload.character_family = sanitizeCharacterFamily(String(answer.value))
+            }
+
+            if (answer.type === 'jewelry_type') {
+                const rawValue = String(answer.value)
+                const categoryId = categories?.find(category => category.id === rawValue || category.name === rawValue)?.id || null
+                updatePayload.category_id = categoryId
+            }
+
+            if (answer.type === 'source_page') {
+                const numericPage = Number(answer.value)
+                updatePayload.source_page = Number.isFinite(numericPage) && numericPage > 0 ? numericPage : null
+            }
+
+            const { error: updateError } = await supabase
+                .from('staging_items')
+                .update(updatePayload)
+                .eq('id', answer.itemId)
+
+            if (updateError) {
+                return { success: false, error: updateError.message }
+            }
+        }
+    }
+
+    await logImportEvent(supabase, {
+        batchId: input.batchId,
+        step: 'questions',
+        level: 'success',
+        message: 'Saved import answers.',
+        payload: {
+            answered: input.answers?.length || 0,
+            updatedSections: input.sectionSelections ? Object.keys(input.sectionSelections).length : 0,
+        },
+    })
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null }
+}
+
+type ShopifySearchProduct = {
+    body?: string
+    featured_image?: {
+        url?: string
+    } | null
+    title?: string
+    url?: string
+}
+
+function scoreWebsiteMatch(item: {
+    sku: string | null
+    name: string
+    character_family: string
+}, product: ShopifySearchProduct): number {
+    const normalizedTitle = normalizeForMatch(product.title || '')
+    const normalizedItemName = normalizeForMatch(item.name)
+    const normalizedCharacter = normalizeForMatch(item.character_family)
+    const normalizedBody = normalizeForMatch(stripHtml(product.body || ''))
+    const normalizedUrl = normalizeForMatch(product.url || '')
+
+    if (item.sku) {
+        const skuMatch = [product.title || '', product.body || '', product.url || '']
+            .some(value => value.toLowerCase().includes(item.sku!.toLowerCase()))
+        if (skuMatch) {
+            return 1
+        }
+    }
+
+    let score = 0
+    if (normalizedTitle === normalizedItemName) score += 0.75
+    if (normalizedTitle.includes(normalizedItemName) || normalizedItemName.includes(normalizedTitle)) score += 0.45
+    if (normalizedTitle.includes(normalizedCharacter) || normalizedBody.includes(normalizedCharacter)) score += 0.25
+    if (normalizedUrl.includes(normalizedCharacter)) score += 0.1
+
+    return Math.min(score, 0.95)
+}
+
+async function fetchWebsiteSuggestions(query: string): Promise<ShopifySearchProduct[]> {
+    const searchUrl = new URL('https://ivyjstudio.com/search/suggest.json')
+    searchUrl.searchParams.set('q', query)
+    searchUrl.searchParams.set('resources[type]', 'product')
+    searchUrl.searchParams.set('resources[limit]', '8')
+    searchUrl.searchParams.set('section_id', 'predictive-search')
+
+    const response = await fetch(searchUrl.toString(), {
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+    })
+
+    if (!response.ok) {
+        return []
+    }
+
+    const payload = await response.json() as {
+        resources?: {
+            results?: {
+                products?: ShopifySearchProduct[]
+            }
+        }
+    }
+
+    return payload.resources?.results?.products || []
+}
+
+export async function runWebsiteMatchAction(batchIds: string[]): Promise<{
+    success: boolean
+    error: string | null
+    matchedCount: number
+    totalItems: number
+}> {
+    await requireAdmin()
+    const supabase = await createClient()
+    let matchedCount = 0
+    let totalItems = 0
+
+    for (const batchId of batchIds) {
+        await logImportEvent(supabase, {
+            batchId,
+            step: 'website_match',
+            message: 'Checking the Ivy J Studio website for matching photos and links.',
+        })
+
+        const { data: items, error } = await supabase
+            .from('staging_items')
+            .select('id, name, sku, character_family, description, source_url, image_urls, review_notes, import_metadata')
+            .eq('import_batch_id', batchId)
+            .eq('status', 'pending')
+
+        if (error) {
+            return { success: false, error: error.message, matchedCount, totalItems }
+        }
+
+        for (const item of items || []) {
+            const metadata = (item.import_metadata || {}) as Record<string, unknown>
+            const selectedByUser = metadata.selected_by_user !== false
+            if (!selectedByUser) continue
+
+            totalItems += 1
+            const queries = [item.sku, `${item.character_family} ${item.name}`, item.name].filter(Boolean) as string[]
+            let candidates: ShopifySearchProduct[] = []
+
+            for (const query of queries) {
+                candidates = await fetchWebsiteSuggestions(query)
+                if (candidates.length > 0) {
+                    break
+                }
+            }
+
+            const ranked = candidates
+                .map(candidate => ({ candidate, score: scoreWebsiteMatch(item, candidate) }))
+                .sort((a, b) => b.score - a.score)
+
+            const bestMatch = ranked[0]
+
+            if (!bestMatch || bestMatch.score < 0.55) {
+                const nextIssues = Array.from(new Set([
+                    ...(Array.isArray(metadata.issues) ? metadata.issues.map(issue => String(issue)) : []),
+                    'website_match',
+                ]))
+
+                await supabase
+                    .from('staging_items')
+                    .update({
+                        review_notes: appendReviewNote(item.review_notes, issueToMessage('website_match')),
+                        import_metadata: {
+                            ...metadata,
+                            issues: nextIssues,
+                        },
+                    })
+                    .eq('id', item.id)
+
+                await logImportEvent(supabase, {
+                    batchId,
+                    step: 'website_match',
+                    level: 'warning',
+                    message: `No website match found for ${item.name}.`,
+                    itemRef: item.id,
+                })
+                continue
+            }
+
+            const nextIssues = (Array.isArray(metadata.issues) ? metadata.issues.map(issue => String(issue)) : [])
+                .filter(issue => issue !== 'website_match')
+            const websiteUrl = bestMatch.candidate.url?.startsWith('http')
+                ? bestMatch.candidate.url
+                : `https://ivyjstudio.com${bestMatch.candidate.url || ''}`
+            const websiteDescription = stripHtml(bestMatch.candidate.body || '')
+            const imageUrl = bestMatch.candidate.featured_image?.url || null
+
+            await supabase
+                .from('staging_items')
+                .update({
+                    source_url: websiteUrl || item.source_url,
+                    image_urls: imageUrl ? [imageUrl] : item.image_urls,
+                    description: !item.description || item.description === item.name
+                        ? (websiteDescription || item.description)
+                        : item.description,
+                    import_metadata: {
+                        ...metadata,
+                        matched_website_url: websiteUrl,
+                        match_confidence: Number(bestMatch.score.toFixed(2)),
+                        issues: nextIssues,
+                    },
+                })
+                .eq('id', item.id)
+
+            matchedCount += 1
+            await logImportEvent(supabase, {
+                batchId,
+                step: 'website_match',
+                level: 'success',
+                message: `Added website details for ${item.name}.`,
+                payload: {
+                    url: websiteUrl,
+                    confidence: Number(bestMatch.score.toFixed(2)),
+                },
+                itemRef: item.id,
+            })
+        }
+    }
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null, matchedCount, totalItems }
 }
 
 // ============================================================

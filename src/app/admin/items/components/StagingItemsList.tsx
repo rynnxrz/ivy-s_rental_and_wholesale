@@ -4,7 +4,7 @@ import useSWR from 'swr'
 import { useState, useMemo, useTransition, Fragment, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Trash2, Edit2, Package, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, Sparkles, GripVertical, Terminal, AlertCircle } from 'lucide-react'
+import { Trash2, Edit2, Package, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, GripVertical, Terminal, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/collapsible'
 import type { ImportSourceType, ItemLineType, StagingItem } from '@/types'
 import { ItemForm } from '@/components/admin/ItemForm'
+import type { ItemFormData } from '@/components/admin/ItemForm'
 import {
     removeStagingItemAction,
     updateStagingItemAction,
@@ -107,6 +108,7 @@ type StagingItemGroup = {
     collectionName: string | null
     variantCount: number
     createdAt: string
+    issueCount: number
 }
 
 const getBatchDisplayLabel = (batch: ImportBatch) => {
@@ -165,7 +167,7 @@ function TerminalLog({ batchId, isEnriching }: { batchId: string | null, isEnric
         <div className="rounded-md bg-slate-950 p-4 font-mono text-xs text-green-400 shadow-inner">
             <div className="flex items-center gap-2 border-b border-slate-800 pb-2 mb-2">
                 <Terminal className="h-4 w-4" />
-                <span className="font-semibold text-slate-100">Scanning Progress</span>
+                <span className="font-semibold text-slate-100">Import Progress</span>
                 {isEnriching && <Loader2 className="h-3 w-3 animate-spin ml-auto text-slate-500" />}
             </div>
             <div ref={scrollRef} className="h-48 overflow-y-auto space-y-1">
@@ -243,7 +245,7 @@ function DraggableVariantRow({
                 {item.sku || '-'}
             </TableCell>
             <TableCell className="py-2 text-sm font-medium">
-                {item.color || <span className="text-slate-400 text-xs italic">No Color</span>}
+                {item.color || <span className="text-slate-400 text-xs italic">No color</span>}
             </TableCell>
             <TableCell className="py-2 text-sm text-slate-600">
                 {item.material || '-'}
@@ -253,7 +255,7 @@ function DraggableVariantRow({
             </TableCell>
             <TableCell className="py-2">
                 <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-purple-50 text-purple-700 border-purple-200">
-                    Staging
+                    Draft
                 </Badge>
             </TableCell>
             <TableCell className="py-2 text-right">
@@ -329,8 +331,7 @@ function DroppableGroup({
                     <div className="flex items-center gap-2">
                         <span className="text-base text-slate-800">{group.name}</span>
                         <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border border-purple-200 shadow-sm">
-                            <Sparkles className="h-2.5 w-2.5 mr-1" />
-                            AI
+                            Draft
                         </Badge>
                         <Button
                             variant="ghost"
@@ -357,7 +358,7 @@ function DroppableGroup({
                     ) : (
                         <span className="flex items-center text-xs text-amber-600 font-medium">
                             <AlertCircle className="mr-1 h-3 w-3" />
-                            Unmapped
+                            Needs type
                         </span>
                     )}
                 </TableCell>
@@ -372,6 +373,11 @@ function DroppableGroup({
                     <Badge variant="outline" className="font-normal text-slate-500">
                         {group.variantCount} {group.variantCount === 1 ? 'Variant' : 'Variants'}
                     </Badge>
+                    {group.issueCount > 0 && (
+                        <Badge variant="outline" className="ml-2 font-normal border-amber-300 text-amber-700 bg-amber-50">
+                            {group.issueCount} needs review
+                        </Badge>
+                    )}
                 </TableCell>
                 <TableCell className="text-right">
                     {/* Add Group Actions here if needed later (e.g. Delete Group) */}
@@ -529,8 +535,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
         setEditingItem(item)
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleSaveEdit = async (data: any) => {
+    const handleSaveEdit = async (data: ItemFormData & { image_paths: string[] }) => {
         if (!editingItem) return { success: false, error: 'No item selected' }
 
         const result = await updateStagingItemAction(editingItem.id, {
@@ -690,6 +695,10 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
             const category = categories.find(c => c.id === firstItem.category_id)
             const collection = collections.find(c => c.id === firstItem.collection_id)
             const maxCreatedAt = items[0].created_at || ''
+            const issueCount = items.reduce((count, item) => {
+                const issues = Array.isArray(item.import_metadata?.issues) ? item.import_metadata.issues.length : 0
+                return count + issues
+            }, 0)
 
             return {
                 name,
@@ -697,10 +706,11 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                 categoryName: category?.name || null,
                 collectionName: collection?.name || null,
                 variantCount: items.length,
-                createdAt: maxCreatedAt
+                createdAt: maxCreatedAt,
+                issueCount,
             }
         }).sort((a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            b.issueCount - a.issueCount || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
     }, [pendingItems, categories, collections])
 
@@ -716,9 +726,9 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                         <div className="text-center mb-4">
                             <h3 className="text-lg font-semibold flex items-center justify-center gap-2">
                                 <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-                                AI Deep Enrichment
+                                Fill Missing Details
                             </h3>
-                            <p className="text-sm text-muted-foreground">Extracting detailed specs for {pendingItems.length} items...</p>
+                            <p className="text-sm text-muted-foreground">Completing missing details for {pendingItems.length} draft items...</p>
                         </div>
                         <TerminalLog batchId={selectedBatchId} isEnriching={isEnriching} />
                     </div>
@@ -734,10 +744,10 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                 <div>
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Package className="h-5 w-5 text-orange-500" />
-                        Review Scraped Items
+                        Review Import Draft
                     </h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Review, group, and correct items before importing.
+                        Review, group, and correct draft items before importing.
                         <span className="inline-flex items-center gap-1 mx-2 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
                             <GripVertical className="h-3 w-3" /> Drag variants to group them
                         </span>
@@ -760,7 +770,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                         ) : (
                             <>
                                 <Check className="mr-2 h-4 w-4" />
-                                Approve & Import {pendingItems.length} Items
+                                Import to Inventory ({pendingItems.length})
                             </>
                         )}
                     </Button>
@@ -771,10 +781,10 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
             {batches.length > 0 ? (
                 <div className="flex items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
                     <div className="flex-1">
-                        <label className="text-xs font-medium text-slate-500 mb-1.5 block uppercase tracking-wider">Source Batch</label>
+                        <label className="text-xs font-medium text-slate-500 mb-1.5 block uppercase tracking-wider">Import Run</label>
                         <Select value={selectedBatchId || ''} onValueChange={handleBatchChange}>
                             <SelectTrigger className="w-full border-slate-200">
-                                <SelectValue placeholder="Select import batch..." />
+                                <SelectValue placeholder="Select import run..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {batches.map((batch) => (
@@ -818,11 +828,11 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                 size="sm"
                                 className="h-9 gap-1 text-red-400 hover:text-red-600 hover:bg-red-50"
                                 onClick={async () => {
-                                    if (confirm('Are you sure you want to delete this batch? All items in it will be lost.')) {
+                                    if (confirm('Are you sure you want to delete this import run? All draft items in it will be lost.')) {
                                         startTransition(async () => {
                                             const result = await deleteStagingBatchAction(selectedBatch.id)
                                             if (result.success) {
-                                                toast.success('Batch deleted')
+                                                toast.success('Import run deleted')
                                                 // Select next available or null
                                                 const nextBatch = batches.find(b => b.id !== selectedBatch.id)
                                                 if (nextBatch) {
@@ -839,7 +849,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                     }
                                 }}
                             >
-                                <Trash2 className="h-4 w-4" /> Delete Batch
+                                <Trash2 className="h-4 w-4" /> Delete Import Run
                             </Button>
                         </div>
                     )}
@@ -847,7 +857,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
             ) : (
                 <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl">
                     <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                    <p>No pending imports found.</p>
+                    <p>No import drafts found.</p>
                 </div>
             )}
 
@@ -857,13 +867,13 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center py-20 space-y-4">
                             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-                            <p className="text-sm text-slate-500">Loading staging items...</p>
+                            <p className="text-sm text-slate-500">Loading draft items...</p>
                         </div>
                     ) : groupedItems.length === 0 ? (
                         <div className="text-center py-16 bg-slate-50 rounded-xl border border-dashed">
                             <Check className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                            <h3 className="text-lg font-medium text-slate-900">All Clear!</h3>
-                            <p className="text-slate-500">No pending items in this batch.</p>
+                            <h3 className="text-lg font-medium text-slate-900">Nothing left to review</h3>
+                            <p className="text-slate-500">No draft items in this import run.</p>
                         </div>
                     ) : (
                         <DndContext
@@ -877,8 +887,8 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                         <TableRow className="bg-slate-50 border-b-slate-200">
                                             <TableHead className="w-[50px]"></TableHead>
                                             <TableHead className="w-[250px] font-semibold text-slate-700">Design / Product</TableHead>
-                                            <TableHead className="font-semibold text-slate-700">Category</TableHead>
-                                            <TableHead className="font-semibold text-slate-700">Collection</TableHead>
+                                            <TableHead className="font-semibold text-slate-700">Jewelry Type</TableHead>
+                                            <TableHead className="font-semibold text-slate-700">Website Collection</TableHead>
                                             <TableHead className="font-semibold text-slate-700">Variants</TableHead>
                                             <TableHead className="text-right font-semibold text-slate-700">Actions</TableHead>
                                         </TableRow>
@@ -935,7 +945,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                     <DialogHeader>
                         <DialogTitle>Edit parent name</DialogTitle>
                         <DialogDescription>
-                            更新分组名称，不会改变各变体的单独名称。
+                            Rename this group without changing the individual variant names.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
@@ -962,7 +972,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
             <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
                     <DialogHeader className="px-6 py-4 border-b bg-slate-50/50">
-                        <DialogTitle>Edit Staging Item</DialogTitle>
+                        <DialogTitle>Edit Draft Item</DialogTitle>
                         <DialogDescription>
                             Refine details before importing to inventory.
                         </DialogDescription>
@@ -978,7 +988,7 @@ export function StagingItemsList({ batches, categories, collections = [], onClos
                                     sku: editingItem.sku || '',
                                     description: editingItem.description || '',
                                     line_type: editingItem.line_type || 'Mainline',
-                                    character_family: editingItem.character_family || 'Uncategorized',
+                                    character_family: editingItem.character_family || '',
                                     rental_price: editingItem.rental_price || 0,
                                     replacement_cost: editingItem.replacement_cost || 0,
                                     color: editingItem.color || '',

@@ -112,9 +112,10 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
 
     const groupedCharacters = useMemo<CharacterGroup[]>(() => {
         const groups = new Map<string, Item[]>()
+        const missingCharacterLabel = 'Needs Character'
 
         for (const item of filteredItems) {
-            const key = (item.character_family || '').trim() || 'Uncategorized'
+            const key = (item.character_family || '').trim() || missingCharacterLabel
             const existing = groups.get(key)
             if (existing) {
                 existing.push(item)
@@ -136,8 +137,8 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                 }
             })
             .sort((a, b) => {
-                if (a.character === 'Uncategorized') return 1
-                if (b.character === 'Uncategorized') return -1
+                if (a.character === missingCharacterLabel) return 1
+                if (b.character === missingCharacterLabel) return -1
                 return a.character.localeCompare(b.character)
             })
     }, [filteredItems])
@@ -201,12 +202,12 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                     }
 
                     const summary = result.summary || {
-                        Orchid: 0,
-                        Daffodil: 0,
+                        'Orchid Whisper': 0,
+                        'Daffodil Blossom': 0,
                     }
 
                     toast.success(
-                        `Backfill complete: ${result.updated}/${result.total} items updated (Orchid ${summary.Orchid}, Daffodil ${summary.Daffodil})`
+                        `Character backfill complete: ${result.updated}/${result.total} items updated (Orchid Whisper ${summary['Orchid Whisper']}, Daffodil Blossom ${summary['Daffodil Blossom']})`
                     )
                     router.refresh()
                 } catch (error) {
@@ -238,7 +239,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                         ))}
                     </nav>
                     <p className="text-xs text-slate-500">
-                        Grouped by character family in the selected line.
+                        Grouped by Character in the selected line.
                     </p>
                 </div>
 
@@ -264,7 +265,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                             disabled={isBackfillPending}
                         >
                             <WandSparkles className="mr-2 h-4 w-4" />
-                            {isBackfillPending ? 'Running Backfill...' : 'Run Taxonomy Backfill'}
+                            {isBackfillPending ? 'Running Backfill...' : 'Backfill Character Names'}
                         </Button>
                     )}
                 </div>
@@ -281,9 +282,9 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                         <TableHeader>
                             <TableRow className="bg-slate-50">
                                 <TableHead className="w-[50px]"></TableHead>
-                                <TableHead>Character / Family</TableHead>
+                                <TableHead>Character</TableHead>
                                 <TableHead>SKUs</TableHead>
-                                <TableHead>Category Mix</TableHead>
+                                <TableHead>Jewelry Type Mix</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -362,8 +363,8 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                         <TableHead className="h-8 w-12 text-xs">Image</TableHead>
                                                                         <TableHead className="h-8 text-xs">SKU</TableHead>
                                                                         <TableHead className="h-8 text-xs">Item</TableHead>
-                                                                        <TableHead className="h-8 text-xs">Category</TableHead>
-                                                                        <TableHead className="h-8 text-xs">Collection</TableHead>
+                                                                        <TableHead className="h-8 text-xs">Jewelry Type</TableHead>
+                                                                        <TableHead className="h-8 text-xs">Website Collection</TableHead>
                                                                         <TableHead className="h-8 text-xs">Size</TableHead>
                                                                         <TableHead className="h-8 text-xs">Color</TableHead>
                                                                         <TableHead className="h-8 text-xs">Material</TableHead>

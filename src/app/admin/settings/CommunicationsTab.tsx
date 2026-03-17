@@ -726,10 +726,8 @@ interface InvoicePdfPreviewProps {
 
 function InvoicePdfPreview({ billingProfile, footerText, notes, onClickNotes, onClickFooter, onSwitchToBilling }: InvoicePdfPreviewProps) {
     // Determine content with fallbacks
-    const hasCompanyHeader = !!billingProfile?.company_header
     const companyHeader = billingProfile?.company_header || "Ivy's Rental & Wholesale\n123 Fashion Ave, New York, NY"
 
-    const hasBankInfo = !!billingProfile?.bank_info
     const bankInfo = billingProfile?.bank_info || "Chase Bank\nAccount: 1234567890\nRouting: 098765432"
 
     return (

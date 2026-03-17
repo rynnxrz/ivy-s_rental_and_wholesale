@@ -12,7 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Plus, FileText, Download, Pencil, Trash2 } from 'lucide-react'
+import { Plus, FileText, Download, Pencil } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,10 +82,10 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
                     {JSON.stringify(error, null, 2)}
                 </pre>
                 <div className="mt-2 text-sm">
-                    <p><strong>Message:</strong> {(error as any)?.message}</p>
-                    <p><strong>Code:</strong> {(error as any)?.code}</p>
-                    <p><strong>Details:</strong> {(error as any)?.details}</p>
-                    <p><strong>Hint:</strong> {(error as any)?.hint}</p>
+                    <p><strong>Message:</strong> {error.message}</p>
+                    <p><strong>Code:</strong> {error.code}</p>
+                    <p><strong>Details:</strong> {error.details}</p>
+                    <p><strong>Hint:</strong> {error.hint}</p>
                 </div>
             </div>
         )

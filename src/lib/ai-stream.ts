@@ -10,6 +10,13 @@ export interface StreamableValue<T> {
     done: boolean
 }
 
+function hasReadableStreamReader(value: unknown): value is ReadableStream {
+    return typeof value === 'object'
+        && value !== null
+        && 'getReader' in value
+        && typeof value.getReader === 'function'
+}
+
 // Simple streamable value implementation using raw ReadableStream
 export function createStreamableValue<T>(initialValue?: T) {
     const stream = new TransformStream()
@@ -35,7 +42,7 @@ export async function* readStreamableValue<T>(stream: ReadableStream | null | un
     if (!stream) return
 
     // If stream is a ReadableStream (which it should be from our custom impl)
-    if (stream instanceof ReadableStream || (stream && typeof (stream as any).getReader === 'function')) {
+    if (stream instanceof ReadableStream || hasReadableStreamReader(stream)) {
         const reader = stream.getReader()
         const decoder = new TextDecoder()
         const decodeChunk = (chunk: unknown) => {

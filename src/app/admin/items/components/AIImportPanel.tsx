@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useTransition, useEffect, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Globe, Loader2, Package, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
     Select,
     SelectContent,
@@ -11,34 +14,21 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Loader2, Sparkles, ExternalLink, Check, Search, Settings, Zap } from 'lucide-react'
+import type {
+    GuidedImportIssue,
+    GuidedImportRun,
+    GuidedImportSection,
+    ItemLineType,
+    StagingImportEvent,
+} from '@/types'
+import { OFFICIAL_CHARACTERS } from '@/lib/items/catalog-rules'
 import {
-    extractCategoriesStreamAction, // NEW: Streaming version
-    ExtractedCategory,
-    createStagingBatchAction,
-    quickScanStreamAction, // NEW: Streaming version
-    autoCategorizeStagingItemsAction,
-    getStagingItemsAction,
-    getAvailableModelsAction,
-    exploreSubCategoriesAction,
-    AvailableModel,
+    answerImportQuestionsAction,
+    getImportRunEventsAction,
     importPdfCatalogAction,
-    matchPdfCatalogPageImagesAction,
+    runWebsiteMatchAction,
 } from '@/actions/items'
-import { readStreamableValue } from '@/lib/ai-stream'
-import { getAISettingsAction } from '@/app/admin/settings/actions'
-import { AIImportSettings } from './AIImportSettings'
 import { StagingItemsList } from './StagingItemsList'
-import { toast } from 'sonner'
-import type { ItemLineType, StagingItem } from '@/types'
-import { GEMINI_MODELS } from '@/types'
-import { useAIWorkflow } from '@/hooks/useAIWorkflow'
-import type { AIWorkflowState, LogEntry } from '@/hooks/useAIWorkflow'
-import { AIStatusConsole } from '@/components/admin/AIStatusConsole'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { resolvePreferredDocumentModelId, DEFAULT_GEMINI_MODEL } from '@/lib/ai/model-selection'
-import { renderSelectedPdfPages } from '@/lib/pdf/renderSelectedPages'
-
 
 interface Category {
     id: string
@@ -52,1050 +42,120 @@ interface Collection {
 
 interface AIImportPanelProps {
     categories: Category[]
-    collections: Collection[]  // NEW: For dual mapping
+    collections: Collection[]
     onClose: () => void
 }
 
-interface CategoryMapping {
-    extractedCategory: ExtractedCategory
-    mappedCategoryId: string | null
-    mappedCollectionId: string | null  // NEW: For dual mapping
-    selectedForScan: boolean
+const STEPS = [
+    'Upload PDFs',
+    'Review What Was Found',
+    'Answer Missing Questions',
+    'Add Website Photos',
+    'Check Import Draft',
+    'Import to Inventory',
+] as const
+
+type StepKey = 'upload' | 'review' | 'questions' | 'website' | 'draft'
+
+type ImportResultState = Awaited<ReturnType<typeof importPdfCatalogAction>>
+
+const getCurrentStepIndex = (step: StepKey) => {
+    switch (step) {
+        case 'upload':
+            return 0
+        case 'review':
+            return 1
+        case 'questions':
+            return 2
+        case 'website':
+            return 3
+        case 'draft':
+            return 4
+        default:
+            return 0
+    }
 }
 
-type ViewMode = 'extract' | 'scanning' | 'results'
-type ImportMode = 'url' | 'pdf'
-
-type CategoryExtractionChunk =
-    | { type: 'chunk'; text: string; isThought?: boolean }
-    | { type: 'usage'; usage: AIWorkflowState['usage'] }
-    | { type: 'result'; success: boolean; categories?: ExtractedCategory[]; error?: string }
-
-type QuickScanChunk =
-    | { type: 'category_start'; categoryName: string }
-    | { type: 'chunk'; text: string; isThought?: boolean }
-    | { type: 'category_done'; categoryName: string; count: number }
-    | { type: 'log'; message: string }
-    | { type: 'result'; success: boolean; itemsFound: number; error?: string }
-
-type RunHistoryEntry = {
-    id: string
-    url: string
-    finishedAt: Date
-    status: AIWorkflowState['status']
-    logs: LogEntry[]
+const getIssueTone = (issue: GuidedImportIssue['type']) => {
+    switch (issue) {
+        case 'character':
+            return 'Character needed'
+        case 'jewelry_type':
+            return 'Jewelry Type needed'
+        case 'source_page':
+            return 'Page number needed'
+        case 'duplicate_sku':
+            return 'SKU review'
+        case 'website_match':
+            return 'Website match missing'
+        default:
+            return 'Needs review'
+    }
 }
 
-type ResultBatchMeta = {
-    id: string
-    source_url: string | null
-    source_label: string | null
-    source_type: ImportMode
-    status: string
-    created_at: string
-    items_scraped: number
-    pending_count: number
-    default_line_type: ItemLineType
-}
+const buildSectionKey = (section: GuidedImportSection) => `${section.batchId}:${section.key}`
 
-export function AIImportPanel({ categories, collections, onClose }: AIImportPanelProps) {
-    const [url, setUrl] = useState('')
-    const [importMode, setImportMode] = useState<ImportMode>('url')
-    const [defaultLineType, setDefaultLineType] = useState<ItemLineType>('Mainline')
-    const [pdfFile, setPdfFile] = useState<File | null>(null)
-    const [pdfSourceLabel, setPdfSourceLabel] = useState('')
-    const [isPending, startTransition] = useTransition()
-    const [extractedCategories, setExtractedCategories] = useState<CategoryMapping[]>([])
-    const [hasExtracted, setHasExtracted] = useState(false)
+const buildQuestionAnswerValue = (value: string | undefined, fallback = '') => value?.trim() || fallback
 
-    const [selectedModel, setSelectedModel] = useState(DEFAULT_GEMINI_MODEL)
-    const [settingsOpen, setSettingsOpen] = useState(false)
-    const [aiSettings, setAiSettings] = useState<{
-        selectedModel: string
-        promptCategory: string | null
-        promptSubcategory: string | null
-        promptProductList: string | null
-        promptQuickList: string | null
-        promptProductDetail: string | null
-        thinkingCategory: string | null
-        thinkingSubcategory: string | null
-        thinkingProductList: string | null
-        thinkingProductDetail: string | null
-        maxOutputTokens: number | null
-        useSystemInstruction: boolean
-        promptHistory?: Record<string, string[]>
-    }>({
-        selectedModel: DEFAULT_GEMINI_MODEL,
-        promptCategory: null,
-        promptSubcategory: null,
-        promptProductList: null,
-        promptQuickList: null,
-        promptProductDetail: null,
-        thinkingCategory: null,
-        thinkingSubcategory: null,
-        thinkingProductList: null,
-        thinkingProductDetail: null,
-        maxOutputTokens: null,
-        useSystemInstruction: false,
-        promptHistory: {}
-    })
+function Stepper({ currentStep }: { currentStep: StepKey }) {
+    const currentIndex = getCurrentStepIndex(currentStep)
 
-    // Dynamic model list state
-    const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
-
-    // Fetch available models on mount
-    useEffect(() => {
-        const fetchModelsAndSettings = async () => {
-            // Fetch models
-            const modelsResult = await getAvailableModelsAction()
-            if (modelsResult.success && modelsResult.models.length > 0) {
-                setAvailableModels(modelsResult.models)
-            } else {
-                setAvailableModels(GEMINI_MODELS.map(m => ({
-                    id: m.id,
-                    name: m.name,
-                    displayName: m.name,
-                    description: ''
-                })))
-            }
-
-            // Fetch settings
-            const settings = await getAISettingsAction()
-            if (settings) {
-                setAiSettings({
-                    selectedModel: settings.ai_selected_model || DEFAULT_GEMINI_MODEL,
-                    promptCategory: settings.ai_prompt_category,
-                    promptSubcategory: settings.ai_prompt_subcategory,
-                    promptProductList: settings.ai_prompt_product_list,
-                    promptQuickList: settings.ai_prompt_quick_list,
-                    promptProductDetail: settings.ai_prompt_product_detail,
-                    thinkingCategory: settings.ai_thinking_category,
-                    thinkingSubcategory: settings.ai_thinking_subcategory,
-                    thinkingProductList: settings.ai_thinking_product_list,
-                    thinkingProductDetail: settings.ai_thinking_product_detail,
-                    maxOutputTokens: settings.ai_max_output_tokens ?? null,
-                    useSystemInstruction: settings.ai_use_system_instruction ?? false,
-                    promptHistory: (settings && 'prompt_history' in settings ? (settings as { prompt_history?: Record<string, string[]> }).prompt_history : {}) || {}
-                })
-                setSelectedModel(settings.ai_selected_model || DEFAULT_GEMINI_MODEL)
-            }
-        }
-        fetchModelsAndSettings()
-    }, [])
-
-
-    // Scanning state
-    const [viewMode, setViewMode] = useState<ViewMode>('extract')
-    const [batchId, setBatchId] = useState<string | null>(null)
-    const [stagingItems, setStagingItems] = useState<StagingItem[]>([])
-    const [isScanning, setIsScanning] = useState(false)
-    const [isClassifying, setIsClassifying] = useState(false)
-    const [classifySummary, setClassifySummary] = useState<string | null>(null)
-    const [resultBatch, setResultBatch] = useState<ResultBatchMeta | null>(null)
-
-    // AI Workflow state (replaces simple loadingStep)
-    const {
-        state: aiState,
-        addLog,
-        updateLastLog,
-        setCurrentItem,
-        setStatus,
-        reset: resetAIWorkflow,
-        setUsage,
-        appendToLastLog // NEW: For streaming text
-    } = useAIWorkflow()
-
-    const [consoleOpen, setConsoleOpen] = useState(false)
-    const [currentRunId, setCurrentRunId] = useState<string | null>(null)
-    const [currentRunUrl, setCurrentRunUrl] = useState<string | null>(null)
-    const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>([])
-    const [activeRunId, setActiveRunId] = useState<string | null>(null)
-    const aiStateRef = useRef(aiState)
-
-    useEffect(() => {
-        aiStateRef.current = aiState
-    }, [aiState])
-
-    useEffect(() => {
-        if (!activeRunId && runHistory.length > 0) {
-            setActiveRunId(runHistory[0].id)
-        }
-    }, [runHistory, activeRunId])
-
-    const archiveRun = useCallback((status: AIWorkflowState['status']) => {
-        const id = currentRunId || `run-${Date.now()}`
-        const snapshot: RunHistoryEntry = {
-            id,
-            url: currentRunUrl || url,
-            finishedAt: new Date(),
-            status,
-            logs: [...aiStateRef.current.logs]
-        }
-
-        setRunHistory(prev => {
-            const filtered = prev.filter(r => r.id !== id)
-            return [snapshot, ...filtered].slice(0, 10)
-        })
-        setActiveRunId(id)
-        setConsoleOpen(false)
-    }, [currentRunId, currentRunUrl, url])
-
-    // Loading step messages (kept for backward compatibility)
-    const [loadingStep, setLoadingStep] = useState<string>('')
-
-    const handleExtract = () => {
-        if (!url.trim()) {
-            toast.error('Please enter a URL')
-            return
-        }
-
-        setClassifySummary(null)
-        setResultBatch(null)
-
-        // Reset and prepare console
-        resetAIWorkflow()
-        const newRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-        setCurrentRunId(newRunId)
-        setActiveRunId(newRunId)
-        setCurrentRunUrl(url)
-        setConsoleOpen(true)
-
-        startTransition(async () => {
-            // Extract domain for display
-            const domain = new URL(url).hostname
-            setLoadingStep('Analyzing website structure...')
-
-            // Reset and start workflow
-            resetAIWorkflow()
-            setStatus('analyzing')
-            addLog(`Analyzing ${domain}...`, 'loading', 'Fetch')
-
-            try {
-                const { output } = await extractCategoriesStreamAction(url, selectedModel)
-
-                let scanSuccess = false
-                let scanError = null
-                let categoriesResult: ExtractedCategory[] = []
-
-                for await (const chunk of readStreamableValue<CategoryExtractionChunk>(output)) {
-                    if (chunk.type === 'chunk') {
-                        if (chunk.isThought) {
-                            // Real-time append to last thought line or new one
-                            const lastLog = aiState.logs[aiState.logs.length - 1]
-                            if (lastLog?.tag === 'Thinking' && lastLog?.type === 'loading') {
-                                appendToLastLog(chunk.text)
-                            } else {
-                                addLog(chunk.text, 'loading', 'Thinking')
-                            }
-                        }
-                    } else if (chunk.type === 'usage') {
-                        // Update usage stats
-                        setUsage(chunk.usage)
-                    } else if (chunk.type === 'result') {
-                        if (chunk.success) {
-                            scanSuccess = true
-                            categoriesResult = chunk.categories || []
-                        } else {
-                            scanError = chunk.error
-                        }
-                    }
-                }
-
-                setLoadingStep('')
-
-                if (!scanSuccess) {
-                    addLog(`Analysis failed: ${scanError}`, 'error', 'Error')
-                    toast.error(scanError || 'Failed to extract categories')
-                    setStatus('error')
-                    archiveRun('error')
-                    return
-                }
-
-                if (categoriesResult.length === 0) {
-                    addLog('No categories found on this page', 'warning', 'Discovery')
-                    toast.warning('No categories found on this page')
-                    setStatus('idle')
-                    archiveRun('idle')
-                    return
-                }
-
-                // Log final success
-                setStatus('success')
-                addLog(`Successfully connected to ${domain}`, 'success', 'Fetch')
-
-                // Log each category found
-                const categoryNames = categoriesResult.slice(0, 4).map(c => c.name).join(', ')
-                const moreCount = categoriesResult.length > 4 ? ` +${categoriesResult.length - 4} more` : ''
-                addLog(`Found ${categoriesResult.length} items: ${categoryNames}${moreCount}`, 'success', 'Discovery')
-
-                // Initialize mappings with auto-matching
-                const mappings: CategoryMapping[] = categoriesResult.map(cat => {
-                    const matchedCategory = cat.suggestedType === 'category'
-                        ? categories.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
-                        : null
-
-                    const matchedCollection = cat.suggestedType === 'collection'
-                        ? collections.find(c => c.name.toLowerCase() === cat.name.toLowerCase())
-                        : null
-
-                    return {
-                        extractedCategory: cat,
-                        mappedCategoryId: matchedCategory?.id || null,
-                        mappedCollectionId: matchedCollection?.id || null,
-                        selectedForScan: false
-                    }
-                })
-
-                setExtractedCategories(mappings)
-                setHasExtracted(true)
-                toast.success(`Found ${categoriesResult.length} categories`)
-                archiveRun('success')
-
-            } catch (error) {
-                console.error("Extraction Stream failed:", error)
-                addLog(`Stream error: ${error}`, 'error', 'Error')
-                setStatus('error')
-                archiveRun('error')
-            }
-        })
-    }
-
-    const handleStartScan = async () => {
-        const selectedCategories = extractedCategories
-            .filter(c => c.selectedForScan && c.extractedCategory.url)
-            .map(c => ({
-                name: c.extractedCategory.name,
-                url: c.extractedCategory.url!,
-                categoryId: c.mappedCategoryId,
-                collectionId: c.mappedCollectionId
-            }))
-
-        if (selectedCategories.length === 0) {
-            toast.error('Please select at least one category to scan')
-            return
-        }
-
-        setClassifySummary(null)
-        setResultBatch(null)
-
-        // Reset and prepare console for scan
-        resetAIWorkflow()
-        setStatus('analyzing')
-
-        setBatchId(null)
-        setViewMode('scanning')
-        setIsScanning(true)
-        setLoadingStep(`Speed scanning ${selectedCategories.length} category pages...`)
-
-        // Create batch in background
-        const { batchId: newBatchId, error } = await createStagingBatchAction({
-            sourceType: 'url',
-            sourceUrl: url,
-            sourceLabel: url,
-            defaultLineType,
-        })
-        if (error || !newBatchId) {
-            addLog(`Failed to create batch: ${error}`, 'error', 'Error')
-            toast.error(error || 'Failed to create import batch')
-            setLoadingStep('')
-            setViewMode('extract')
-            setIsScanning(false)
-            return
-        }
-
-        setBatchId(newBatchId)
-        setCurrentItem(`Processing ${selectedCategories.length} categories...`)
-
-        // Start Streaming Quick Scan
-        try {
-            const { output } = await quickScanStreamAction({ categories: selectedCategories }, newBatchId, selectedModel)
-
-            let itemsFound = 0
-            let scanSuccess = false
-            let scanError = null
-
-            for await (const chunk of readStreamableValue<QuickScanChunk>(output)) {
-                if (chunk.type === 'category_start') {
-                    setCurrentItem(`Scanning: ${chunk.categoryName}`)
-                    addLog(`Accessing ${chunk.categoryName}...`, 'loading', 'Fetch')
-                } else if (chunk.type === 'chunk') {
-                    if (chunk.isThought) {
-                        const lastLog = aiState.logs[aiState.logs.length - 1]
-                        if (lastLog?.tag === 'Thinking' && lastLog?.type === 'loading') {
-                            appendToLastLog(chunk.text)
-                        } else {
-                            addLog(chunk.text, 'loading', 'Thinking')
-                        }
-                    }
-                } else if (chunk.type === 'category_done') {
-                    // Mark previous Thinking log as success before stating category done
-                    const lastLog = aiState.logs[aiState.logs.length - 1]
-                    if (lastLog?.tag === 'Thinking') {
-                        updateLastLog({ type: 'success' })
-                    }
-                    addLog(`Found ${chunk.count} items in ${chunk.categoryName}`, 'success', 'Discovery')
-                } else if (chunk.type === 'log') {
-                    addLog(chunk.message, 'warning', 'System')
-                } else if (chunk.type === 'result') {
-                    if (chunk.success) {
-                        itemsFound = chunk.itemsFound
-                        scanSuccess = true
-                    } else {
-                        scanError = chunk.error
-                    }
-                }
-            }
-
-            setIsScanning(false)
-            setCurrentItem(null)
-            setLoadingStep('')
-
-            if (!scanSuccess) {
-                setStatus('error')
-                addLog(scanError || 'Quick scan failed', 'error', 'Error')
-                toast.error(scanError || 'Quick scan failed')
-                setViewMode('extract')
-                return
-            }
-
-            // Log success details
-            setStatus('success')
-            addLog(`Batch created: ${newBatchId.substring(0, 8)}...`, 'success', 'System')
-            addLog(`Found ${itemsFound} products across all categories`, 'success', 'Discovery')
-
-            // Log variant detection hint
-            if (itemsFound > 0) {
-                addLog('Products ready for review and grouping', 'info', 'Logic')
-            }
-
-            toast.success(`Found ${itemsFound} items (speed scan)`)
-
-            // Allow user to read the logs before switching
-            await new Promise(resolve => setTimeout(resolve, 2000))
-
-            // Fetch results immediately
-            const { data } = await getStagingItemsAction(newBatchId)
-            setStagingItems(data || [])
-            setResultBatch({
-                id: newBatchId,
-                source_url: url,
-                source_label: url,
-                source_type: 'url',
-                status: 'completed',
-                created_at: new Date().toISOString(),
-                items_scraped: (data || []).length,
-                pending_count: (data || []).length,
-                default_line_type: defaultLineType,
-            })
-            setViewMode('results')
-
-        } catch (error) {
-            console.error("Quick Scan Stream failed:", error)
-            addLog(`Stream error: ${error}`, 'error', 'Error')
-            setIsScanning(false)
-        }
-
-    }
-
-    const handlePdfImport = () => {
-        if (!pdfFile) {
-            toast.error('Please choose a PDF catalog to import')
-            return
-        }
-
-        const effectiveSourceLabel = pdfSourceLabel.trim() || pdfFile.name
-        const preferredDocumentModel = resolvePreferredDocumentModelId(
-            availableModels.map(model => model.id),
-            selectedModel
-        )
-
-        setClassifySummary(null)
-        setResultBatch(null)
-        resetAIWorkflow()
-
-        const newRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-        setCurrentRunId(newRunId)
-        setActiveRunId(newRunId)
-        setCurrentRunUrl(effectiveSourceLabel)
-        setConsoleOpen(true)
-
-        startTransition(async () => {
-            try {
-                setViewMode('scanning')
-                setIsScanning(true)
-                setLoadingStep('Parsing PDF catalog...')
-                setStatus('analyzing')
-                addLog(`Uploading ${effectiveSourceLabel}...`, 'loading', 'Fetch')
-
-                const formData = new FormData()
-                formData.append('file', pdfFile)
-                formData.append('sourceLabel', effectiveSourceLabel)
-                formData.append('defaultLineType', defaultLineType)
-                formData.append('modelId', preferredDocumentModel)
-
-                const importResult = await importPdfCatalogAction(formData)
-                if (!importResult.success || !importResult.batchId) {
-                    addLog(importResult.error || 'PDF import failed', 'error', 'Error')
-                    setStatus('error')
-                    setViewMode('extract')
-                    setIsScanning(false)
-                    setLoadingStep('')
-                    archiveRun('error')
-                    toast.error(importResult.error || 'PDF import failed')
-                    return
-                }
-
-                addLog(`Parsed ${importResult.itemsFound} catalog rows`, 'success', 'Discovery')
-                setBatchId(importResult.batchId)
-                setCurrentItem(`Rendering ${importResult.renderedPages.length} PDF page(s)...`)
-                setLoadingStep('Rendering referenced PDF pages...')
-
-                let matchedImages = 0
-                let totalImageTargets = 0
-
-                if (importResult.renderedPages.length > 0) {
-                    try {
-                        const renderedPages = await renderSelectedPdfPages(pdfFile, importResult.renderedPages)
-
-                        for (const page of renderedPages) {
-                            setCurrentItem(`Matching product images on page ${page.pageNumber}`)
-                            addLog(`Matching images on page ${page.pageNumber}...`, 'loading', 'Logic')
-
-                            const pageMatchResult = await matchPdfCatalogPageImagesAction({
-                                batchId: importResult.batchId,
-                                pageNumber: page.pageNumber,
-                                pageImageDataUrl: page.dataUrl,
-                                modelId: preferredDocumentModel,
-                            })
-
-                            if (!pageMatchResult.success) {
-                                addLog(pageMatchResult.error || `Failed to match page ${page.pageNumber}`, 'warning', 'Logic')
-                                continue
-                            }
-
-                            matchedImages += pageMatchResult.matchedCount
-                            totalImageTargets += pageMatchResult.totalItems
-                            addLog(
-                                `Matched ${pageMatchResult.matchedCount}/${pageMatchResult.totalItems} items on page ${page.pageNumber}`,
-                                'success',
-                                'Logic'
-                            )
-                        }
-                    } catch (pageError) {
-                        console.error('PDF page rendering failed', pageError)
-                        addLog('PDF pages were parsed, but preview image matching could not be completed in-browser.', 'warning', 'Logic')
-                    }
-                } else {
-                    addLog('No source pages were detected for image matching', 'warning', 'Logic')
-                }
-
-                const { data } = await getStagingItemsAction(importResult.batchId)
-                setStagingItems(data || [])
-                setResultBatch({
-                    id: importResult.batchId,
-                    source_url: null,
-                    source_label: effectiveSourceLabel,
-                    source_type: 'pdf',
-                    status: 'completed',
-                    created_at: new Date().toISOString(),
-                    items_scraped: (data || []).length,
-                    pending_count: (data || []).length,
-                    default_line_type: defaultLineType,
-                })
-
-                setStatus('success')
-                setCurrentItem(null)
-                setLoadingStep('')
-                setIsScanning(false)
-                setViewMode('results')
-                archiveRun('success')
-
-                if (totalImageTargets > 0) {
-                    toast.success(`Imported ${importResult.itemsFound} rows, matched ${matchedImages}/${totalImageTargets} preview images`)
-                } else {
-                    toast.success(`Imported ${importResult.itemsFound} rows from PDF catalog`)
-                }
-            } catch (error) {
-                console.error('PDF import failed', error)
-                addLog(error instanceof Error ? error.message : 'PDF import failed', 'error', 'Error')
-                setStatus('error')
-                setViewMode('extract')
-                setIsScanning(false)
-                setLoadingStep('')
-                archiveRun('error')
-                toast.error('PDF import failed')
-            }
-        })
-    }
-
-    const handleAutoCategorize = async () => {
-        if (!batchId) {
-            toast.error('No active batch to categorize')
-            return
-        }
-
-        setIsClassifying(true)
-        setClassifySummary(null)
-
-        const result = await autoCategorizeStagingItemsAction(batchId, selectedModel)
-        setIsClassifying(false)
-
-        if (!result.success) {
-            toast.error(result.error || 'AI 分类失败')
-            return
-        }
-
-        setClassifySummary(`已更新 ${result.updatedCount} 条，未匹配 ${result.unmatched.length} 条`)
-        toast.success(`AI 分类完成：${result.updatedCount} 条已匹配`)
-
-        const { data } = await getStagingItemsAction(batchId)
-        setStagingItems(data || [])
-    }
-
-    const updateMapping = (index: number, categoryId: string | null) => {
-        setExtractedCategories(prev => {
-            const updated = [...prev]
-            updated[index] = { ...updated[index], mappedCategoryId: categoryId }
-            return updated
-        })
-    }
-
-    const updateCollectionMapping = (index: number, collectionId: string | null) => {
-        setExtractedCategories(prev => {
-            const updated = [...prev]
-            updated[index] = { ...updated[index], mappedCollectionId: collectionId }
-            return updated
-        })
-    }
-
-    // State for tracking which row is being explored
-    const [exploringIndex, setExploringIndex] = useState<number | null>(null)
-
-    const handleExploreDepth = async (index: number) => {
-        const mapping = extractedCategories[index]
-        if (!mapping.extractedCategory.url) {
-            toast.error('No URL available to explore')
-            return
-        }
-
-        setExploringIndex(index)
-
-        const result = await exploreSubCategoriesAction(
-            mapping.extractedCategory.url,
-            mapping.extractedCategory.name,
-            selectedModel
-        )
-
-        setExploringIndex(null)
-
-        if (!result.success) {
-            toast.error(result.error || 'Failed to explore sub-categories')
-            return
-        }
-
-        if (result.subCategories.length === 0) {
-            toast.info('No sub-categories found on this page')
-            return
-        }
-
-        // Add new sub-categories as new rows
-        const newMappings: CategoryMapping[] = result.subCategories.map(subCat => {
-            // Smart auto-suggestion based on suggestedType
-            const matchedCategory = subCat.suggestedType === 'category'
-                ? categories.find(c => c.name.toLowerCase().includes(subCat.name.toLowerCase().split(' ')[0]) ||
-                    subCat.name.toLowerCase().includes(c.name.toLowerCase()))
-                : null
-
-            const matchedCollection = subCat.suggestedType === 'collection'
-                ? collections.find(c => c.name.toLowerCase().includes(subCat.name.toLowerCase().split(' ')[0]) ||
-                    subCat.name.toLowerCase().includes(c.name.toLowerCase()))
-                : null
-
-            return {
-                extractedCategory: subCat,
-                mappedCategoryId: matchedCategory?.id || null,
-                mappedCollectionId: matchedCollection?.id || null,
-                selectedForScan: false
-            }
-        })
-
-        // Insert new mappings after the current index
-        setExtractedCategories(prev => [
-            ...prev.slice(0, index + 1),
-            ...newMappings,
-            ...prev.slice(index + 1)
-        ])
-
-        toast.success(`Found ${result.subCategories.length} sub-categories`)
-    }
-
-    const toggleScanSelection = (index: number) => {
-        setExtractedCategories(prev => {
-            const updated = [...prev]
-            updated[index] = { ...updated[index], selectedForScan: !updated[index].selectedForScan }
-            return updated
-        })
-    }
-
-    const selectedCount = extractedCategories.filter(c => c.selectedForScan).length
-
-    const displayedConsoleState: AIWorkflowState = (() => {
-        if (activeRunId && activeRunId === currentRunId) {
-            return aiState
-        }
-
-        const fallbackEntry = activeRunId
-            ? runHistory.find(r => r.id === activeRunId)
-            : runHistory[0]
-
-        if (fallbackEntry) {
-            return {
-                status: fallbackEntry.status,
-                logs: fallbackEntry.logs,
-                currentItem: null,
-                usage: undefined
-            }
-        }
-
-        return aiState
-    })()
-
-    // Scanning View - Quick scan mode (completes in seconds)
-    if (viewMode === 'scanning') {
-        const isPdfScan = importMode === 'pdf'
-        return (
-            <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
-                        <Zap className="h-5 w-5 text-purple-600 animate-pulse" />
-                    </div>
-                    <div className="flex-1">
-                        <h2 className="text-xl font-semibold flex items-center gap-2">
-                            {isPdfScan ? 'Processing PDF Catalog' : 'Quick Scanning'}
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
-                                {isPdfScan ? 'Document Mode' : 'Fast Mode'}
-                            </span>
-                        </h2>
-                        <p className="text-sm text-muted-foreground">
-                            {loadingStep || (isPdfScan
-                                ? 'Extracting catalog rows and matching preview images...'
-                                : 'Extracting products from category listings...')}
-                        </p>
-                    </div>
-                    {isScanning && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-                            <span>Processing...</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* AI Status Console - Terminal-style log display */}
-                <AIStatusConsole
-                    state={aiState}
-                    isOpen={true}
-                    title="AI Console"
-                    maxHeight={280}
-                />
-
-                <p className="text-xs text-center text-muted-foreground">
-                    {isPdfScan ? 'This can take a little longer while pages are parsed and matched.' : 'This should only take a few seconds'}
-                </p>
-            </div>
-        )
-    }
-
-    // Results View
-    if (viewMode === 'results' && batchId) {
-        const currentBatch = resultBatch ?? {
-            id: batchId,
-            source_url: url,
-            source_label: url,
-            source_type: importMode,
-            status: 'completed',
-            created_at: new Date().toISOString(),
-            items_scraped: stagingItems.length,
-            pending_count: stagingItems.length,
-            default_line_type: defaultLineType,
-        }
-        const canAutoCategorize = currentBatch.source_type === 'url'
-
-        return (
-            <div className="space-y-6">
-                <div className="flex items-center gap-4 mb-4">
-                    <Button variant="ghost" size="icon" onClick={() => {
-                        setViewMode('extract')
-                        setStagingItems([])
-                        setBatchId(null)
-                        setClassifySummary(null)
-                        setResultBatch(null)
-                    }}>
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div>
-                        <h2 className="text-xl font-semibold text-slate-900">
-                            {currentBatch.source_type === 'pdf' ? 'PDF Import Results' : 'Speed Scan Results'}
-                        </h2>
-                        <p className="text-sm text-slate-500">
-                            Review and classify your imported items before committing them to inventory.
-                        </p>
-                    </div>
-                    <div className="ml-auto flex items-center gap-3">
-                        {classifySummary && (
-                            <span className="text-xs text-slate-500">{classifySummary}</span>
-                        )}
-                        {canAutoCategorize && (
-                            <Button
-                                onClick={handleAutoCategorize}
-                                disabled={isClassifying || !batchId || stagingItems.length === 0}
-                                className="bg-purple-600 hover:bg-purple-700"
-                            >
-                                {isClassifying ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Sparkles className="mr-2 h-4 w-4" />
-                                )}
-                                AI 分类
-                            </Button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="bg-slate-50/50 rounded-xl border p-1">
-                    <StagingItemsList
-                        batches={[currentBatch]}
-                        categories={categories}
-                        collections={collections}
-                        onClose={onClose}
-                    />
-                </div>
-            </div>
-        )
-    }
-
-    // Extract View (default)
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                    <ArrowLeft className="h-4 w-4" />
-                </Button>
+        <div className="grid gap-2 md:grid-cols-6">
+            {STEPS.map((label, index) => {
+                const isActive = index === currentIndex
+                const isComplete = index < currentIndex
+
+                return (
+                    <div
+                        key={label}
+                        className={`rounded-xl border px-3 py-3 text-sm transition-colors ${
+                            isActive
+                                ? 'border-slate-900 bg-slate-900 text-white'
+                                : isComplete
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                    : 'border-slate-200 bg-white text-slate-500'
+                        }`}
+                    >
+                        <div className="text-[11px] uppercase tracking-wide opacity-70">Step {index + 1}</div>
+                        <div className="mt-1 font-medium">{label}</div>
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
+
+function ImportProgressPanel({
+    runs,
+    selectedRunId,
+    onSelectRunId,
+    eventMap,
+}: {
+    runs: GuidedImportRun[]
+    selectedRunId: string | null
+    onSelectRunId: (value: string) => void
+    eventMap: Record<string, StagingImportEvent[]>
+}) {
+    const activeRunId = selectedRunId || runs[0]?.batchId || null
+    const events = activeRunId ? (eventMap[activeRunId] || []) : []
+
+    return (
+        <div className="rounded-2xl border bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b px-4 py-3">
                 <div>
-                    <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-purple-500" />
-                        AI Import
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                        Import from a storefront URL or parse a PDF catalog into staging items
-                    </p>
+                    <h3 className="text-sm font-semibold text-slate-900">Import Progress</h3>
+                    <p className="text-xs text-slate-500">Saved progress for each import run.</p>
                 </div>
-
-                <div className="ml-auto flex items-center gap-2">
-                    <div className="flex flex-col items-end mr-2">
-                        <span className="text-xs font-medium">
-                            {availableModels.find(m => m.id === selectedModel)?.displayName || selectedModel}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                            {availableModels.find(m => m.id === selectedModel)?.inputTokenLimit
-                                ? `${Math.round(availableModels.find(m => m.id === selectedModel)!.inputTokenLimit! / 1000)}K context`
-                                : 'Active Model'}
-                        </span>
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setSettingsOpen(true)}
-                        title="AI Configuration"
-                    >
-                        <Settings className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
-
-            <AIImportSettings
-                open={settingsOpen}
-                onOpenChange={(open) => {
-                    setSettingsOpen(open)
-                    if (!open) {
-                        // Refresh settings when closed (in case they changed)
-                        getAISettingsAction().then(settings => {
-                            if (settings) {
-                                setAiSettings({
-                                    selectedModel: settings.ai_selected_model || DEFAULT_GEMINI_MODEL,
-                                    promptCategory: settings.ai_prompt_category,
-                                    promptSubcategory: settings.ai_prompt_subcategory,
-                                    promptProductList: settings.ai_prompt_product_list,
-                                    promptQuickList: settings.ai_prompt_quick_list,
-                                    promptProductDetail: settings.ai_prompt_product_detail,
-                                    thinkingCategory: settings.ai_thinking_category,
-                                    thinkingSubcategory: settings.ai_thinking_subcategory,
-                                    thinkingProductList: settings.ai_thinking_product_list,
-                                    thinkingProductDetail: settings.ai_thinking_product_detail,
-                                    maxOutputTokens: settings.ai_max_output_tokens ?? null,
-                                    useSystemInstruction: settings.ai_use_system_instruction ?? false
-                                })
-                                setSelectedModel(settings.ai_selected_model || DEFAULT_GEMINI_MODEL)
-                            }
-                        })
-                    }
-                }}
-                availableModels={availableModels}
-                initialSettings={aiSettings}
-            />
-
-            <Tabs
-                value={importMode}
-                onValueChange={(value) => {
-                    setImportMode(value as ImportMode)
-                    setHasExtracted(false)
-                    setExtractedCategories([])
-                    setClassifySummary(null)
-                }}
-                className="space-y-4"
-            >
-                <TabsList>
-                    <TabsTrigger value="url">Web URL</TabsTrigger>
-                    <TabsTrigger value="pdf">PDF Catalog</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="url" className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                        <div className="space-y-2">
-                            <Label htmlFor="source-url">Source URL</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="source-url"
-                                    placeholder="https://example.com/collections"
-                                    value={url}
-                                    onChange={(e) => setUrl(e.target.value)}
-                                    disabled={isPending}
-                                    className="flex-1"
-                                />
-                                <Button onClick={handleExtract} disabled={isPending || !url.trim()} className="min-w-[160px]">
-                                    {isPending ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            {loadingStep || 'Extracting...'}
-                                        </>
-                                    ) : (
-                                        'Extract Categories'
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="default-line-url">Default Line Type</Label>
-                            <Select value={defaultLineType} onValueChange={(value) => setDefaultLineType(value as ItemLineType)}>
-                                <SelectTrigger id="default-line-url">
-                                    <SelectValue placeholder="Select line type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Mainline">Mainline</SelectItem>
-                                    <SelectItem value="Collaboration">Collaboration</SelectItem>
-                                    <SelectItem value="Archive">Archive</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="pdf" className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label htmlFor="pdf-file">PDF Catalog</Label>
-                            <Input
-                                id="pdf-file"
-                                type="file"
-                                accept="application/pdf"
-                                onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                                disabled={isPending}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Upload one PDF per batch. The importer will create staging rows first, then try to attach one best-match preview image per item.
-                            </p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="pdf-source-label">Source Label</Label>
-                            <Input
-                                id="pdf-source-label"
-                                placeholder="2026SS Mainline"
-                                value={pdfSourceLabel}
-                                onChange={(e) => setPdfSourceLabel(e.target.value)}
-                                disabled={isPending}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-end">
-                        <div className="space-y-2">
-                            <Label htmlFor="default-line-pdf">Default Line Type</Label>
-                            <Select value={defaultLineType} onValueChange={(value) => setDefaultLineType(value as ItemLineType)}>
-                                <SelectTrigger id="default-line-pdf">
-                                    <SelectValue placeholder="Select line type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Mainline">Mainline</SelectItem>
-                                    <SelectItem value="Collaboration">Collaboration</SelectItem>
-                                    <SelectItem value="Archive">Archive</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <Button onClick={handlePdfImport} disabled={isPending || !pdfFile} className="min-w-[200px] md:justify-self-start">
-                            {isPending ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    {loadingStep || 'Importing PDF...'}
-                                </>
-                            ) : (
-                                'Import PDF Catalog'
-                            )}
-                        </Button>
-                    </div>
-                </TabsContent>
-            </Tabs>
-
-            {isPending && loadingStep && (
-                <p className="text-xs text-muted-foreground animate-pulse">
-                    ⏳ {loadingStep}
-                </p>
-            )}
-
-            <div className="flex items-center gap-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConsoleOpen(prev => !prev)}
-                    className="h-9"
-                >
-                    Extraction Console
-                    {runHistory.length > 0 && (
-                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                            {runHistory.length}
-                        </span>
-                    )}
-                </Button>
-                {(aiState.status !== 'idle' || runHistory.length > 0) && (
-                    <Select
-                        value={(activeRunId || currentRunId || runHistory[0]?.id) ?? undefined}
-                        onValueChange={(value) => setActiveRunId(value)}
-                    >
-                        <SelectTrigger className="h-9 w-[260px]">
-                            <SelectValue placeholder="Select run to view logs" />
+                {runs.length > 1 && (
+                    <Select value={activeRunId || undefined} onValueChange={onSelectRunId}>
+                        <SelectTrigger className="w-[220px]">
+                            <SelectValue placeholder="Choose import run" />
                         </SelectTrigger>
                         <SelectContent>
-                            {currentRunId && (
-                                <SelectItem value={currentRunId}>
-                                    Current run (in progress)
-                                </SelectItem>
-                            )}
-                            {runHistory.map((run) => (
-                                <SelectItem key={run.id} value={run.id}>
-                                    {new Date(run.finishedAt).toLocaleTimeString()} – {run.url}
+                            {runs.map((run) => (
+                                <SelectItem key={run.batchId} value={run.batchId}>
+                                    {run.sourceLabel}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -1103,164 +163,552 @@ export function AIImportPanel({ categories, collections, onClose }: AIImportPane
                 )}
             </div>
 
-            {(consoleOpen || aiState.status !== 'idle') && (
-                <AIStatusConsole
-                    state={displayedConsoleState}
-                    isOpen={true}
-                    title="Extraction Console"
-                    maxHeight={200}
-                    className="animate-in fade-in slide-in-from-top-2 duration-300"
+            <div className="max-h-[320px] space-y-2 overflow-y-auto p-4">
+                {events.length === 0 ? (
+                    <p className="text-sm text-slate-500">Progress will appear here after the PDF is read.</p>
+                ) : (
+                    events.map((event) => (
+                        <div key={event.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
+                                <span>{new Date(event.created_at).toLocaleTimeString()}</span>
+                                <Badge variant="outline" className="h-5 border-slate-200 text-slate-600">
+                                    {event.step.replace(/_/g, ' ')}
+                                </Badge>
+                                <Badge
+                                    variant="outline"
+                                    className={`h-5 ${
+                                        event.level === 'error'
+                                            ? 'border-red-200 text-red-700 bg-red-50'
+                                            : event.level === 'warning'
+                                                ? 'border-amber-200 text-amber-700 bg-amber-50'
+                                                : event.level === 'success'
+                                                    ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                                                    : 'border-slate-200 text-slate-600 bg-white'
+                                    }`}
+                                >
+                                    {event.level}
+                                </Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-slate-700">{event.message}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    )
+}
+
+export function AIImportPanel({ categories, collections, onClose }: AIImportPanelProps) {
+    const [step, setStep] = useState<StepKey>('upload')
+    const [defaultLineType, setDefaultLineType] = useState<ItemLineType>('Mainline')
+    const [files, setFiles] = useState<File[]>([])
+    const [importResult, setImportResult] = useState<ImportResultState | null>(null)
+    const [selectedSections, setSelectedSections] = useState<Record<string, boolean>>({})
+    const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({})
+    const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+    const [eventMap, setEventMap] = useState<Record<string, StagingImportEvent[]>>({})
+    const [isPending, startTransition] = useTransition()
+
+    const runs = useMemo(() => importResult?.runs || [], [importResult])
+    const questions = useMemo(() => importResult?.questions || [], [importResult])
+    const issues = useMemo(() => importResult?.issues || [], [importResult])
+    const sections = useMemo(() => importResult?.sections || [], [importResult])
+    const batchIds = useMemo(() => importResult?.batchIds || [], [importResult])
+    const batchIdsKey = batchIds.join('|')
+
+    const groupedSections = useMemo(() => {
+        return runs.map(run => ({
+            run,
+            sections: sections.filter(section => section.batchId === run.batchId),
+        })).filter(group => group.sections.length > 0)
+    }, [runs, sections])
+
+    const groupedQuestions = useMemo(() => {
+        return runs.map(run => ({
+            run,
+            questions: questions.filter(question => question.batchId === run.batchId),
+        })).filter(group => group.questions.length > 0)
+    }, [runs, questions])
+
+    const selectedIssueCount = useMemo(() => {
+        return issues.filter(issue => {
+            const matchedSection = sections.find(section => section.batchId === issue.batchId)
+            if (!matchedSection) return true
+            const key = buildSectionKey(matchedSection)
+            return selectedSections[key] !== false
+        }).length
+    }, [issues, sections, selectedSections])
+
+    useEffect(() => {
+        if (batchIds.length === 0) return
+
+        let isMounted = true
+        const loadEvents = async () => {
+            const results = await Promise.all(batchIds.map(batchId => getImportRunEventsAction(batchId)))
+            if (!isMounted) return
+
+            const nextMap: Record<string, StagingImportEvent[]> = {}
+            results.forEach((result, index) => {
+                nextMap[batchIds[index]] = result.events || []
+            })
+            setEventMap(nextMap)
+        }
+
+        void loadEvents()
+        const interval = window.setInterval(() => {
+            void loadEvents()
+        }, 2500)
+
+        return () => {
+            isMounted = false
+            window.clearInterval(interval)
+        }
+    }, [batchIds, batchIdsKey])
+
+    const handleReadPdfFiles = () => {
+        if (files.length === 0) {
+            toast.error('Choose at least one PDF file.')
+            return
+        }
+
+        startTransition(async () => {
+            const formData = new FormData()
+            files.forEach(file => formData.append('files', file))
+            formData.append('defaultLineType', defaultLineType)
+
+            const result = await importPdfCatalogAction(formData)
+            if (result.batchIds.length > 0) {
+                setImportResult(result)
+                setSelectedRunId(result.batchIds[0] || null)
+            }
+            if (!result.success) {
+                toast.error(result.error || 'Could not read the PDF files.')
+                return
+            }
+
+            const initialSelections = result.sections.reduce<Record<string, boolean>>((acc, section) => {
+                acc[buildSectionKey(section)] = true
+                return acc
+            }, {})
+
+            setSelectedSections(initialSelections)
+            setQuestionAnswers({})
+            setStep('review')
+
+            if (result.error) {
+                toast.warning(result.error)
+            } else {
+                toast.success(`Read ${result.itemsFound} draft items from ${result.batchIds.length} PDF file${result.batchIds.length > 1 ? 's' : ''}.`)
+            }
+        })
+    }
+
+    const persistSectionSelections = async () => {
+        if (!importResult) return true
+
+        for (const run of importResult.runs) {
+            const runSelections = Object.fromEntries(
+                importResult.sections
+                    .filter(section => section.batchId === run.batchId)
+                    .map(section => [section.key, selectedSections[buildSectionKey(section)] !== false])
+            )
+
+            const result = await answerImportQuestionsAction({
+                batchId: run.batchId,
+                sectionSelections: runSelections,
+            })
+
+            if (!result.success) {
+                toast.error(result.error || 'Could not save your section choices.')
+                return false
+            }
+        }
+
+        return true
+    }
+
+    const handleContinueFromReview = () => {
+        startTransition(async () => {
+            const saved = await persistSectionSelections()
+            if (!saved) return
+            setStep(questions.length > 0 ? 'questions' : 'website')
+        })
+    }
+
+    const handleSaveAnswers = () => {
+        if (!importResult) return
+
+        const missingAnswer = questions.find(question => !buildQuestionAnswerValue(questionAnswers[question.id]))
+        if (missingAnswer) {
+            toast.error('Answer all remaining questions before continuing.')
+            return
+        }
+
+        startTransition(async () => {
+            for (const run of importResult.runs) {
+                const answers = questions
+                    .filter(question => question.batchId === run.batchId)
+                    .map(question => ({
+                        itemId: question.itemId,
+                        type: question.type,
+                        value: question.type === 'source_page'
+                            ? Number(questionAnswers[question.id])
+                            : questionAnswers[question.id],
+                    }))
+
+                const result = await answerImportQuestionsAction({
+                    batchId: run.batchId,
+                    answers,
+                })
+
+                if (!result.success) {
+                    toast.error(result.error || 'Could not save your answers.')
+                    return
+                }
+            }
+
+            toast.success('Saved your import answers.')
+            setStep('website')
+        })
+    }
+
+    const handleWebsiteMatch = () => {
+        if (!importResult) return
+
+        startTransition(async () => {
+            const result = await runWebsiteMatchAction(importResult.batchIds)
+            if (!result.success) {
+                toast.error(result.error || 'Could not add website photos.')
+                return
+            }
+
+            toast.success(`Added website details for ${result.matchedCount}/${result.totalItems} draft items.`)
+            setStep('draft')
+        })
+    }
+
+    const importBatches = runs
+        .filter((run) => run.itemsFound > 0)
+        .map(run => ({
+            id: run.batchId,
+            source_url: null,
+            source_label: run.sourceLabel,
+            source_type: run.sourceType,
+            status: 'completed',
+            created_at: new Date().toISOString(),
+            items_scraped: run.itemsFound,
+            pending_count: run.itemsFound,
+            default_line_type: run.defaultLineType,
+        }))
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center gap-4">
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-slate-700" />
+                        Guided Import
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                        Read PDF files, answer only what is missing, add website photos, then review the import draft.
+                    </p>
+                </div>
+            </div>
+
+            <Stepper currentStep={step} />
+
+            {importResult && (
+                <ImportProgressPanel
+                    runs={runs}
+                    selectedRunId={selectedRunId}
+                    onSelectRunId={setSelectedRunId}
+                    eventMap={eventMap}
                 />
             )}
 
-            {/* Extracted Categories */}
-            {importMode === 'url' && hasExtracted && (
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h3 className="font-medium">
-                            Extracted Categories ({extractedCategories.length})
-                        </h3>
-                        {selectedCount > 0 && (
-                            <span className="text-sm text-muted-foreground">
-                                {selectedCount} selected for speed scan
-                            </span>
-                        )}
+            {step === 'upload' && (
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="pdf-files">PDF Files</Label>
+                                <Input
+                                    id="pdf-files"
+                                    type="file"
+                                    accept="application/pdf"
+                                    multiple
+                                    onChange={(event) => setFiles(Array.from(event.target.files || []))}
+                                    disabled={isPending}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Upload one or more PDF files. Each file becomes its own import run, and you review them together later.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="default-line-type">Default Line Type</Label>
+                                <Select value={defaultLineType} onValueChange={(value) => setDefaultLineType(value as ItemLineType)}>
+                                    <SelectTrigger id="default-line-type" className="w-full md:w-[240px]">
+                                        <SelectValue placeholder="Choose line type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Mainline">Mainline</SelectItem>
+                                        <SelectItem value="Collaboration">Collaboration</SelectItem>
+                                        <SelectItem value="Archive">Archive</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {files.length > 0 && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-sm font-medium text-slate-900">Files ready to read</p>
+                                    <div className="mt-3 space-y-2">
+                                        {files.map((file) => (
+                                            <div key={`${file.name}-${file.size}`} className="flex items-center justify-between text-sm text-slate-600">
+                                                <span className="truncate">{file.name}</span>
+                                                <span>{Math.round(file.size / 1024)} KB</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {extractedCategories.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
-                            No categories were found on this page
+                    <div className="rounded-2xl border bg-slate-50 p-6 shadow-sm">
+                        <h3 className="text-sm font-semibold text-slate-900">What this flow does</h3>
+                        <ul className="mt-3 space-y-3 text-sm text-slate-600">
+                            <li>Reads every sellable PDF item into an import draft.</li>
+                            <li>Finds missing Character, Jewelry Type, or page details.</li>
+                            <li>Adds public website photos and links from ivyjstudio.com.</li>
+                            <li>Leaves final inventory import as a manual approval step.</li>
+                        </ul>
+                    </div>
+                </div>
+            )}
+
+            {step === 'review' && importResult && (
+                <div className="space-y-6">
+                    <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Badge variant="outline" className="border-slate-200 text-slate-700">
+                                {importResult.itemsFound} draft items
+                            </Badge>
+                            <Badge variant="outline" className="border-slate-200 text-slate-700">
+                                {importResult.batchIds.length} import run{importResult.batchIds.length > 1 ? 's' : ''}
+                            </Badge>
+                            {selectedIssueCount > 0 && (
+                                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                                    {selectedIssueCount} items need answers
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="mt-3 text-sm text-slate-600">
+                            Confirm which PDF sections should be included. Sections are enabled by default.
                         </p>
-                    ) : (
-                        <div className="border rounded-lg divide-y">
-                            {extractedCategories.map((mapping, index) => (
-                                <div key={index} className="p-4 flex items-center gap-4">
-                                    {/* Checkbox for scan selection */}
-                                    <button
-                                        onClick={() => toggleScanSelection(index)}
-                                        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${mapping.selectedForScan
-                                            ? 'bg-primary border-primary text-primary-foreground'
-                                            : 'border-muted-foreground/30 hover:border-primary'
+                    </div>
+
+                    {groupedSections.map(({ run, sections: runSections }) => (
+                        <div key={run.batchId} className="rounded-2xl border bg-white p-6 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <FileText className="h-4 w-4 text-slate-500" />
+                                <h3 className="text-base font-semibold text-slate-900">{run.sourceLabel}</h3>
+                                <Badge variant="outline">{run.itemsFound} items</Badge>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                {runSections.map((section) => {
+                                    const key = buildSectionKey(section)
+                                    const selected = selectedSections[key] !== false
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={key}
+                                            onClick={() => setSelectedSections(prev => ({ ...prev, [key]: !selected }))}
+                                            className={`rounded-xl border px-4 py-4 text-left transition-colors ${
+                                                selected
+                                                    ? 'border-slate-900 bg-slate-900 text-white'
+                                                    : 'border-slate-200 bg-white text-slate-600'
                                             }`}
-                                    >
-                                        {mapping.selectedForScan && <Check className="h-3 w-3" />}
-                                    </button>
-
-                                    {/* Category info */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium truncate">
-                                                {mapping.extractedCategory.name}
-                                            </span>
-                                            {mapping.extractedCategory.itemCount && (
-                                                <span className="text-xs text-muted-foreground">
-                                                    ({mapping.extractedCategory.itemCount} items)
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-medium">{section.title}</span>
+                                                <span className="text-xs uppercase tracking-wide opacity-70">
+                                                    {selected ? 'Included' : 'Skipped'}
                                                 </span>
-                                            )}
+                                            </div>
+                                            <div className="mt-2 text-sm opacity-80">{section.itemCount} item{section.itemCount > 1 ? 's' : ''}</div>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {step === 'questions' && importResult && (
+                <div className="space-y-6">
+                    {groupedQuestions.length === 0 ? (
+                        <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600 shadow-sm">
+                            No questions remain. Continue to add website photos.
+                        </div>
+                    ) : (
+                        groupedQuestions.map(({ run, questions: runQuestions }) => (
+                            <div key={run.batchId} className="rounded-2xl border bg-white p-6 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <Package className="h-4 w-4 text-slate-500" />
+                                    <h3 className="text-base font-semibold text-slate-900">{run.sourceLabel}</h3>
+                                </div>
+
+                                <div className="mt-4 space-y-4">
+                                    {runQuestions.map((question) => (
+                                        <div key={question.id} className="rounded-xl border border-slate-200 p-4">
+                                            <p className="text-sm font-medium text-slate-900">{question.prompt}</p>
+                                            <p className="mt-1 text-xs text-slate-500">{getIssueTone(question.type)}</p>
+
+                                            <div className="mt-3">
+                                                {question.type === 'character' && (
+                                                    <Select
+                                                        value={questionAnswers[question.id] || undefined}
+                                                        onValueChange={(value) => setQuestionAnswers(prev => ({ ...prev, [question.id]: value }))}
+                                                    >
+                                                        <SelectTrigger className="w-full md:w-[280px]">
+                                                            <SelectValue placeholder="Choose Character" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {OFFICIAL_CHARACTERS.map((character) => (
+                                                                <SelectItem key={character} value={character}>
+                                                                    {character}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+
+                                                {question.type === 'jewelry_type' && (
+                                                    <Select
+                                                        value={questionAnswers[question.id] || undefined}
+                                                        onValueChange={(value) => setQuestionAnswers(prev => ({ ...prev, [question.id]: value }))}
+                                                    >
+                                                        <SelectTrigger className="w-full md:w-[280px]">
+                                                            <SelectValue placeholder="Choose Jewelry Type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(question.options || []).map((option) => (
+                                                                <SelectItem key={option} value={option}>
+                                                                    {option}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+
+                                                {question.type === 'source_page' && (
+                                                    <Input
+                                                        type="number"
+                                                        min={1}
+                                                        value={questionAnswers[question.id] || ''}
+                                                        onChange={(event) => setQuestionAnswers(prev => ({ ...prev, [question.id]: event.target.value }))}
+                                                        placeholder="Enter PDF page number"
+                                                        className="w-full md:w-[220px]"
+                                                    />
+                                                )}
+                                            </div>
                                         </div>
-                                        {mapping.extractedCategory.url && (
-                                            <a
-                                                href={mapping.extractedCategory.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 truncate"
-                                            >
-                                                {mapping.extractedCategory.url}
-                                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                            </a>
-                                        )}
-                                    </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
 
-                                    {/* Explore Depth Button */}
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleExploreDepth(index)}
-                                        disabled={!mapping.extractedCategory.url || exploringIndex !== null}
-                                        className="flex-shrink-0"
-                                        title="Explore sub-categories"
-                                    >
-                                        {exploringIndex === index ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <Search className="h-4 w-4" />
-                                        )}
-                                    </Button>
+            {step === 'website' && importResult && (
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+                    <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <Globe className="h-5 w-5 text-slate-700" />
+                            <h3 className="text-base font-semibold text-slate-900">Add website photos and links</h3>
+                        </div>
+                        <p className="mt-3 text-sm text-slate-600">
+                            This step checks ivyjstudio.com and adds public product photos, URLs, and public-facing copy where a confident match exists.
+                        </p>
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                            PDF details stay in control. Website matching will only add photos, links, and public copy. It will never replace the PDF SKU, Character, Jewelry Type, source page, or price.
+                        </div>
+                    </div>
 
-                                    {/* Category Mapping dropdown */}
-                                    <div className="w-36">
-                                        <Select
-                                            value={mapping.mappedCategoryId || 'none'}
-                                            onValueChange={(value) =>
-                                                updateMapping(index, value === 'none' ? null : value)
-                                            }
-                                        >
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Category..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">
-                                                    <span className="text-muted-foreground">No category</span>
-                                                </SelectItem>
-                                                <SelectItem value="__new__">
-                                                    <span className="text-primary">+ Create new</span>
-                                                </SelectItem>
-                                                {categories.map((cat) => (
-                                                    <SelectItem key={cat.id} value={cat.id}>
-                                                        {cat.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Collection Mapping dropdown */}
-                                    <div className="w-36">
-                                        <Select
-                                            value={mapping.mappedCollectionId || 'none'}
-                                            onValueChange={(value) =>
-                                                updateCollectionMapping(index, value === 'none' ? null : value)
-                                            }
-                                        >
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Collection..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">
-                                                    <span className="text-muted-foreground">No collection</span>
-                                                </SelectItem>
-                                                <SelectItem value="__new__">
-                                                    <span className="text-primary">+ Create new</span>
-                                                </SelectItem>
-                                                {collections.map((col) => (
-                                                    <SelectItem key={col.id} value={col.id}>
-                                                        {col.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                    <div className="rounded-2xl border bg-slate-50 p-6 shadow-sm">
+                        <h3 className="text-sm font-semibold text-slate-900">Ready for website matching</h3>
+                        <div className="mt-3 space-y-2 text-sm text-slate-600">
+                            {runs.map((run) => (
+                                <div key={run.batchId} className="flex items-center justify-between">
+                                    <span>{run.sourceLabel}</span>
+                                    <span>{run.itemsFound} items</span>
                                 </div>
                             ))}
                         </div>
-                    )}
+                    </div>
+                </div>
+            )}
 
-                    {/* Action buttons */}
-                    {extractedCategories.length > 0 && (
-                        <div className="flex justify-end gap-2 pt-4">
-                            <Button variant="outline" onClick={onClose}>
-                                Cancel
+            {step === 'draft' && importResult && (
+                <StagingItemsList
+                    batches={importBatches}
+                    categories={categories}
+                    collections={collections}
+                    onClose={onClose}
+                />
+            )}
+
+            {step !== 'draft' && (
+                <div className="flex items-center justify-between">
+                    <Button variant="outline" onClick={onClose}>
+                        Cancel
+                    </Button>
+
+                    <div className="flex items-center gap-2">
+                        {step === 'upload' && (
+                            <Button onClick={handleReadPdfFiles} disabled={isPending || files.length === 0}>
+                                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Read PDF Files
                             </Button>
-                            <Button
-                                disabled={selectedCount === 0}
-                                onClick={handleStartScan}
-                                className="bg-purple-600 hover:bg-purple-700"
-                            >
-                                <Sparkles className="mr-2 h-4 w-4" />
-                                Speed Scan {selectedCount} {selectedCount === 1 ? 'Category' : 'Categories'}
+                        )}
+
+                        {step === 'review' && (
+                            <Button onClick={handleContinueFromReview} disabled={isPending}>
+                                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Continue
+                                <ChevronRight className="ml-2 h-4 w-4" />
                             </Button>
-                        </div>
-                    )}
+                        )}
+
+                        {step === 'questions' && (
+                            <Button onClick={handleSaveAnswers} disabled={isPending}>
+                                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Save Answers
+                                <ChevronRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        )}
+
+                        {step === 'website' && (
+                            <>
+                                <Button variant="outline" onClick={() => setStep('draft')} disabled={isPending}>
+                                    Skip for now
+                                </Button>
+                                <Button onClick={handleWebsiteMatch} disabled={isPending}>
+                                    {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Add Website Photos
+                                    <CheckCircle2 className="ml-2 h-4 w-4" />
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

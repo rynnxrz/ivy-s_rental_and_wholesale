@@ -70,8 +70,6 @@ export function useAIWorkflow(): UseAIWorkflowReturn {
         currentItem: null
     })
 
-    // Store timeout IDs for cleanup
-    const timeoutRefs = useRef<NodeJS.Timeout[]>([])
     const isRunningRef = useRef(false)
 
     /**

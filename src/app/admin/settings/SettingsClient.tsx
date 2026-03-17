@@ -4,7 +4,7 @@ import { useState } from 'react'
 import SettingsForm from './SettingsForm'
 import ProfileList from './ProfileList'
 import CommunicationsTab from './CommunicationsTab'
-import TaxonomyManager from './components/TaxonomyManager'
+import CatalogSetupManager from './components/CatalogSetupManager'
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import type { BillingProfile, Category, Collection } from '@/types'
 
@@ -28,10 +28,11 @@ interface SettingsClientProps {
     collections: Collection[]
 }
 
-type TabType = 'billing' | 'communications' | 'taxonomy' | 'system'
+type TabType = 'billing' | 'communications' | 'catalog' | 'system'
 
 export default function SettingsClient({ initialTab, settings, billingProfiles, categories, collections }: SettingsClientProps) {
-    const [activeTab, setActiveTab] = useState<TabType>(initialTab as TabType || 'billing')
+    const normalizedInitialTab = initialTab === 'taxonomy' ? 'catalog' : initialTab
+    const [activeTab, setActiveTab] = useState<TabType>(normalizedInitialTab as TabType || 'billing')
 
     return (
         <div className="space-y-6">
@@ -59,13 +60,13 @@ export default function SettingsClient({ initialTab, settings, billingProfiles, 
                         Communications
                     </button>
                     <button
-                        onClick={() => setActiveTab('taxonomy')}
-                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'taxonomy'
+                        onClick={() => setActiveTab('catalog')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'catalog'
                             ? 'border-slate-900 text-slate-900'
                             : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                             }`}
                     >
-                        Categories & Collections
+                        Catalog Setup
                     </button>
                     <button
                         onClick={() => setActiveTab('system')}
@@ -107,8 +108,8 @@ export default function SettingsClient({ initialTab, settings, billingProfiles, 
                 />
             )}
 
-            {activeTab === 'taxonomy' && (
-                <TaxonomyManager categories={categories} collections={collections} />
+            {activeTab === 'catalog' && (
+                <CatalogSetupManager categories={categories} collections={collections} />
             )}
 
             {activeTab === 'system' && (

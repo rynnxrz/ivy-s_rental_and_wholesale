@@ -122,8 +122,8 @@ export default function EvidenceUploader({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 {images.map((path, idx) => (
                     <div key={idx} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100 border">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         {getImageUrl(path) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                                 src={getImageUrl(path)}
                                 alt="Evidence"

@@ -5,6 +5,10 @@ export const RESERVATION_STATUSES = {
   PAST_LOAN: 'Past-loan',
 } as const
 
+export const ARCHIVED_STATUS = 'archived'
+export const ARCHIVED_NOTE_PREFIX = '[ARCHIVED]'
+export const REMOVED_AT_REVIEW_NOTE_PREFIX = '[REMOVED_AT_REVIEW_UNAVAILABLE]'
+
 export type ReservationStatus =
   (typeof RESERVATION_STATUSES)[keyof typeof RESERVATION_STATUSES]
 
@@ -33,4 +37,16 @@ export function normalizeLegacyReservationStatus(
   if (status === 'archived') return RESERVATION_STATUSES.PAST_LOAN
 
   return RESERVATION_STATUSES.PENDING_REQUEST
+}
+
+export function hasArchivedMarker(adminNotes: string | null | undefined) {
+  return typeof adminNotes === 'string' && adminNotes.trim().startsWith(ARCHIVED_NOTE_PREFIX)
+}
+
+export function hasRemovedAtReviewMarker(adminNotes: string | null | undefined) {
+  return typeof adminNotes === 'string' && adminNotes.includes(REMOVED_AT_REVIEW_NOTE_PREFIX)
+}
+
+export function isArchivedReservation(row: { status?: string | null; admin_notes?: string | null }) {
+  return row.status === ARCHIVED_STATUS || hasArchivedMarker(row.admin_notes)
 }

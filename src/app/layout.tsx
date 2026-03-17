@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import NextTopLoader from 'nextjs-toploader';
 import Script from "next/script";
 import { Toaster } from "@/components/ui/sonner"
-import { RequestFloatingButton } from "@/components/RequestFloatingButton"
 import { Header } from "@/components/Header"
 import "./globals.css";
 

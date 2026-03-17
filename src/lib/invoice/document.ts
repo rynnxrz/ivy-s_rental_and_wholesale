@@ -97,6 +97,7 @@ interface RawInvoiceRow {
 interface RawReservationContractRow {
   id: string
   group_id: string | null
+  item_id?: string | null
   start_date: string
   end_date: string
   original_start_date?: string | null
@@ -258,6 +259,7 @@ async function fetchReservationGroupForContract(
   const fullSelect = `
     id,
     group_id,
+    item_id,
     start_date,
     end_date,
     original_start_date,
@@ -273,6 +275,7 @@ async function fetchReservationGroupForContract(
   const legacySelect = `
     id,
     group_id,
+    item_id,
     start_date,
     end_date,
     address_line1,
@@ -478,7 +481,17 @@ export async function fetchPaymentConfirmationData(
     const reservationResult = await fetchReservationGroupForContract(supabase, invoice.reservationId)
 
     if (reservationResult.data?.length) {
-      contractDetails = buildContractDetails(invoice.customerName, reservationResult.data)
+      const invoicedItemIds = new Set(
+        invoice.lineItems
+          .map((item) => item.itemId)
+          .filter((itemId): itemId is string => typeof itemId === 'string' && itemId.length > 0)
+      )
+      const matchedReservations = invoicedItemIds.size > 0
+        ? reservationResult.data.filter((reservation) => reservation.item_id && invoicedItemIds.has(reservation.item_id))
+        : reservationResult.data
+      const contractReservations = matchedReservations.length > 0 ? matchedReservations : reservationResult.data
+
+      contractDetails = buildContractDetails(invoice.customerName, contractReservations)
     } else if (reservationResult.error) {
       console.warn('[Payment Confirmation] Failed to load reservation contract details:', reservationResult.error)
     }

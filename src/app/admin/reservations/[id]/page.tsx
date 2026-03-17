@@ -8,12 +8,12 @@ import { ArchiveButton } from '../ArchiveButton'
 import { DispatchButton } from '../DispatchButton'
 import { FinalizeReturnButton } from '../FinalizeReturnButton'
 import {
+    ARCHIVED_STATUS,
     RESERVATION_STATUSES,
+    hasRemovedAtReviewMarker,
+    isArchivedReservation,
     normalizeLegacyReservationStatus,
 } from '@/lib/constants/reservation-status'
-
-const ARCHIVED_STATUS = 'archived'
-const ARCHIVED_NOTE_PREFIX = '[ARCHIVED]'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -46,13 +46,21 @@ export default async function RequestDetailPage(props: Props) {
     }
 
     // Fetch Group Siblings
-    let groupItems: { start_date: string; end_date: string; items?: { name?: string; sku?: string; rental_price?: number; replacement_cost?: number; image_paths?: string[] }; id: string; status: string }[] = []
+    let groupItems: {
+        start_date: string
+        end_date: string
+        admin_notes?: string | null
+        items?: { name?: string; sku?: string; rental_price?: number; replacement_cost?: number; image_paths?: string[] }
+        id: string
+        status: string
+    }[] = []
     if (reservation.group_id) {
         const { data: siblings } = await supabase
             .from('reservations')
             .select(`
                 id,
                 status,
+                admin_notes,
                 start_date,
                 end_date,
                 items (name, sku, rental_price, replacement_cost, image_paths)
@@ -61,8 +69,8 @@ export default async function RequestDetailPage(props: Props) {
             .neq('id', reservation.id) // Exclude current
 
         if (siblings) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            groupItems = siblings.map((s: any) => ({
+            type SiblingRow = typeof siblings[number]
+            groupItems = siblings.map((s: SiblingRow) => ({
                 ...s,
                 items: Array.isArray(s.items) ? s.items[0] : s.items
             }))
@@ -76,6 +84,7 @@ export default async function RequestDetailPage(props: Props) {
         const e = new Date(r.end_date)
         const d = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
         return {
+            reservationId: r.id,
             name: r.items?.name || 'Unknown',
             retailPrice: r.items?.replacement_cost || r.items?.rental_price || 0,
             days: d,
@@ -106,11 +115,10 @@ export default async function RequestDetailPage(props: Props) {
         email?: string
         company_name?: string
     } | null
-    const isArchived =
-        reservation.status === ARCHIVED_STATUS
-        || (typeof reservation.admin_notes === 'string'
-            && reservation.admin_notes.trim().startsWith(ARCHIVED_NOTE_PREFIX))
+    const isArchived = isArchivedReservation(reservation)
+    const isRemovedAtReview = hasRemovedAtReviewMarker(reservation.admin_notes)
     const status = isArchived ? ARCHIVED_STATUS : normalizeLegacyReservationStatus(reservation.status)
+    const statusLabel = isRemovedAtReview ? 'Unavailable' : status
 
     const isDispatchEditable = status === RESERVATION_STATUSES.UPCOMING || status === RESERVATION_STATUSES.ONGOING
     const isReturnEditable = status === RESERVATION_STATUSES.ONGOING
@@ -135,9 +143,10 @@ export default async function RequestDetailPage(props: Props) {
                             ${status === RESERVATION_STATUSES.PENDING_REQUEST ? 'bg-yellow-100 text-yellow-800' :
                                 status === RESERVATION_STATUSES.UPCOMING ? 'bg-blue-100 text-blue-800' :
                                     status === RESERVATION_STATUSES.ONGOING ? 'bg-green-100 text-green-800' :
-                                        status === ARCHIVED_STATUS ? 'bg-purple-100 text-purple-800' :
-                                            'bg-gray-100 text-gray-800'}`}>
-                            {status}
+                                        isRemovedAtReview ? 'bg-amber-100 text-amber-800' :
+                                            status === ARCHIVED_STATUS ? 'bg-purple-100 text-purple-800' :
+                                                'bg-gray-100 text-gray-800'}`}>
+                            {statusLabel}
                         </span>
 
                         {status === RESERVATION_STATUSES.PENDING_REQUEST && (
@@ -157,6 +166,8 @@ export default async function RequestDetailPage(props: Props) {
                                 ].filter(Boolean)}
                                 eventLocation={reservation.event_location}
                                 billingProfiles={billingProfiles || []}
+                                originalStartDate={reservation.original_start_date || reservation.start_date}
+                                originalEndDate={reservation.original_end_date || reservation.end_date}
                             />
                         )}
                         {status === RESERVATION_STATUSES.UPCOMING && (
@@ -206,7 +217,27 @@ export default async function RequestDetailPage(props: Props) {
                                     sku?: string
                                     image_paths?: string[]
                                 } | null) : groupItems[idx - 1].items
-                                const normalizedItemStatus = normalizeLegacyReservationStatus(original.status)
+                                const itemIsArchived = isArchivedReservation(original)
+                                const itemRemovedAtReview = hasRemovedAtReviewMarker(original.admin_notes)
+                                const normalizedItemStatus = itemIsArchived
+                                    ? ARCHIVED_STATUS
+                                    : normalizeLegacyReservationStatus(original.status)
+                                const itemStatusLabel = itemRemovedAtReview
+                                    ? 'Unavailable'
+                                    : normalizedItemStatus === ARCHIVED_STATUS
+                                        ? 'Archived'
+                                        : normalizedItemStatus
+                                const itemStatusClass = itemRemovedAtReview
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : normalizedItemStatus === RESERVATION_STATUSES.UPCOMING
+                                        ? 'bg-blue-50 text-blue-700'
+                                        : normalizedItemStatus === RESERVATION_STATUSES.ONGOING
+                                            ? 'bg-green-50 text-green-700'
+                                            : normalizedItemStatus === RESERVATION_STATUSES.PENDING_REQUEST
+                                                ? 'bg-yellow-50 text-yellow-700'
+                                                : normalizedItemStatus === ARCHIVED_STATUS
+                                                    ? 'bg-purple-50 text-purple-700'
+                                                    : 'bg-gray-50 text-gray-600'
 
                                 return (
                                     <Link key={original.id} href={`/admin/reservations/${original.id}`} className={`flex items-start gap-4 p-3 rounded-lg border transition-all ${original.id === reservation.id ? 'bg-blue-50/50 border-blue-100 ring-1 ring-blue-100' : 'hover:bg-slate-50 border-transparent hover:border-slate-200'}`}>
@@ -223,13 +254,14 @@ export default async function RequestDetailPage(props: Props) {
                                                 <div>
                                                     <div className="font-medium text-slate-900 truncate pr-2">{itemData?.name || 'Unknown Item'}</div>
                                                     <div className="text-xs text-slate-500 font-mono mt-0.5">{itemData?.sku}</div>
+                                                    {itemRemovedAtReview && (
+                                                        <div className="mt-1 text-xs text-amber-700">
+                                                            Removed during invoice review because it was unavailable.
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-medium flex-shrink-0 ${normalizedItemStatus === RESERVATION_STATUSES.UPCOMING ? 'bg-blue-50 text-blue-700' :
-                                                    normalizedItemStatus === RESERVATION_STATUSES.ONGOING ? 'bg-green-50 text-green-700' :
-                                                        normalizedItemStatus === RESERVATION_STATUSES.PENDING_REQUEST ? 'bg-yellow-50 text-yellow-700' :
-                                                            'bg-gray-50 text-gray-600'
-                                                    }`}>
-                                                    {normalizedItemStatus}
+                                                <div className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-medium flex-shrink-0 ${itemStatusClass}`}>
+                                                    {itemStatusLabel}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4 mt-2 text-sm">

@@ -83,7 +83,7 @@ export function ItemsPageClient({
                                 className="relative"
                             >
                                 <ClipboardList className="mr-2 h-4 w-4 text-orange-500" />
-                                Review Imports
+                                Review Import Drafts
                                 <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-orange-500 text-white text-xs flex items-center justify-center">
                                     {pendingImportsCount}
                                 </span>
@@ -91,7 +91,7 @@ export function ItemsPageClient({
                         )}
                         <Button variant="outline" onClick={() => setViewMode('import')}>
                             <Sparkles className="mr-2 h-4 w-4 text-purple-500" />
-                            AI Import
+                            Guided Import
                         </Button>
                         <Button asChild>
                             <Link href="/admin/items/new">

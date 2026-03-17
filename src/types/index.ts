@@ -54,9 +54,50 @@ export type StagingImportUpdate = Database['public']['Tables']['staging_imports'
 export type StagingItem = Database['public']['Tables']['staging_items']['Row'] & {
     line_type: ItemLineType
     character_family: string
+    import_metadata: {
+        pdf_heading?: string
+        matched_website_url?: string
+        match_confidence?: number
+        issues?: string[]
+        selected_by_user?: boolean
+        section_key?: string
+    }
 }
 export type StagingItemInsert = Database['public']['Tables']['staging_items']['Insert']
 export type StagingItemUpdate = Database['public']['Tables']['staging_items']['Update']
+export type StagingImportEvent = Database['public']['Tables']['staging_import_events']['Row']
+
+export type GuidedImportSection = {
+    key: string
+    title: string
+    itemCount: number
+    batchId: string
+}
+
+export type GuidedImportQuestion = {
+    id: string
+    batchId: string
+    itemId: string
+    type: 'character' | 'jewelry_type' | 'source_page' | 'duplicate_sku' | 'website_match'
+    prompt: string
+    currentValue: string | null
+    options?: string[]
+}
+
+export type GuidedImportIssue = {
+    batchId: string
+    itemId: string
+    type: 'character' | 'jewelry_type' | 'source_page' | 'duplicate_sku' | 'website_match'
+    message: string
+}
+
+export type GuidedImportRun = {
+    batchId: string
+    sourceLabel: string
+    sourceType: ImportSourceType
+    defaultLineType: ItemLineType
+    itemsFound: number
+}
 
 export type Category = {
     id: string

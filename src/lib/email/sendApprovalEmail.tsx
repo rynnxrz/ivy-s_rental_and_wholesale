@@ -1,21 +1,9 @@
 import { Resend } from 'resend';
 import { EmailTemplate } from './EmailTemplate';
-import { headers } from 'next/headers';
+import { buildPublicPaymentUrl } from '@/lib/public-url';
 
 // Initiate Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-async function resolveAppUrlFromHeaders(): Promise<string | null> {
-    try {
-        const headerStore = await headers()
-        const host = headerStore.get('x-forwarded-host') || headerStore.get('host')
-        if (!host) return null
-        const protocol = headerStore.get('x-forwarded-proto') || 'https'
-        return `${protocol}://${host}`
-    } catch {
-        return null
-    }
-}
 
 interface SendApprovalEmailParams {
     toIndices: string[];
@@ -55,30 +43,15 @@ export async function sendApprovalEmail({
     customFooter,
 }: SendApprovalEmailParams) {
     try {
-        const appUrlFromEnv =
-            process.env.NEXT_PUBLIC_APP_URL ||
-            process.env.NEXT_PUBLIC_SITE_URL ||
-            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        const appUrlFromHeaders = await resolveAppUrlFromHeaders()
-
-        const appUrl =
-            appUrlFromEnv || appUrlFromHeaders
-
         const paymentConfirmUrl = paymentUrl
-            || (process.env.NEXT_PUBLIC_APP_URL && invoiceRecordId
-                ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/payment-confirmation/${invoiceRecordId}`
-                : undefined)
-            || (appUrl && invoiceRecordId
-                ? `${appUrl.replace(/\/$/, '')}/payment-confirmation/${invoiceRecordId}`
-                : undefined)
-            || (process.env.NEXT_PUBLIC_APP_URL
-                ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/payment/${reservationId}`
-                : undefined)
-            || (appUrl ? `${appUrl.replace(/\/$/, '')}/payment/${reservationId}` : undefined)
+            || buildPublicPaymentUrl({
+                reservationId,
+                invoiceId: invoiceRecordId,
+            })
 
         if (!paymentConfirmUrl) {
             console.warn(
-                'Approval email payment URL is missing. Set NEXT_PUBLIC_APP_URL to enable payment confirmation links.'
+                'Approval email payment URL is missing. Set NEXT_PUBLIC_APP_URL or NEXT_PUBLIC_SITE_URL to enable payment confirmation links.'
             )
         }
 

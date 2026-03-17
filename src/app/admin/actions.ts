@@ -13,11 +13,17 @@ import {
     computeInvoicePricing,
     computeRentalChargeFromRetail,
 } from '@/lib/invoice/pricing'
-import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import {
+    ARCHIVED_NOTE_PREFIX,
+    ARCHIVED_STATUS,
+    REMOVED_AT_REVIEW_NOTE_PREFIX,
+    RESERVATION_STATUSES,
+    isArchivedReservation,
+} from '@/lib/constants/reservation-status'
+import { buildPublicPaymentUrl } from '@/lib/public-url'
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceClient>
-const ARCHIVED_STATUS = 'archived'
-const ARCHIVED_NOTE_PREFIX = '[ARCHIVED]'
+const REMOVED_AT_REVIEW_NOTE_MESSAGE = 'Item excluded during invoice review as unavailable.'
 
 function isMissingReservationPricingColumnsError(error: { message?: string | null } | null | undefined) {
     const message = error?.message ?? ''
@@ -80,6 +86,15 @@ function buildArchivedAdminNotes(existingNotes: string | null | undefined): stri
     return `${marker}\n${trimmed}`
 }
 
+function buildRemovedAtReviewAdminNotes(existingNotes: string | null | undefined): string {
+    const archivedNotes = buildArchivedAdminNotes(existingNotes)
+    if (archivedNotes.includes(REMOVED_AT_REVIEW_NOTE_PREFIX)) {
+        return archivedNotes
+    }
+
+    return `${archivedNotes}\n${REMOVED_AT_REVIEW_NOTE_PREFIX} ${new Date().toISOString()} ${REMOVED_AT_REVIEW_NOTE_MESSAGE}`
+}
+
 async function archiveReservationWithFallback(supabase: Awaited<ReturnType<typeof createClient>>, reservationId: string) {
     const { data: archivedReservation, error: archiveStatusError } = await supabase
         .from('reservations')
@@ -116,6 +131,90 @@ async function archiveReservationWithFallback(supabase: Awaited<ReturnType<typeo
     return {
         success: true as const,
         warning: 'Archive status is unavailable in this environment. Saved with archived marker instead.',
+    }
+}
+
+async function archiveReservationAsRemovedAtReview(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    reservationId: string
+) {
+    const { data: existingReservation, error: fetchReservationError } = await supabase
+        .from('reservations')
+        .select('id, admin_notes')
+        .eq('id', reservationId)
+        .single()
+
+    if (fetchReservationError || !existingReservation) {
+        return { success: false as const, error: fetchReservationError?.message || 'Reservation not found' }
+    }
+
+    const adminNotes = buildRemovedAtReviewAdminNotes(existingReservation.admin_notes)
+
+    const { data: archivedReservation, error: archiveStatusError } = await supabase
+        .from('reservations')
+        .update({
+            status: ARCHIVED_STATUS,
+            admin_notes: adminNotes,
+        } as never)
+        .eq('id', reservationId)
+        .select('id')
+        .single()
+
+    if (!archiveStatusError && archivedReservation) {
+        return { success: true as const, warning: null as string | null }
+    }
+
+    const { error: fallbackError } = await supabase
+        .from('reservations')
+        .update({
+            admin_notes: adminNotes,
+        } as never)
+        .eq('id', reservationId)
+
+    if (fallbackError) {
+        return { success: false as const, error: fallbackError.message }
+    }
+
+    return {
+        success: true as const,
+        warning: 'Archive status is unavailable in this environment. Saved removed item history via admin notes.',
+    }
+}
+
+async function resolveActiveReservationIdsForOperationalGroup(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    reservationId: string,
+    groupId?: string | null
+) {
+    let reservationRows: Array<{ id: string; status: string | null; admin_notes: string | null }> = []
+
+    if (groupId) {
+        const { data, error } = await supabase
+            .from('reservations')
+            .select('id, status, admin_notes')
+            .eq('group_id', groupId)
+
+        if (error) {
+            return { data: null as string[] | null, error: error.message }
+        }
+
+        reservationRows = data ?? []
+    } else {
+        const { data, error } = await supabase
+            .from('reservations')
+            .select('id, status, admin_notes')
+            .eq('id', reservationId)
+
+        if (error) {
+            return { data: null as string[] | null, error: error.message }
+        }
+
+        reservationRows = data ?? []
+    }
+
+    return {
+        data: reservationRows.filter((row) => !isArchivedReservation(row)).map((row) => row.id),
+        error: null as string | null,
     }
 }
 
@@ -400,6 +499,7 @@ export async function approveReservation(
         depositAmountOverride?: number | null
         confirmedStartDate?: string
         confirmedEndDate?: string
+        includedReservationIds?: string[]
     }
 ) {
     const supabase = await createClient()
@@ -444,6 +544,7 @@ export async function approveReservation(
             items (name, sku, rental_price, replacement_cost, image_paths),
             profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
         `)
+        .order('created_at', { ascending: true })
 
     if (initialReservation.group_id) {
         reservationQuery = reservationQuery.eq('group_id', initialReservation.group_id)
@@ -457,8 +558,40 @@ export async function approveReservation(
         return { error: 'Failed to fetch group reservations' }
     }
 
-    const currentStartDate = String(groupReservations[0].start_date)
-    const currentEndDate = String(groupReservations[0].end_date)
+    const requestedIncludedReservationIds = Array.from(new Set(
+        options?.includedReservationIds?.length
+            ? options.includedReservationIds
+            : groupReservations.map((reservation) => reservation.id)
+    ))
+    const groupReservationIds = new Set(groupReservations.map((reservation) => reservation.id))
+
+    if (requestedIncludedReservationIds.length === 0) {
+        return { error: 'Keep at least one item in the invoice before approving it.' }
+    }
+
+    const hasInvalidIncludedReservationId = requestedIncludedReservationIds.some(
+        (includedReservationId) => !groupReservationIds.has(includedReservationId)
+    )
+    if (hasInvalidIncludedReservationId) {
+        return { error: 'One or more selected items are no longer part of this request.' }
+    }
+
+    const includedReservationOrder = new Map(
+        requestedIncludedReservationIds.map((includedReservationId, index) => [includedReservationId, index])
+    )
+    const includedReservationIdSet = new Set(requestedIncludedReservationIds)
+    const includedReservations = [...groupReservations]
+        .filter((reservation) => includedReservationIdSet.has(reservation.id))
+        .sort((left, right) => {
+            return (includedReservationOrder.get(left.id) ?? 0) - (includedReservationOrder.get(right.id) ?? 0)
+        })
+    const removedReservations = groupReservations.filter(
+        (reservation) => !includedReservationIdSet.has(reservation.id)
+    )
+    const canonicalReservationId = requestedIncludedReservationIds[0]
+
+    const currentStartDate = String(includedReservations[0].start_date)
+    const currentEndDate = String(includedReservations[0].end_date)
     const confirmedStartDate = options?.confirmedStartDate || currentStartDate
     const confirmedEndDate = options?.confirmedEndDate || currentEndDate
     const confirmedRentalDays = getInclusiveReservationDays(confirmedStartDate, confirmedEndDate)
@@ -468,7 +601,7 @@ export async function approveReservation(
     }
 
     const availabilityChecks = await Promise.all(
-        groupReservations.map(async (reservation) => {
+        includedReservations.map(async (reservation) => {
             const reservationItem = normalizeReservationItemRelation(reservation.items)
 
             const { data: available, error: availabilityError } = await supabase.rpc('check_item_availability', {
@@ -509,10 +642,9 @@ export async function approveReservation(
         }
     }
 
-    const reservationIds = groupReservations.map((reservation) => reservation.id)
     const { error: persistPricingError } = await persistReservationApprovalState(
         supabase,
-        reservationIds,
+        requestedIncludedReservationIds,
         normalizedDiscountPercentage,
         normalizedDepositAmountOverride,
         confirmedStartDate,
@@ -524,6 +656,14 @@ export async function approveReservation(
         return { error: 'Failed to save reservation pricing and status before invoice generation' }
     }
 
+    for (const removedReservation of removedReservations) {
+        const archiveResult = await archiveReservationAsRemovedAtReview(supabase, removedReservation.id)
+        if (!archiveResult.success) {
+            console.error('Failed to archive removed reservation during review:', archiveResult.error)
+            return { error: archiveResult.error || 'Failed to archive removed unavailable items.' }
+        }
+    }
+
     // 4. Get billing profile
     const billingProfile = await getBillingProfile(supabase, profileId)
     if (!billingProfile) {
@@ -531,7 +671,7 @@ export async function approveReservation(
     }
 
     // Use the first reservation for customer details (assumes same customer for group)
-    const primaryRes = groupReservations[0]
+    const primaryRes = includedReservations[0]
     // Define customer shape
     type DbCustomer = {
         full_name: string
@@ -548,11 +688,12 @@ export async function approveReservation(
     const serviceClient = createServiceClient()
 
     // Generate Invoice Record in DB to get the correct Invoice Number
-    const invoiceResult = await generateInvoiceFromReservation(reservationId, profileId, {
+    const invoiceResult = await generateInvoiceFromReservation(canonicalReservationId, profileId, {
         discountPercentage: normalizedDiscountPercentage,
         depositAmountOverride: normalizedDepositAmountOverride,
+        reservationIds: requestedIncludedReservationIds,
     })
-    let invoiceId = `INV-${(initialReservation.group_id || reservationId).slice(0, 8).toUpperCase()}`
+    let invoiceId = `INV-${(initialReservation.group_id || canonicalReservationId).slice(0, 8).toUpperCase()}`
     let invoiceRecordId: string | undefined
 
     if (invoiceResult.success && invoiceResult.data) {
@@ -565,7 +706,7 @@ export async function approveReservation(
         return { error: invoiceResult.error || 'Failed to generate invoice record' }
     }
 
-    for (const res of groupReservations) {
+    for (const res of includedReservations) {
         // Define shape of item from DB
         type DbItem = {
             name: string
@@ -645,13 +786,10 @@ export async function approveReservation(
         )
         const depositAmount = Number(invoiceResult.data?.deposit_amount ?? fallbackPricing.depositAmount)
         const totalPrice = Number(invoiceResult.data?.total_amount ?? fallbackPricing.totalDue)
-        const appUrl =
-            process.env.NEXT_PUBLIC_APP_URL ||
-            process.env.NEXT_PUBLIC_SITE_URL ||
-            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        const paymentUrl = appUrl
-            ? `${appUrl.replace(/\/$/, '')}/${invoiceRecordId ? `payment-confirmation/${invoiceRecordId}` : `payment/${reservationId}`}`
-            : undefined
+        const paymentUrl = buildPublicPaymentUrl({
+            reservationId: canonicalReservationId,
+            invoiceId: invoiceRecordId,
+        })
 
         const pdfBuffer = await generateInvoicePdf({
             invoiceId,
@@ -685,7 +823,7 @@ export async function approveReservation(
             endDate: endStr,
             totalDays: totalDays, // Note: This might vary per item in group, but email template usually assumes single range. We use primary.
             totalPrice,
-            reservationId: reservationId, // Use the trigger ID or group ID? Template uses this for links.
+            reservationId: canonicalReservationId,
             invoicePdfBuffer: pdfBuffer,
             invoiceId,
             invoiceRecordId,
@@ -702,7 +840,7 @@ export async function approveReservation(
         // M3: Log to system_errors
         await supabase.from('system_errors').insert({
             error_type: 'EMAIL_PDF_GENERATION_FAILED',
-            payload: { reservationId, error: errorMessage },
+            payload: { reservationId: canonicalReservationId, error: errorMessage },
             resolved: false
         })
 
@@ -742,6 +880,17 @@ export async function markAsShipped(reservationId: string, attachInvoice: boolea
 
     if (fetchError || !reservation) return { error: 'Reservation not found' }
 
+    const activeReservationIdsResult = await resolveActiveReservationIdsForOperationalGroup(
+        supabase,
+        reservation.id,
+        reservation.group_id
+    )
+    if (activeReservationIdsResult.error || !activeReservationIdsResult.data?.length) {
+        return { error: activeReservationIdsResult.error || 'No active reservations found for dispatch.' }
+    }
+    const activeReservationIds = activeReservationIdsResult.data
+    const activeReservationIdSet = new Set(activeReservationIds)
+
     // FETCH GROUP SIBLINGS
     let allReservations = [reservation]
     if (reservation.group_id) {
@@ -749,6 +898,7 @@ export async function markAsShipped(reservationId: string, attachInvoice: boolea
             .from('reservations')
             .select(`
                 *,
+                admin_notes,
                 items (name, sku, rental_price, sku),
                 profiles:profiles!reservations_renter_id_fkey (full_name, email)
             `)
@@ -759,6 +909,7 @@ export async function markAsShipped(reservationId: string, attachInvoice: boolea
             allReservations = [...allReservations, ...siblings]
         }
     }
+    allReservations = allReservations.filter((groupReservation) => activeReservationIdSet.has(groupReservation.id))
 
     // COLLECT ALL EVIDENCE from all items (deduplicated)
     const allEvidence = new Set<string>()
@@ -835,16 +986,10 @@ export async function markAsShipped(reservationId: string, attachInvoice: boolea
     }
 
     // 4. Update Status to Ongoing for ALL Query
-    // We update by group_id if present, otherwise by id
-    let updateQuery = supabase
+    const updateQuery = supabase
         .from('reservations')
         .update({ status: RESERVATION_STATUSES.ONGOING })
-
-    if (reservation.group_id) {
-        updateQuery = updateQuery.eq('group_id', reservation.group_id)
-    } else {
-        updateQuery = updateQuery.eq('id', reservationId)
-    }
+        .in('id', activeReservationIds)
 
     const { error: updateError } = await updateQuery
 
@@ -930,18 +1075,19 @@ export async function saveEvidence(
     // Check if this reservation is part of a group
     const { data: resData } = await supabase.from('reservations').select('group_id').eq('id', reservationId).single()
     const groupId = resData?.group_id
+    const activeReservationIdsResult = await resolveActiveReservationIdsForOperationalGroup(
+        supabase,
+        reservationId,
+        groupId
+    )
+    if (activeReservationIdsResult.error || !activeReservationIdsResult.data?.length) {
+        return { error: activeReservationIdsResult.error || 'No active reservations found to save evidence.' }
+    }
 
-    let query = supabase
+    const query = supabase
         .from('reservations')
         .update(updateData)
-
-    if (groupId) {
-        // Update ALL items in the group
-        query = query.eq('group_id', groupId)
-    } else {
-        // Update only this item
-        query = query.eq('id', reservationId)
-    }
+        .in('id', activeReservationIdsResult.data)
 
     const { error } = await query
 
@@ -968,15 +1114,19 @@ export async function finalizeReturn(reservationId: string) {
 
     if (reservationError || !reservation) return { error: 'Reservation not found' }
 
-    let updateQuery = supabase
+    const activeReservationIdsResult = await resolveActiveReservationIdsForOperationalGroup(
+        supabase,
+        reservationId,
+        reservation.group_id
+    )
+    if (activeReservationIdsResult.error || !activeReservationIdsResult.data?.length) {
+        return { error: activeReservationIdsResult.error || 'No active reservations found to finalize.' }
+    }
+
+    const updateQuery = supabase
         .from('reservations')
         .update({ status: RESERVATION_STATUSES.PAST_LOAN })
-
-    if (reservation.group_id) {
-        updateQuery = updateQuery.eq('group_id', reservation.group_id)
-    } else {
-        updateQuery = updateQuery.eq('id', reservationId)
-    }
+        .in('id', activeReservationIdsResult.data)
 
     const { error } = await updateQuery
 

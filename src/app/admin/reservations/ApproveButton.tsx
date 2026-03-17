@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Loader2, FileText, Star } from 'lucide-react'
+import { Loader2, FileText, RotateCcw, Star, Trash2, Undo2 } from 'lucide-react'
 import type { BillingProfile } from '@/types'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -33,6 +33,7 @@ import {
 } from '@/lib/invoice/pricing'
 
 interface ApproveItem {
+    reservationId: string
     name: string
     retailPrice: number
     days: number
@@ -53,7 +54,9 @@ interface ApproveButtonProps {
     eventLocation?: string | null
     billingProfiles: BillingProfile[]
     itemImageUrl?: string
-    items?: ApproveItem[] // New prop for multiple items
+    items?: ApproveItem[]
+    originalStartDate?: string
+    originalEndDate?: string
 }
 
 const DISCOUNT_OPTIONS = [
@@ -101,7 +104,9 @@ export function ApproveButton({
     eventLocation,
     billingProfiles,
     itemImageUrl,
-    items // Destructure new prop
+    items,
+    originalStartDate,
+    originalEndDate,
 }: ApproveButtonProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
@@ -112,13 +117,25 @@ export function ApproveButton({
     const [confirmedStartDateInput, setConfirmedStartDateInput] = useState(startDate)
     const [confirmedEndDateInput, setConfirmedEndDateInput] = useState(endDate)
 
-    // Normalize items: use the array if provided, otherwise fallback to single item props
-    const invoiceItems: ApproveItem[] = items && items.length > 0 ? items : [{
+    const initialInvoiceItems: ApproveItem[] = items && items.length > 0 ? items : [{
+        reservationId,
         name: itemName,
         retailPrice: rentalPrice,
-        days: days,
-        imageUrl: itemImageUrl
+        days,
+        imageUrl: itemImageUrl,
     }]
+    const [keptItems, setKeptItems] = useState<ApproveItem[]>(initialInvoiceItems)
+    const [removedItems, setRemovedItems] = useState<ApproveItem[]>([])
+    const requestedStartDate = originalStartDate || startDate
+    const requestedEndDate = originalEndDate || endDate
+    const requestedDateSummary = `${formatConfirmedDate(requestedStartDate)} - ${formatConfirmedDate(requestedEndDate)}`
+    const hasSelectedItems = keptItems.length > 0
+    const itemOrder = new Map(initialInvoiceItems.map((item, index) => [item.reservationId, index]))
+    const sortByOriginalOrder = (itemsToSort: ApproveItem[]) => {
+        return [...itemsToSort].sort((left, right) => {
+            return (itemOrder.get(left.reservationId) ?? 0) - (itemOrder.get(right.reservationId) ?? 0)
+        })
+    }
 
     // Find the default profile or use the first one
     const defaultProfile = billingProfiles.find(p => p.is_default) || billingProfiles[0]
@@ -131,8 +148,7 @@ export function ApproveButton({
     const hasValidDateRange = previewRentalDays !== null
     const effectiveRentalDays = previewRentalDays ?? initialRentalDays
 
-    // Calculate total from all items
-    const previewItems = invoiceItems.map((item) => {
+    const previewItems = keptItems.map((item) => {
         const lineTotal = computeRentalChargeFromRetail({
             retailPrice: item.retailPrice,
             rentalDays: effectiveRentalDays,
@@ -169,6 +185,31 @@ export function ApproveButton({
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
     const invoiceIdDisplay = `INV-R-${dateStr}-####`
+    const usesRequestedDates =
+        confirmedStartDateInput === requestedStartDate && confirmedEndDateInput === requestedEndDate
+
+    const resetReviewSelections = () => {
+        setKeptItems(initialInvoiceItems)
+        setRemovedItems([])
+        setConfirmedStartDateInput(startDate)
+        setConfirmedEndDateInput(endDate)
+    }
+
+    const handleRemoveItem = (reservationItemId: string) => {
+        const itemToRemove = keptItems.find((item) => item.reservationId === reservationItemId)
+        if (!itemToRemove) return
+
+        setKeptItems((current) => current.filter((item) => item.reservationId !== reservationItemId))
+        setRemovedItems((current) => sortByOriginalOrder([...current, itemToRemove]))
+    }
+
+    const handleRestoreItem = (reservationItemId: string) => {
+        const itemToRestore = removedItems.find((item) => item.reservationId === reservationItemId)
+        if (!itemToRestore) return
+
+        setRemovedItems((current) => current.filter((item) => item.reservationId !== reservationItemId))
+        setKeptItems((current) => sortByOriginalOrder([...current, itemToRestore]))
+    }
 
     const handleApprove = async () => {
         if (!selectedProfileId) {
@@ -177,6 +218,10 @@ export function ApproveButton({
         }
         if (!hasValidDateRange) {
             toast.error('Confirmed return date must be on or after the call-in date.')
+            return
+        }
+        if (!hasSelectedItems) {
+            toast.error('Keep at least one item in the invoice before sending it.')
             return
         }
 
@@ -188,6 +233,7 @@ export function ApproveButton({
                     depositAmountOverride: normalizedDepositOverride,
                     confirmedStartDate: confirmedStartDateInput,
                     confirmedEndDate: confirmedEndDateInput,
+                    includedReservationIds: keptItems.map((item) => item.reservationId),
                 })
 
                 if (result.error) {
@@ -203,8 +249,7 @@ export function ApproveButton({
                             })
                             setOpen(false)
                             setNotes('')
-                            setConfirmedStartDateInput(startDate)
-                            setConfirmedEndDateInput(endDate)
+                            resetReviewSelections()
                             router.refresh()
                             return
                         }
@@ -217,8 +262,7 @@ export function ApproveButton({
                     })
                     setOpen(false)
                     setNotes('')
-                    setConfirmedStartDateInput(startDate)
-                    setConfirmedEndDateInput(endDate)
+                    resetReviewSelections()
                     router.refresh()
                 }
             })()
@@ -233,8 +277,7 @@ export function ApproveButton({
         setOpen(nextOpen)
 
         if (!nextOpen) {
-            setConfirmedStartDateInput(startDate)
-            setConfirmedEndDateInput(endDate)
+            resetReviewSelections()
         }
     }
 
@@ -350,33 +393,38 @@ export function ApproveButton({
                         <div className="mb-8">
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Reservation Details</h3>
 
-                            {previewItems.map((item, idx) => (
-                                <div key={idx} className="flex gap-3 py-2 border-b border-gray-50">
-                                    {/* Item Thumbnail */}
-                                    {item.imageUrl ? (
-                                        <Image
-                                            src={item.imageUrl}
-                                            alt={item.name}
-                                            width={48}
-                                            height={48}
-                                            className="w-12 h-12 object-cover rounded border border-gray-200"
-                                        />
-                                    ) : (
-                                        <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
-                                            No img
-                                        </div>
-                                    )}
-                                    <div className="flex-1 flex justify-between">
-                                        <div>
-                                            <span className="font-medium text-gray-900">{item.name}</span>
-                                            <div className="text-xs text-gray-500">{item.tierDescription}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <span>${item.lineTotal.toFixed(2)}</span>
+                            {previewItems.length === 0 ? (
+                                <div className="rounded border border-dashed border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-800">
+                                    No available items selected for this invoice yet.
+                                </div>
+                            ) : (
+                                previewItems.map((item, idx) => (
+                                    <div key={idx} className="flex gap-3 py-2 border-b border-gray-50">
+                                        {item.imageUrl ? (
+                                            <Image
+                                                src={item.imageUrl}
+                                                alt={item.name}
+                                                width={48}
+                                                height={48}
+                                                className="w-12 h-12 object-cover rounded border border-gray-200"
+                                            />
+                                        ) : (
+                                            <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                                                No img
+                                            </div>
+                                        )}
+                                        <div className="flex-1 flex justify-between">
+                                            <div>
+                                                <span className="font-medium text-gray-900">{item.name}</span>
+                                                <div className="text-xs text-gray-500">{item.tierDescription}</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span>${item.lineTotal.toFixed(2)}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </div>
 
                         {/* Charges */}
@@ -470,14 +518,97 @@ export function ApproveButton({
                                 />
                             </div>
                         </div>
+                        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wider text-blue-700">Client Request Dates</p>
+                                    <p className="mt-1 text-sm font-medium text-blue-950">{requestedDateSummary}</p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-white"
+                                    onClick={() => {
+                                        setConfirmedStartDateInput(requestedStartDate)
+                                        setConfirmedEndDateInput(requestedEndDate)
+                                    }}
+                                    disabled={usesRequestedDates}
+                                >
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    Use Client Request Dates
+                                </Button>
+                            </div>
+                        </div>
                         <div className="rounded border border-gray-200 bg-white px-3 py-2">
                             <p className="text-[11px] uppercase tracking-wider text-gray-500">Shoot / Event Location</p>
                             <p className="mt-1 text-sm text-gray-900">{eventLocation || 'Not provided'}</p>
                             <p className="mt-1 text-xs text-gray-500">Location stays read-only in this step.</p>
                         </div>
+                        <div className="space-y-3 rounded border border-gray-200 bg-white px-3 py-3">
+                            <div>
+                                <p className="text-[11px] uppercase tracking-wider text-gray-500">Items Included In Invoice</p>
+                                <p className="mt-1 text-xs text-gray-500">Remove unavailable items here. Pricing updates immediately.</p>
+                            </div>
+                            {keptItems.length === 0 ? (
+                                <p className="rounded border border-dashed border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                                    No items are currently included. Restore at least one item before sending the invoice.
+                                </p>
+                            ) : (
+                                keptItems.map((item) => (
+                                    <div key={item.reservationId} className="flex items-center justify-between gap-3 rounded border border-gray-100 px-3 py-2">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-gray-900">{item.name}</p>
+                                            <p className="text-xs text-gray-500">Retail value: ${item.retailPrice.toFixed(2)}</p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0"
+                                            onClick={() => handleRemoveItem(item.reservationId)}
+                                        >
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Remove
+                                        </Button>
+                                    </div>
+                                ))
+                            )}
+                            {removedItems.length > 0 && (
+                                <div className="space-y-2 rounded border border-amber-200 bg-amber-50 px-3 py-3">
+                                    <div>
+                                        <p className="text-[11px] uppercase tracking-wider text-amber-700">Removed / Unavailable Items</p>
+                                        <p className="mt-1 text-xs text-amber-800">These stay visible for history but will not be invoiced.</p>
+                                    </div>
+                                    {removedItems.map((item) => (
+                                        <div key={item.reservationId} className="flex items-center justify-between gap-3 rounded border border-amber-100 bg-white px-3 py-2">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium text-gray-900">{item.name}</p>
+                                                <p className="text-xs text-amber-700">Marked unavailable for this approval.</p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="shrink-0 bg-white"
+                                                onClick={() => handleRestoreItem(item.reservationId)}
+                                            >
+                                                <Undo2 className="mr-2 h-4 w-4" />
+                                                Restore
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         {!hasValidDateRange && (
                             <p className="text-xs text-red-600">
                                 Confirmed return date must be on or after the call-in date.
+                            </p>
+                        )}
+                        {!hasSelectedItems && (
+                            <p className="text-xs text-red-600">
+                                Keep at least one available item before sending the invoice.
                             </p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -539,7 +670,7 @@ export function ApproveButton({
                     </Button>
                     <Button
                         onClick={handleApprove}
-                        disabled={isPending || billingProfiles.length === 0 || !hasValidDateRange}
+                        disabled={isPending || billingProfiles.length === 0 || !hasValidDateRange || !hasSelectedItems}
                         className="bg-green-600 hover:bg-green-700"
                     >
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -286,14 +286,26 @@ export async function getAISettingsAction() {
         return null
     }
 
+    type LegacyAISettings = {
+        ai_selected_model?: string | null
+        ai_prompt_category?: string | null
+        ai_prompt_subcategory?: string | null
+        ai_prompt_product_list?: string | null
+        ai_prompt_quick_list?: string | null
+        ai_prompt_product_detail?: string | null
+        prompt_history?: Record<string, string[]> | null
+    }
+
+    const normalizedLegacyData = legacyData as LegacyAISettings
+
     return {
-        ...(legacyData as any),
+        ...normalizedLegacyData,
         ai_thinking_category: null,
         ai_thinking_subcategory: null,
         ai_thinking_product_list: null,
         ai_thinking_product_detail: null,
         ai_max_output_tokens: null,
         ai_use_system_instruction: false,
-        prompt_history: missingPromptHistory ? {} : (legacyData as { prompt_history?: Record<string, string[]> }).prompt_history
+        prompt_history: missingPromptHistory ? {} : (normalizedLegacyData.prompt_history || {})
     }
 }

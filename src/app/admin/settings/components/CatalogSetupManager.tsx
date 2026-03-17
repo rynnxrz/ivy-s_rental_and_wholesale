@@ -32,12 +32,12 @@ import {
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
-interface TaxonomyManagerProps {
+interface CatalogSetupManagerProps {
     categories: Category[]
     collections: Collection[]
 }
 
-export default function TaxonomyManager({ categories, collections }: TaxonomyManagerProps) {
+export default function CatalogSetupManager({ categories, collections }: CatalogSetupManagerProps) {
     const router = useRouter()
     const [error, setError] = useState<string | null>(null)
     const [isCreating, setIsCreating] = useState(false)
@@ -49,6 +49,7 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
     const handleCreate = async (type: 'category' | 'collection') => {
         if (!newItemName.trim()) return
 
+        const itemLabel = type === 'category' ? 'jewelry type' : 'website collection'
         setIsCreating(true)
         setError(null)
         try {
@@ -57,14 +58,14 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
             } else {
                 await createCollection(newItemName)
             }
-            toast.success(`${type === 'category' ? 'Category' : 'Collection'} created`)
+            toast.success(`${itemLabel[0].toUpperCase()}${itemLabel.slice(1)} added`)
             setDialogOpen(null)
             setNewItemName('')
             router.refresh()
         } catch (err) {
-            setError(`Failed to create ${type}`)
+            setError(`Could not add this ${itemLabel}.`)
             console.error(err)
-            toast.error(`Failed to create ${type}`)
+            toast.error(`Could not add this ${itemLabel}.`)
         } finally {
             setIsCreating(false)
         }
@@ -73,24 +74,24 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
     const handleCategoryToggle = async (id: string, currentHidden: boolean) => {
         try {
             await toggleCategoryVisibility(id, !currentHidden)
-            toast.success(currentHidden ? 'Category is now visible' : 'Category hidden in portal')
+            toast.success(currentHidden ? 'Jewelry type is now visible in website filters' : 'Jewelry type hidden from website filters')
             router.refresh()
         } catch (err) {
-            setError('Failed to update category visibility')
+            setError('Could not update jewelry type visibility.')
             console.error(err)
-            toast.error('Failed to update category visibility')
+            toast.error('Could not update jewelry type visibility.')
         }
     }
 
     const handleCollectionToggle = async (id: string, currentHidden: boolean) => {
         try {
             await toggleCollectionVisibility(id, !currentHidden)
-            toast.success(currentHidden ? 'Collection is now visible' : 'Collection hidden in portal')
+            toast.success(currentHidden ? 'Website collection is now visible in website filters' : 'Website collection hidden from website filters')
             router.refresh()
         } catch (err) {
-            setError('Failed to update collection visibility')
+            setError('Could not update website collection visibility.')
             console.error(err)
-            toast.error('Failed to update collection visibility')
+            toast.error('Could not update website collection visibility.')
         }
     }
 
@@ -110,15 +111,16 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                 try {
                     if (deleteTarget.type === 'category') {
                         await deleteCategory(deleteTarget.id)
-                        toast.success('Category deleted')
+                        toast.success('Jewelry type removed')
                     } else {
                         await deleteCollection(deleteTarget.id)
-                        toast.success('Collection deleted')
+                        toast.success('Website collection removed')
                     }
                     router.refresh()
-                } catch (err) {
-                    setError(`Failed to delete ${deleteTarget.type}`)
-                    toast.error(`Failed to delete ${deleteTarget.type}`)
+                } catch (error) {
+                    console.error(error)
+                    setError(`Could not remove this ${deleteTarget.type === 'category' ? 'jewelry type' : 'website collection'}.`)
+                    toast.error(`Could not remove this ${deleteTarget.type === 'category' ? 'jewelry type' : 'website collection'}.`)
                 }
                 setDeleteTarget(null)
             })()
@@ -136,13 +138,13 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
             )}
 
             <div className="grid gap-6 md:grid-cols-2">
-                {/* Categories */}
+                {/* Jewelry Types */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <div className="space-y-1">
-                            <CardTitle>Categories</CardTitle>
+                            <CardTitle>Jewelry Types</CardTitle>
                             <CardDescription>
-                                Manage categories visible in the client portal.
+                                Choose which jewelry types appear in the website filters.
                             </CardDescription>
                         </div>
                         <Dialog open={dialogOpen === 'category'} onOpenChange={(open) => setDialogOpen(open ? 'category' : null)}>
@@ -154,8 +156,8 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                             </DialogTrigger>
                             <DialogContent>
                                 <DialogHeader>
-                                    <DialogTitle>Add Category</DialogTitle>
-                                    <DialogDescription>Create a new category for your items.</DialogDescription>
+                                    <DialogTitle>Add Jewelry Type</DialogTitle>
+                                    <DialogDescription>Create a new jewelry type for your items.</DialogDescription>
                                 </DialogHeader>
                                 <div className="py-4">
                                     <Label htmlFor="cat-name" className="mb-2 block">Name</Label>
@@ -199,18 +201,18 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                             </div>
                         ))}
                         {categories.length === 0 && (
-                            <p className="text-sm text-muted-foreground">No categories found.</p>
+                            <p className="text-sm text-muted-foreground">No jewelry types found.</p>
                         )}
                     </CardContent>
                 </Card>
 
-                {/* Collections */}
+                {/* Website Collections */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <div className="space-y-1">
-                            <CardTitle>Collections</CardTitle>
+                            <CardTitle>Website Collections</CardTitle>
                             <CardDescription>
-                                Manage collections visible in the client portal.
+                                Choose which website collections appear in the website filters.
                             </CardDescription>
                         </div>
                         <Dialog open={dialogOpen === 'collection'} onOpenChange={(open) => setDialogOpen(open ? 'collection' : null)}>
@@ -222,8 +224,8 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                             </DialogTrigger>
                             <DialogContent>
                                 <DialogHeader>
-                                    <DialogTitle>Add Collection</DialogTitle>
-                                    <DialogDescription>Create a new collection for your items.</DialogDescription>
+                                    <DialogTitle>Add Website Collection</DialogTitle>
+                                    <DialogDescription>Create a new website collection for your items.</DialogDescription>
                                 </DialogHeader>
                                 <div className="py-4">
                                     <Label htmlFor="col-name" className="mb-2 block">Name</Label>
@@ -267,7 +269,7 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                             </div>
                         ))}
                         {collections.length === 0 && (
-                            <p className="text-sm text-muted-foreground">No collections found.</p>
+                            <p className="text-sm text-muted-foreground">No website collections found.</p>
                         )}
                     </CardContent>
                 </Card>
@@ -278,7 +280,7 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>
-                            Delete {deleteTarget?.type === 'category' ? 'Category' : 'Collection'}?
+                            Delete {deleteTarget?.type === 'category' ? 'Jewelry Type' : 'Website Collection'}?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             Are you sure you want to delete &quot;{deleteTarget?.name}&quot;? This action cannot be undone.
@@ -300,4 +302,3 @@ export default function TaxonomyManager({ categories, collections }: TaxonomyMan
         </div>
     )
 }
-

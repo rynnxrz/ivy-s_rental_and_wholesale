@@ -102,11 +102,12 @@ export function AIStatusConsole({
     state,
     isOpen = true,
     className,
-    title = 'AI Console',
+    title = 'Import Progress',
     maxHeight = 300
 }: AIStatusConsoleProps) {
     const [isCollapsed, setIsCollapsed] = useState(false)
     const scrollRef = useRef<HTMLDivElement>(null)
+    const logMessagesKey = state.logs.map((log) => log.message).join('|')
 
     // Auto-scroll to bottom when new logs are added or updated
     useEffect(() => {
@@ -119,7 +120,7 @@ export function AIStatusConsole({
             }
             requestAnimationFrame(scroll)
         }
-    }, [state.logs, isCollapsed, state.logs.map(l => l.message).join('')]) // Watch message changes for appending
+    }, [state.logs, isCollapsed, logMessagesKey]) // Watch message changes for appending
 
     // Auto-collapse on success after a short delay
     useEffect(() => {
@@ -196,7 +197,7 @@ export function AIStatusConsole({
                     >
                         {state.logs.length === 0 ? (
                             <div className="flex items-center justify-center h-[120px] text-slate-400">
-                                <span>Waiting for AI operations...</span>
+                                <span>Waiting for import progress...</span>
                             </div>
                         ) : (
                             <div className="p-3 space-y-2">

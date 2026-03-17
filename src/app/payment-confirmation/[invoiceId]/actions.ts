@@ -2,7 +2,7 @@
 
 import { createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
+import { RESERVATION_STATUSES, isArchivedReservation } from '@/lib/constants/reservation-status'
 import { IVY_LOAN_FORM_ACCEPTANCE_NOTE } from '@/lib/constants/loan-form'
 
 interface SubmitPaymentConfirmationInput {
@@ -108,21 +108,35 @@ export async function submitPaymentConfirmation(
 
   const signatureUrl = publicUrlData.publicUrl
 
-  const applyReservationScope = <T extends { eq: (column: string, value: string) => T }>(query: T) => {
-    if (reservation.group_id) {
-      return query.eq('group_id', reservation.group_id)
-    }
-    return query.eq('id', reservation.id)
+  const reservationScopeResult = reservation.group_id
+    ? await supabase
+      .from('reservations')
+      .select('id, status, admin_notes')
+      .eq('group_id', reservation.group_id)
+    : await supabase
+      .from('reservations')
+      .select('id, status, admin_notes')
+      .eq('id', reservation.id)
+
+  if (reservationScopeResult.error) {
+    return { success: false, error: 'Failed to load reservation group.' }
   }
 
-  let { error: updateReservationError } = await applyReservationScope(
-    supabase
-      .from('reservations')
-      .update({
-        status: RESERVATION_STATUSES.UPCOMING,
-        payment_signature_url: signatureUrl,
-      })
-  )
+  const activeReservationIds = (reservationScopeResult.data ?? [])
+    .filter((row) => !isArchivedReservation(row))
+    .map((row) => row.id)
+
+  if (activeReservationIds.length === 0) {
+    return { success: false, error: 'No active reservations found for this invoice.' }
+  }
+
+  let { error: updateReservationError } = await supabase
+    .from('reservations')
+    .update({
+      status: RESERVATION_STATUSES.UPCOMING,
+      payment_signature_url: signatureUrl,
+    })
+    .in('id', activeReservationIds)
 
   if (updateReservationError && isMissingPaymentSignatureUrlError(updateReservationError)) {
     console.warn(
@@ -130,13 +144,12 @@ export async function submitPaymentConfirmation(
       updateReservationError
     )
 
-    const fallback = await applyReservationScope(
-      supabase
-        .from('reservations')
-        .update({
-          status: RESERVATION_STATUSES.UPCOMING,
-        })
-    )
+    const fallback = await supabase
+      .from('reservations')
+      .update({
+        status: RESERVATION_STATUSES.UPCOMING,
+      })
+      .in('id', activeReservationIds)
 
     updateReservationError = fallback.error ?? null
   }

@@ -9,8 +9,8 @@ export default async function ArchivePage() {
 
     const [
         { data: items, error: itemsError },
-        { data: visibleCollections, error: colsError },
-        { data: categories, error: catsError }
+        { data: visibleCollections },
+        { data: categories }
     ] = await Promise.all([
         supabase
             .from('items')

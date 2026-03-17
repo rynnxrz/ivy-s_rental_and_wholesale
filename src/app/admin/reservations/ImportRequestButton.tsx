@@ -36,7 +36,7 @@ export function ImportRequestButton() {
                         if (!payloadStr.startsWith('{') && !payloadStr.startsWith('[')) {
                             payloadStr = decodeURIComponent(escape(atob(payloadStr)))
                         }
-                    } catch (e) {
+                    } catch {
                         // Ignore decode error, assume raw JSON
                     }
 
@@ -48,7 +48,7 @@ export function ImportRequestButton() {
                         setOpen(false)
                         setJsonCode('')
                     }
-                } catch (e) {
+                } catch {
                     toast.error('Unexpected error during import')
                 }
             })()
@@ -67,7 +67,7 @@ export function ImportRequestButton() {
                 <DialogHeader className="flex-shrink-0">
                     <DialogTitle>Import Emergency Request</DialogTitle>
                     <DialogDescription>
-                        Paste the JSON code from the customer's email below. This will bypass standard checks and force-create the request.
+                        Paste the JSON code from the customer&apos;s email below. This will bypass standard checks and force-create the request.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="flex-1 overflow-y-auto py-4 px-1 space-y-4 min-h-0">

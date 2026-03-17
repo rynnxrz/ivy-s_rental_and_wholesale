@@ -1,7 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2026-03-13
-**版本:** v1.4 (Reservation Workflow + PDF Import)
+**日期:** 2026-03-17
+**版本:** v1.5 (Guided Import + Admin Workflow Overhaul)
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
 ---
@@ -10,7 +10,7 @@
 *   **框架:** Next.js 16 (App Router) + React 19
 *   **样式:** Tailwind CSS v4 + Shadcn UI (Radix)
 *   **数据库/后端:** Supabase (Postgres, Auth, Storage, Edge Functions)
-*   **AI 引擎:** Google Gemini (Search Grounding + PDF Catalog Parsing)
+*   **AI 引擎:** Google Gemini
 *   **文档/图像处理:** `pdfjs-dist`, `sharp`, `react-signature-canvas`
 *   **部署:** Vercel
 *   **服务:** Resend (邮件), Cloudflare (DNS/CDN), Microsoft Clarity (用户行为分析)
@@ -22,133 +22,188 @@
 ### A. 前台门户 (Portal)
 1.  **三路分流架构**:
     *   **Rental**: 基于日期的租赁画册，含实时库存冲突检测。
-    *   **Wholesale**: 批发专区，全场 6 折，起订量 $2,000 校验，支持独立批发登录鉴权。
+    *   **Wholesale**: 批发专区，全场 6 折，起订量 $2,000 校验。
     *   **Archive**: 品牌归档展示，无交易功能。
-2.  **租赁请求信息增强**:
-    *   请求数据会保存 **Event Location**、地址快照，以及原始借用日期元数据。
-    *   为后续管理员改期、合同渲染、付款确认提供数据基础。
-3.  **付款确认入口**:
-    *   新增 `/payment/[reservationId]`，自动跳转到该订单最新 Invoice 的付款确认页。
-    *   新增 `/payment-confirmation/[invoiceId]`，客户可在线查看 Invoice、PDF、Loan Form，并完成数字签名与付款声明。
-4.  **移动端与详情体验**:
-    *   1:1 正方形留白构图，多图画廊。
-    *   移动端吸底交互与安全区适配已保留。
+2.  **预约与付款确认链路**:
+    *   请求数据会保存地址快照、`event_location`、原始借用日期与确认后日期。
+    *   `/payment/[reservationId]` 会自动跳转到该订单最新 Invoice 的付款确认页。
+    *   `/payment-confirmation/[invoiceId]` 支持客户在线查看 Invoice、打开 PDF、阅读 Loan Form、勾选付款声明并提交数字签名。
+3.  **详情与移动端体验**:
+    *   商品详情延续 1:1 正方形留白构图与多图画廊。
+    *   移动端吸底交互与安全区适配保留。
 
-### B. 后台管理 (Admin Dashboard)
-1.  **订单生命周期重构 (Reservations)**:
-    *   状态统一为四阶段:
+### B. 后台订单与账单工作流 (Reservations + Invoices)
+1.  **订单生命周期重构**:
+    *   Reservation 统一为四阶段:
         *   `Pending Request`
         *   `Upcoming`
         *   `Ongoing`
         *   `Past-loan`
-    *   管理页按新状态拆分视图，并保留 **Archived** 独立筛选入口。
-2.  **审批与账单工作流升级**:
-    *   `Review & Invoice` 弹窗支持:
-        *   确认借出/归还日期
-        *   Event Location 预览
-        *   Discount Percentage
-        *   Deposit Override
-        *   实时 Invoice 价格预览
-    *   审批时会生成 Invoice、发送 Approval Email，并附带公开付款确认链接。
-3.  **付款确认与合同闭环**:
-    *   客户付款确认页支持:
-        *   Invoice 金额拆解 (Subtotal / Discount / Deposit / Total Due)
-        *   Loan Form 条款展示
-        *   数字签名上传
-        *   已确认付款与已阅读条款的双勾选确认
-    *   签名文件会写入 Storage，并回写到 Reservation / Invoice。
-4.  **Upcoming / Ongoing 阶段动作补强**:
-    *   **Upcoming**:
-        *   直接查看 Invoice PDF
-        *   Resend Invoice Email
-        *   Dispatch 发货通知（可附 Invoice）
-    *   **Ongoing**:
-        *   上传 Return Evidence
-        *   `Confirm Return` 进入 `Past-loan`
-    *   **Past-loan**:
-        *   支持 Archive 归档
-5.  **商品管理 (Inventory) 升级为 Taxonomy 模式**:
-    *   `items` 新增:
-        *   `line_type`: Mainline / Collaboration / Archive
-        *   `character_family`: Orchid / Daffodil / Botanic Elegy / Oceanspine / Sea Passiflora / Uncategorized
-    *   列表页现按 **Line Type Tabs + Character Family Grouping** 组织展示。
-    *   支持 Character Group 维度的批量 `Mark Active / Retire All`。
-    *   提供 `Run Taxonomy Backfill`，对历史数据自动回填分类维度。
-6.  **AI Import Ecosystem 扩展到 PDF Catalog**:
-    *   原有 URL Speed Scan 工作流保留。
-    *   新增 **PDF Catalog Import**:
-        *   PDF 上传至私有 Bucket
-        *   Gemini 解析 Catalog 行数据
-        *   自动写入 staging batch
-        *   支持 `source_type`, `source_label`, `source_page`, `default_line_type`
-        *   浏览器端渲染指定 PDF 页面后，调用 AI 进行商品图像定位与裁切
-    *   Staging Review 支持编辑 `line_type`, `character_family`, `specs`, `source_page` 等字段。
-
-### C. 通讯中心与 Invoice 能力
-1.  **Invoice 价格模型升级**:
-    *   `invoices` 新增:
+    *   Admin Reservations 页按新状态拆分视图，并保留 Archived 独立筛选。
+2.  **审批与开票流程升级**:
+    *   `Review & Invoice` 弹窗支持管理员确认实际借用日期、返还日期、折扣比例、押金覆盖值、Event Location 与账单预览。
+    *   Approval 流程会生成 Invoice、发送 Approval Email，并附带公开付款确认链接。
+3.  **付款确认闭环**:
+    *   客户付款确认页展示 Invoice 金额拆解:
         *   `subtotal_amount`
         *   `discount_percentage`
         *   `discount_amount`
         *   `deposit_amount`
-    *   租赁价格由 Retail Value 和租期阶梯计算，支持折扣与押金拆分。
-2.  **邮件能力升级**:
-    *   Approval Email 现在可附带:
-        *   最新 Invoice PDF
-        *   付款确认页面链接
-    *   Admin 可对 Upcoming 订单执行 Resend Invoice。
-3.  **PDF Invoice 复用能力**:
-    *   Admin 可从 Reservation 页面直接查看 PDF。
-    *   Public payment-confirmation 页面也可内嵌/打开同一份 Invoice PDF。
+        *   `total_due`
+    *   数字签名写入 Storage，并回写 Invoice / Reservation。
+4.  **Upcoming / Ongoing 动作增强**:
+    *   **Upcoming**:
+        *   查看 Invoice PDF
+        *   Resend Invoice Email
+        *   Review Dispatch & Notify
+    *   **Ongoing**:
+        *   上传 Dispatch / Return Evidence
+        *   `Confirm Return` 进入 `Past-loan`
+    *   **Past-loan**:
+        *   支持 Archive 归档
+5.  **公共链接能力**:
+    *   Approval Email 与付款确认链路统一通过公共 URL helper 生成。
+    *   支持 `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` / `VERCEL_PROJECT_PRODUCTION_URL` 作为公开域名来源。
+
+### C. Catalog Setup 与 Inventory 模型
+1.  **Settings 改版为 Catalog Setup**:
+    *   原先的 `TaxonomyManager` 已替换为 `CatalogSetupManager`。
+    *   新术语统一为:
+        *   **Jewelry Types**
+        *   **Website Collections**
+    *   支持新增、删除、显示/隐藏切换，用于前台筛选与导入映射。
+2.  **Inventory 维度标准化**:
+    *   商品继续保留 `line_type`:
+        *   `Mainline`
+        *   `Collaboration`
+        *   `Archive`
+    *   `character_family` 现在对齐官方 Character 命名体系。
+3.  **官方 Character 列表**:
+    *   `Orchid Whisper`
+    *   `Daffodil Blossom`
+    *   `Dasha Rebirth`
+    *   `Oceanspine Petals`
+    *   `Botanic Elegy`
+    *   `Sea Passiflora`
+4.  **后台商品视图**:
+    *   列表页按 Line Type 与 Character 分组展示。
+    *   支持 Character 维度批量启用 / 退役。
+    *   支持 Character 名称回填与旧命名标准化。
+
+### D. Guided Import 工作流 (PDF-first Import Pipeline)
+1.  **导入模式升级**:
+    *   AI Import 不再只是“扫 URL / 扫 PDF”，而是升级为 guided workflow。
+    *   PDF 作为权威输入源，Website 作为补充照片与公开文案来源。
+2.  **Guided Import 分阶段流程**:
+    *   **PDF Upload / Read**: 上传 PDF Catalog 到私有 Bucket。
+    *   **PDF Parse**: 解析文档文本、section heading、SKU、材质、颜色、重量、尺寸、RRP、source page。
+    *   **Draft Build**: 生成 staging items，并推断 Character / Jewelry Type / Line Type。
+    *   **Issue / Question Generation**: 自动识别缺失项，生成待回答问题与 issue 列表。
+    *   **Website Match**: 到官网补充 public URL、图片与公开 copy，但不覆盖 PDF 的 SKU、Character、Jewelry Type、页码和价格。
+    *   **Image Match / Review**: 对页面图进行匹配与裁切，供 staging review 使用。
+    *   **Inventory Import**: 仅导入被用户选择通过的 staging items。
+3.  **Guided Import 数据结构**:
+    *   `staging_items.import_metadata` 记录:
+        *   `selected_by_user`
+        *   `issues`
+        *   `pdf_heading`
+        *   `matched_website_url`
+        *   `match_confidence`
+        *   `section_key`
+    *   `staging_import_events` 记录导入流程中的 step / level / message / payload / item_ref，便于排查与审计。
+4.  **Import Review 能力**:
+    *   Admin 可在 Questions 步骤中补全:
+        *   Character
+        *   Jewelry Type
+        *   Source Page
+    *   导入结果会按 issue 优先级排序，优先暴露需要人工修正的条目。
+
+### E. 通讯中心与 PDF 能力
+1.  **Approval Email 能力升级**:
+    *   邮件附带最新 Invoice PDF。
+    *   邮件中可直接进入 Payment Confirmation 页面。
+2.  **PDF 复用**:
+    *   Admin 侧可直接查看 Invoice PDF。
+    *   Public payment-confirmation 页面内嵌同一份 PDF。
 
 ---
 
 ## 3. 数据库与维护 (Maintenance)
 
-### 数据库变更
-本次版本核心依赖以下 Migration:
-
+### 本轮核心 Migration
 *   `00039_reservation_status_invoice_pricing.sql`
     *   Reservation 新状态模型
-    *   Invoice 金额拆分字段
+    *   Invoice 金额拆解字段
     *   `payment_signature_url`
 *   `00040_reservation_invoice_overrides.sql`
-    *   Reservation 级别 `discount_percent` / `deposit_override`
+    *   Reservation 级别折扣与押金覆盖字段
 *   `00041_item_taxonomy_dimensions.sql`
     *   `items.line_type`
     *   `items.character_family`
 *   `00042_pdf_import_taxonomy.sql`
-    *   `staging_imports` PDF 元数据
-    *   `staging_items` taxonomy/specs/source_page
-    *   `import_documents` bucket
+    *   PDF import 所需 staging/import 结构
 *   `00043_digital_loan_form_metadata.sql`
     *   `original_start_date`
     *   `original_end_date`
     *   `event_location`
+*   `00043_guided_import_events.sql`
+    *   `staging_import_events`
+    *   `staging_items.import_metadata`
+    *   Guided Import 事件与问题流程支持
+*   `00044_repair_reservation_status_rpcs.sql`
+    *   修复环境半迁移后 Reservation RPC 与新状态枚举不兼容的问题
 
-> 建议后续所有 Schema 变更都以 `supabase/migrations/*.sql` 为准进行版本管理；变更完成后必须同步类型。
+### 关键表 / 字段
+*   `invoices`
+    *   `subtotal_amount`
+    *   `discount_percentage`
+    *   `discount_amount`
+    *   `deposit_amount`
+*   `reservations`
+    *   `event_location`
+    *   `original_start_date`
+    *   `original_end_date`
+    *   `payment_signature_url`
+*   `staging_items`
+    *   `line_type`
+    *   `character_family`
+    *   `specs`
+    *   `source_page`
+    *   `import_metadata`
+*   `staging_import_events`
+    *   `step`
+    *   `level`
+    *   `message`
+    *   `payload`
+    *   `item_ref`
+
+### Storage 约定
+*   **主商品图 Bucket:** `rental_items`
+*   **商品图 Path:** `/items/{filename}`
+*   **Invoice PDF Path:** `rental_items/invoices/{invoiceId}/latest.pdf`
+*   **签名文件 Path:** `rental_items/payment-signatures/...`
+*   **PDF 原件 Bucket:** `import_documents`
+*   **PDF Preview Crop:** `rental_items/import-previews/...`
+
+### 关键配置 (Environment Variables)
+*   `NEXT_PUBLIC_SUPABASE_URL`
+*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+*   `SUPABASE_SERVICE_ROLE_KEY`
+*   `RESEND_API_KEY`
+*   `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`
+*   `NEXT_PUBLIC_APP_URL`
+*   `NEXT_PUBLIC_SITE_URL`
+*   `VERCEL_PROJECT_PRODUCTION_URL`
+
+### 维护要求
+*   所有 Schema 变更应通过 migration 文件管理。
+*   Schema 变更后必须同步类型:
 
 ```bash
 npm run update-types
 ```
 
-### Storage 约定
-*   **主商品图 Bucket:** `rental_items`
-*   **商品图 Path:** `/items/{filename}`
-*   **PDF 原件 Bucket:** `import_documents`
-*   **PDF Preview Crop:** `rental_items/import-previews/...`
-*   **签名文件 Path:** `rental_items/payment-signatures/...`
-*   **Invoice PDF Path:** `rental_items/invoices/{invoiceId}/latest.pdf`
-
-### 关键配置 (Environment Variables)
-*   `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL
-*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: 新格式 `sb_publishable_...`
-*   `SUPABASE_SERVICE_ROLE_KEY`: 新格式 `sb_secret_...`
-*   `RESEND_API_KEY`: 邮件服务
-*   `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`: Gemini AI 调用
-*   `NEXT_PUBLIC_APP_URL` 或 `NEXT_PUBLIC_SITE_URL`: Approval Email / Payment Confirmation Link 的公开地址生成依赖
-
 ### 运维备注
-*   若未配置 `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL`，Approval Email 仍可发送，但付款确认链接可能缺失。
-*   PDF 导入依赖 `import_documents` bucket 与 Gemini File API。
-*   Reservation Archive 在旧环境下支持回退到 `admin_notes` 标记方案，以兼容未完全同步的状态枚举。
+*   若未配置公开域名环境变量，Approval Email 仍可发送，但付款确认链接可能缺失。
+*   Guided Import 的 Website Match 设计为“补充官网公开素材”，不是覆盖 PDF 原始业务字段。
+*   Reservation Archive 仍保留旧环境兼容策略，以适配未完全同步的状态枚举或历史数据。
