@@ -12,7 +12,8 @@ import {
     Settings,
     LogOut,
     Menu, // Import Menu icon
-    FileText // Invoice icon
+    FileText, // Invoice icon
+    BookOpen // Lookbook Import icon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -31,6 +32,7 @@ const navItems = [
     { href: '/admin/reservations', label: 'Reservations', icon: Calendar },
     { href: '/admin/invoices', label: 'Invoices', icon: FileText },
     { href: '/admin/customers', label: 'Customers', icon: Users },
+    { href: '/admin/lookbook-import', label: 'Lookbook Import', icon: BookOpen },
 ]
 
 
