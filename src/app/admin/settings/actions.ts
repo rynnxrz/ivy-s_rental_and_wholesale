@@ -2,6 +2,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { healthCheckAiProvider, listAiModels } from '@/lib/ai/gateway'
+import { healthCheckDocumentProvider } from '@/lib/ai/document-gateway'
+import { loadAiSettings } from '@/lib/ai/settings'
 
 export async function getCategories() {
     const supabase = await createClient()
@@ -136,7 +139,17 @@ export async function createCollection(name: string) {
 // ============================================================================
 
 export async function saveAISettingsAction(settings: {
+    ai_provider: string
+    ai_primary_model: string
+    ai_primary_base_url: string | null
+    ai_allow_fallback?: boolean
+    ai_fallback_provider?: string | null
+    ai_fallback_model?: string | null
+    ai_fallback_base_url?: string | null
     ai_selected_model: string
+    document_ai_provider: string
+    document_ai_model?: string | null
+    document_ai_base_url?: string | null
     ai_prompt_category: string | null
     ai_prompt_subcategory: string | null
     ai_prompt_product_list: string | null
@@ -150,7 +163,15 @@ export async function saveAISettingsAction(settings: {
     ai_use_system_instruction?: boolean
 }) {
     console.log('\n📝 [AI Settings] Saving AI Configuration...')
-    console.log('   ├─ Model:', settings.ai_selected_model)
+    console.log('   ├─ Provider:', settings.ai_provider)
+    console.log('   ├─ Primary Model:', settings.ai_primary_model)
+    console.log('   ├─ Primary Base URL:', settings.ai_primary_base_url || 'default')
+    console.log('   ├─ Allow Fallback:', settings.ai_allow_fallback ? '✓ Enabled' : '○ Disabled')
+    console.log('   ├─ Fallback Provider:', settings.ai_fallback_provider || 'none')
+    console.log('   ├─ Fallback Model:', settings.ai_fallback_model || 'none')
+    console.log('   ├─ Document Provider:', settings.document_ai_provider)
+    console.log('   ├─ Document Model:', settings.document_ai_model || 'default')
+    console.log('   ├─ Document Base URL:', settings.document_ai_base_url || 'default')
     console.log('   ├─ Category Prompt:', settings.ai_prompt_category ? '✓ Custom set' : '○ Using default')
     console.log('   ├─ Subcategory Prompt:', settings.ai_prompt_subcategory ? '✓ Custom set' : '○ Using default')
     console.log('   ├─ Speed Scan Prompt:', settings.ai_prompt_quick_list ? '✓ Custom set' : '○ Using default')
@@ -199,9 +220,15 @@ export async function saveAISettingsAction(settings: {
     }
 
     // Attempt full update first; if schema lacks new columns, fall back gracefully
-    const fullPayload = { ...settings, prompt_history }
+    const fullPayload = {
+        ...settings,
+        ai_selected_model: settings.ai_primary_model || settings.ai_selected_model,
+        document_ai_model: settings.document_ai_model?.trim() || null,
+        document_ai_base_url: settings.document_ai_base_url?.trim() || null,
+        prompt_history,
+    }
     const legacyPayload = {
-        ai_selected_model: settings.ai_selected_model,
+        ai_selected_model: settings.ai_primary_model || settings.ai_selected_model,
         ai_prompt_category: settings.ai_prompt_category,
         ai_prompt_subcategory: settings.ai_prompt_subcategory,
         ai_prompt_product_list: settings.ai_prompt_quick_list ?? settings.ai_prompt_product_list,
@@ -216,6 +243,8 @@ export async function saveAISettingsAction(settings: {
 
     if (error) {
         const isSchemaMissing =
+            error.message?.includes('ai_provider') ||
+            error.message?.includes('document_ai_') ||
             error.message?.includes('ai_thinking_') ||
             error.message?.includes('prompt_history') ||
             error.message?.includes('schema cache')
@@ -231,15 +260,18 @@ export async function saveAISettingsAction(settings: {
         console.log('❌ [AI Settings] Save failed:', error.message)
         const missingThinking = error.message?.includes('ai_thinking_')
         const missingPromptHistory = error.message?.includes('prompt_history')
+        const missingProvider = error.message?.includes('ai_provider')
+        const missingDocumentProvider = error.message?.includes('document_ai_')
         const hint =
-            missingThinking || missingPromptHistory || error.message?.includes('schema cache')
-                ? 'Missing AI settings columns in app_settings. Run supabase/migrations/00030_ai_thinking_levels.sql and supabase/migrations/00031_prompt_history.sql, then NOTIFY pgrst, \'reload schema\'.'
+            missingThinking || missingPromptHistory || missingProvider || missingDocumentProvider || error.message?.includes('schema cache')
+                ? 'Missing AI settings columns in app_settings. Run the latest AI settings migrations, then NOTIFY pgrst, \'reload schema\'.'
                 : error.message
         return { success: false, error: hint }
     }
 
     console.log('✅ [AI Settings] Successfully saved to database\n')
     revalidatePath('/admin/items')
+    revalidatePath('/admin/settings')
     return { success: true, error: null }
 }
 
@@ -251,61 +283,61 @@ export async function restoreDefaultAISettingsAction() {
 }
 
 export async function getAISettingsAction() {
+    return loadAiSettings()
+}
+
+export async function getAiRuntimeSnapshotAction() {
     const supabase = await createClient()
-    const baseSelect =
-        'ai_selected_model, ai_prompt_category, ai_prompt_subcategory, ai_prompt_product_list, ai_prompt_quick_list, ai_prompt_product_detail'
-    const fullSelect =
-        `${baseSelect}, ai_thinking_category, ai_thinking_subcategory, ai_thinking_product_list, ai_thinking_product_detail, ai_max_output_tokens, ai_use_system_instruction, prompt_history`
-
-    const { data, error } = await supabase
-        .from('app_settings')
-        .select(fullSelect)
-        .single()
-
-    if (!error) return data
-
-    // Fallback for environments that have not yet added ai_thinking_* or prompt_history columns (so prompts still load)
-    const missingThinking = error.message?.includes('ai_thinking_')
-    const missingPromptHistory = error.message?.includes('prompt_history')
-    const missingMaxTokens = error.message?.includes('ai_max_output_tokens')
-    const needsFallback = missingThinking || missingPromptHistory || missingMaxTokens || error.message?.includes('schema cache')
-    if (!needsFallback) {
-        console.error('Failed to fetch AI settings:', error)
-        return null
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+        return { success: false, error: 'Unauthorized', snapshot: null }
     }
 
-    console.warn('[AI Settings] Falling back to legacy column set (missing ai_thinking_* or prompt_history or ai_max_output_tokens)')
-    const fallbackSelect = missingPromptHistory ? baseSelect : `${baseSelect}, prompt_history`
-    const { data: legacyData, error: legacyError } = await supabase
-        .from('app_settings')
-        .select(fallbackSelect)
-        .single()
+    const settings = await loadAiSettings()
 
-    if (legacyError || !legacyData) {
-        console.error('Failed to fetch AI settings (legacy fallback):', legacyError)
-        return null
-    }
-
-    type LegacyAISettings = {
-        ai_selected_model?: string | null
-        ai_prompt_category?: string | null
-        ai_prompt_subcategory?: string | null
-        ai_prompt_product_list?: string | null
-        ai_prompt_quick_list?: string | null
-        ai_prompt_product_detail?: string | null
-        prompt_history?: Record<string, string[]> | null
-    }
-
-    const normalizedLegacyData = legacyData as LegacyAISettings
+    const [primaryHealth, primaryModels, fallbackHealth, fallbackModels, documentHealth, recentDecisions, decisionCount, failedCount, feedbackCount] = await Promise.all([
+        healthCheckAiProvider(settings.ai_provider),
+        listAiModels(settings.ai_provider).catch(() => []),
+        settings.ai_fallback_provider ? healthCheckAiProvider(settings.ai_fallback_provider) : Promise.resolve(null),
+        settings.ai_fallback_provider ? listAiModels(settings.ai_fallback_provider).catch(() => []) : Promise.resolve([]),
+        healthCheckDocumentProvider(settings.document_ai_provider).catch(() => ({
+            provider: settings.document_ai_provider,
+            ok: false,
+            message: 'Document parser health check failed.',
+            is_local: true,
+        })),
+        supabase
+            .from('ai_decisions')
+            .select('id, feature, operation, provider, model, status, started_at, completed_at, error_message')
+            .order('started_at', { ascending: false })
+            .limit(6),
+        supabase
+            .from('ai_decisions')
+            .select('*', { count: 'exact', head: true }),
+        supabase
+            .from('ai_decisions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'failed'),
+        supabase
+            .from('ai_feedback')
+            .select('*', { count: 'exact', head: true }),
+    ])
 
     return {
-        ...normalizedLegacyData,
-        ai_thinking_category: null,
-        ai_thinking_subcategory: null,
-        ai_thinking_product_list: null,
-        ai_thinking_product_detail: null,
-        ai_max_output_tokens: null,
-        ai_use_system_instruction: false,
-        prompt_history: missingPromptHistory ? {} : (normalizedLegacyData.prompt_history || {})
+        success: true,
+        error: null,
+        snapshot: {
+            primaryHealth,
+            primaryModels,
+            fallbackHealth,
+            fallbackModels,
+            documentHealth,
+            recentDecisions: recentDecisions.data || [],
+            metrics: {
+                totalDecisions: decisionCount.count || 0,
+                failedDecisions: failedCount.count || 0,
+                feedbackEvents: feedbackCount.count || 0,
+            },
+        },
     }
 }

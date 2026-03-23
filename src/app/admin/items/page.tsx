@@ -17,41 +17,15 @@ export default async function ItemsPage() {
         isAdmin = profile?.role === 'admin'
     }
 
-    const [itemsResult, categoriesResult, collectionsResult, batchesResult] = await Promise.all([
+    const [itemsResult, categoriesResult, collectionsResult] = await Promise.all([
         supabase.from('items').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name').order('name'),
         supabase.from('collections').select('id, name').order('name'),
-        // Get import batches with pending counts
-        supabase
-            .from('staging_imports')
-            .select('id, source_type, source_url, source_label, default_line_type, status, created_at, items_scraped')
-            .in('status', ['completed', 'pending', 'scanning'])
-            .order('created_at', { ascending: false })
     ])
 
     const items = itemsResult.data as Item[] || []
     const categories = categoriesResult.data || []
     const collections = collectionsResult.data || []
-    const batches = batchesResult.data || []
-
-    // Get pending item counts for each batch
-    const batchesWithCounts = await Promise.all(
-        batches.map(async (batch) => {
-            const { count } = await supabase
-                .from('staging_items')
-                .select('*', { count: 'exact', head: true })
-                .eq('import_batch_id', batch.id)
-                .eq('status', 'pending')
-
-            return {
-                ...batch,
-                pending_count: count || 0
-            }
-        })
-    )
-
-    // Filter to only batches with pending items
-    const activeBatches = batchesWithCounts.filter(b => b.pending_count > 0)
 
     return (
         <ItemsPageClient
@@ -59,7 +33,6 @@ export default async function ItemsPage() {
             categories={categories}
             collections={collections}
             isAdmin={isAdmin}
-            importBatches={activeBatches}
         />
     )
 }

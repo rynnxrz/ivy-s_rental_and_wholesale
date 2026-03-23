@@ -1,7 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2026-03-17
-**版本:** v1.5 (Guided Import + Admin Workflow Overhaul)
+**日期:** 2026-03-23
+**版本:** v1.6 (AI/Lookbook Work Paused In Frontend)
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
 ---
@@ -10,7 +10,7 @@
 *   **框架:** Next.js 16 (App Router) + React 19
 *   **样式:** Tailwind CSS v4 + Shadcn UI (Radix)
 *   **数据库/后端:** Supabase (Postgres, Auth, Storage, Edge Functions)
-*   **AI 引擎:** Google Gemini
+*   **AI 引擎:** 本地优先 AI runtime（当前前端入口已隐藏，云端部署禁用）
 *   **文档/图像处理:** `pdfjs-dist`, `sharp`, `react-signature-canvas`
 *   **部署:** Vercel
 *   **服务:** Resend (邮件), Cloudflare (DNS/CDN), Microsoft Clarity (用户行为分析)
@@ -126,6 +126,18 @@
     *   Admin 侧可直接查看 Invoice PDF。
     *   Public payment-confirmation 页面内嵌同一份 PDF。
 
+### F. 当前状态 / 暂缓上线能力 (Paused Work)
+1.  **Lookbook Import 新流程已在代码中实现，但前端已隐藏**
+    *   新的 PDF lookbook import pipeline、session/event/correction 结构、以及导入 orchestrator 已保留在 repo 中。
+    *   Admin 前端目前不会显示 Lookbook Import 入口，后续确定方案后再重新开放。
+2.  **AI Gateway / AI Settings 已在代码中实现，但前端已隐藏**
+    *   统一的 provider gateway、document parser gateway、decision trace、feedback loop 与 AI settings 面板代码均已保留。
+    *   Admin Settings 当前不会显示 AI tab，避免提前暴露半成品工作流。
+3.  **已知问题（当前仅记录，不在本轮修复）**
+    *   同一 lookbook session 内若抽取到重复 SKU，可能在最终 inventory import 时触发唯一键冲突。
+    *   结构确认中的 `cover_pages` / `appendix_pages` 目前尚未真正参与 draft extraction 过滤。
+    *   lookbook upload 目前通过 server action 进入，body limit 仍为 25 MB，但 bucket 侧配置目标为 50 MB，存在上限不一致。
+
 ---
 
 ## 3. 数据库与维护 (Maintenance)
@@ -142,16 +154,23 @@
     *   `items.character_family`
 *   `00042_pdf_import_taxonomy.sql`
     *   PDF import 所需 staging/import 结构
-*   `00043_digital_loan_form_metadata.sql`
+*   `000430_digital_loan_form_metadata.sql`
     *   `original_start_date`
     *   `original_end_date`
     *   `event_location`
-*   `00043_guided_import_events.sql`
+*   `000431_guided_import_events.sql`
     *   `staging_import_events`
     *   `staging_items.import_metadata`
     *   Guided Import 事件与问题流程支持
 *   `00044_repair_reservation_status_rpcs.sql`
     *   修复环境半迁移后 Reservation RPC 与新状态枚举不兼容的问题
+*   `00045_lookbook_import_sessions.sql`
+    *   Lookbook import session state
+    *   correction log
+    *   session commit RPC
+*   `00046_ai_gateway_and_decisions.sql`
+    *   AI provider/document provider settings
+    *   AI decision trace / event / feedback tables
 
 ### 关键表 / 字段
 *   `invoices`
@@ -186,14 +205,43 @@
 *   **PDF Preview Crop:** `rental_items/import-previews/...`
 
 ### 关键配置 (Environment Variables)
+**可公开 / 前端可见（public runtime-safe）**
 *   `NEXT_PUBLIC_SUPABASE_URL`
 *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-*   `SUPABASE_SERVICE_ROLE_KEY`
-*   `RESEND_API_KEY`
-*   `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`
 *   `NEXT_PUBLIC_APP_URL`
 *   `NEXT_PUBLIC_SITE_URL`
 *   `VERCEL_PROJECT_PRODUCTION_URL`
+
+**仅服务端（server-only，绝不能暴露到 client）**
+*   `SUPABASE_SERVICE_ROLE_KEY`
+*   `RESEND_API_KEY`
+
+**AI / Document Runtime（当前要求仅限本地开发环境）**
+*   `GOOGLE_GENERATIVE_AI_API_KEY`
+*   `GOOGLE_AI_API_KEY`
+*   `GEMINI_API_KEY`
+*   `DASHSCOPE_API_KEY`
+*   `QWEN_API_KEY`
+*   `ZAI_API_KEY`
+*   `GLM_OCR_API_KEY`
+*   `AI_PROVIDER`
+*   `AI_MODEL`
+*   `AI_BASE_URL`
+*   `AI_FALLBACK_PROVIDER`
+*   `AI_FALLBACK_MODEL`
+*   `AI_FALLBACK_BASE_URL`
+*   `OLLAMA_BASE_URL`
+*   `OLLAMA_API_KEY`
+*   `DASHSCOPE_BASE_URL`
+*   `QWEN_BASE_URL`
+*   `DOCUMENT_AI_PROVIDER`
+*   `DOCUMENT_AI_MODEL`
+*   `DOCUMENT_AI_BASE_URL`
+*   `GLM_OCR_MODEL`
+*   `GLM_OCR_BASE_URL`
+*   `LOOKBOOK_LLM_PROVIDER`
+*   `LOOKBOOK_LLM_MODEL`
+*   `LOOKBOOK_DOCUMENT_PROVIDER`
 
 ### 维护要求
 *   所有 Schema 变更应通过 migration 文件管理。
@@ -207,3 +255,6 @@ npm run update-types
 *   若未配置公开域名环境变量，Approval Email 仍可发送，但付款确认链接可能缺失。
 *   Guided Import 的 Website Match 设计为“补充官网公开素材”，不是覆盖 PDF 原始业务字段。
 *   Reservation Archive 仍保留旧环境兼容策略，以适配未完全同步的状态枚举或历史数据。
+*   AI / Lookbook 相关前端入口当前已主动隐藏，属于保留中的 paused work，不应视为已上线功能。
+*   云端部署当前必须保持 AI provider secrets 与 document parser secrets 未配置；这些能力仅允许在本地开发环境启用。
+*   代码中已加入 fail-closed 保护：一旦检测到云端部署环境，AI runtime 会直接拒绝执行，避免误接云端 secrets。

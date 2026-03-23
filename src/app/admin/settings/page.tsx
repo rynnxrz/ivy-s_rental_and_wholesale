@@ -54,8 +54,10 @@ export default async function SettingsPage() {
         .order('created_at', { ascending: true })
 
     // 4. Fetch Categories & Collections
-    const categories = await getCategories()
-    const collections = await getCollections()
+    const [categories, collections] = await Promise.all([
+        getCategories(),
+        getCollections(),
+    ])
 
     return (
         <SettingsClient

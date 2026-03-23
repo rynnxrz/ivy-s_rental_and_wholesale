@@ -667,13 +667,7 @@ export const ItemForm = ({
                             }
                         } else {
                             if (isStaging && onSubmitOverride) {
-                                // Close dialog if in staging mode (handled by parent usually, but this button is type=button, parent needs to handle close)
-                                // Actually, cancel button in StagingItemsList calls onClose. 
-                                // But here we are inside ItemForm. 
-                                // We might need an onCancel prop.
-                                // iterating: StagingItemsList renders this in a Dialog. 
-                                // The Cancel button here just calls router.push which is BAD for a Dialog.
-                                // We should accept an onCancel prop.
+                                // In staging mode the parent dialog handles dismissal via onCancel.
                             } else {
                                 router.push('/admin/items')
                             }

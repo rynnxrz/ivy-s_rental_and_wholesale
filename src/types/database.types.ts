@@ -16,20 +16,30 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
+          ai_allow_fallback: boolean | null
+          ai_fallback_base_url: string | null
+          ai_fallback_model: string | null
+          ai_fallback_provider: string | null
           ai_import_prompt: string | null
           ai_max_output_tokens: number | null
           ai_model: string | null
+          ai_primary_base_url: string | null
+          ai_primary_model: string | null
           ai_prompt_category: string | null
           ai_prompt_product_detail: string | null
           ai_prompt_product_list: string | null
           ai_prompt_quick_list: string | null
           ai_prompt_subcategory: string | null
+          ai_provider: string | null
           ai_selected_model: string | null
           ai_thinking_category: string | null
           ai_thinking_product_detail: string | null
           ai_thinking_product_list: string | null
           ai_thinking_subcategory: string | null
           ai_use_system_instruction: boolean | null
+          document_ai_base_url: string | null
+          document_ai_model: string | null
+          document_ai_provider: string | null
           bank_info: string | null
           booking_password: string | null
           company_name: string | null
@@ -49,20 +59,30 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          ai_allow_fallback?: boolean | null
+          ai_fallback_base_url?: string | null
+          ai_fallback_model?: string | null
+          ai_fallback_provider?: string | null
           ai_import_prompt?: string | null
           ai_max_output_tokens?: number | null
           ai_model?: string | null
+          ai_primary_base_url?: string | null
+          ai_primary_model?: string | null
           ai_prompt_category?: string | null
           ai_prompt_product_detail?: string | null
           ai_prompt_product_list?: string | null
           ai_prompt_quick_list?: string | null
           ai_prompt_subcategory?: string | null
+          ai_provider?: string | null
           ai_selected_model?: string | null
           ai_thinking_category?: string | null
           ai_thinking_product_detail?: string | null
           ai_thinking_product_list?: string | null
           ai_thinking_subcategory?: string | null
           ai_use_system_instruction?: boolean | null
+          document_ai_base_url?: string | null
+          document_ai_model?: string | null
+          document_ai_provider?: string | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -82,20 +102,30 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          ai_allow_fallback?: boolean | null
+          ai_fallback_base_url?: string | null
+          ai_fallback_model?: string | null
+          ai_fallback_provider?: string | null
           ai_import_prompt?: string | null
           ai_max_output_tokens?: number | null
           ai_model?: string | null
+          ai_primary_base_url?: string | null
+          ai_primary_model?: string | null
           ai_prompt_category?: string | null
           ai_prompt_product_detail?: string | null
           ai_prompt_product_list?: string | null
           ai_prompt_quick_list?: string | null
           ai_prompt_subcategory?: string | null
+          ai_provider?: string | null
           ai_selected_model?: string | null
           ai_thinking_category?: string | null
           ai_thinking_product_detail?: string | null
           ai_thinking_product_list?: string | null
           ai_thinking_subcategory?: string | null
           ai_use_system_instruction?: boolean | null
+          document_ai_base_url?: string | null
+          document_ai_model?: string | null
+          document_ai_provider?: string | null
           bank_info?: string | null
           booking_password?: string | null
           company_name?: string | null
@@ -115,6 +145,133 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      ai_decision_events: {
+        Row: {
+          created_at: string
+          decision_id: string
+          id: string
+          level: string
+          message: string
+          payload: Json
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          decision_id: string
+          id?: string
+          level?: string
+          message: string
+          payload?: Json
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          decision_id?: string
+          id?: string
+          level?: string
+          message?: string
+          payload?: Json
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_decision_events_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "ai_decisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_decisions: {
+        Row: {
+          completed_at: string | null
+          entity_id: string | null
+          entity_type: string | null
+          error_message: string | null
+          feature: string
+          id: string
+          metadata: Json
+          model: string | null
+          operation: string
+          provider: string | null
+          route_snapshot: Json
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message?: string | null
+          feature: string
+          id?: string
+          metadata?: Json
+          model?: string | null
+          operation: string
+          provider?: string | null
+          route_snapshot?: Json
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message?: string | null
+          feature?: string
+          id?: string
+          metadata?: Json
+          model?: string | null
+          operation?: string
+          provider?: string | null
+          route_snapshot?: Json
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      ai_feedback: {
+        Row: {
+          corrected_value: Json | null
+          created_at: string
+          decision_id: string
+          field_name: string
+          id: string
+          metadata: Json
+          original_value: Json | null
+          source: string
+        }
+        Insert: {
+          corrected_value?: Json | null
+          created_at?: string
+          decision_id: string
+          field_name: string
+          id?: string
+          metadata?: Json
+          original_value?: Json | null
+          source: string
+        }
+        Update: {
+          corrected_value?: Json | null
+          created_at?: string
+          decision_id?: string
+          field_name?: string
+          id?: string
+          metadata?: Json
+          original_value?: Json | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_feedback_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "ai_decisions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       billing_profiles: {
         Row: {
@@ -628,51 +785,80 @@ export type Database = {
       }
       staging_imports: {
         Row: {
+          confirmation_snapshot: Json
+          confirmed_at: string | null
           created_at: string | null
           current_category: string | null
           default_line_type: string
+          decision_id: string | null
           id: string
           items_scraped: number | null
           items_total: number | null
           last_scanned_index: number | null
+          overall_status: string
+          plan_snapshot: Json
           product_urls: string[] | null
           source_label: string | null
+          source_file_meta: Json
           source_storage_path: string | null
           source_type: string
           source_url: string | null
           status: string | null
+          structure_map: Json
         }
         Insert: {
+          confirmation_snapshot?: Json
+          confirmed_at?: string | null
           created_at?: string | null
           current_category?: string | null
           default_line_type?: string
+          decision_id?: string | null
           id?: string
           items_scraped?: number | null
           items_total?: number | null
           last_scanned_index?: number | null
+          overall_status?: string
+          plan_snapshot?: Json
           product_urls?: string[] | null
           source_label?: string | null
+          source_file_meta?: Json
           source_storage_path?: string | null
           source_type?: string
           source_url?: string | null
           status?: string | null
+          structure_map?: Json
         }
         Update: {
+          confirmation_snapshot?: Json
+          confirmed_at?: string | null
           created_at?: string | null
           current_category?: string | null
           default_line_type?: string
+          decision_id?: string | null
           id?: string
           items_scraped?: number | null
           items_total?: number | null
           last_scanned_index?: number | null
+          overall_status?: string
+          plan_snapshot?: Json
           product_urls?: string[] | null
           source_label?: string | null
+          source_file_meta?: Json
           source_storage_path?: string | null
           source_type?: string
           source_url?: string | null
           status?: string | null
+          structure_map?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "staging_imports_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "ai_decisions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staging_import_events: {
         Row: {
@@ -718,6 +904,67 @@ export type Database = {
             columns: ["item_ref"]
             isOneToOne: false
             referencedRelation: "staging_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staging_import_corrections: {
+        Row: {
+          corrected_at: string
+          corrected_by: string | null
+          corrected_value: Json | null
+          field_name: string
+          id: string
+          item_id: string | null
+          original_value: Json | null
+          reason: string | null
+          scope: string
+          session_id: string
+        }
+        Insert: {
+          corrected_at?: string
+          corrected_by?: string | null
+          corrected_value?: Json | null
+          field_name: string
+          id?: string
+          item_id?: string | null
+          original_value?: Json | null
+          reason?: string | null
+          scope: string
+          session_id: string
+        }
+        Update: {
+          corrected_at?: string
+          corrected_by?: string | null
+          corrected_value?: Json | null
+          field_name?: string
+          id?: string
+          item_id?: string | null
+          original_value?: Json | null
+          reason?: string | null
+          scope?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staging_import_corrections_corrected_by_fkey"
+            columns: ["corrected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_import_corrections_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "staging_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staging_import_corrections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "staging_imports"
             referencedColumns: ["id"]
           },
         ]
@@ -908,6 +1155,13 @@ export type Database = {
       }
       commit_staging_batch: {
         Args: { p_batch_id: string }
+        Returns: {
+          error_message: string
+          imported_count: number
+        }[]
+      }
+      commit_lookbook_import_session: {
+        Args: { p_session_id: string }
         Returns: {
           error_message: string
           imported_count: number

@@ -325,18 +325,133 @@ export async function createCollection(name: string) {
 // AI Import Actions
 // ============================================================
 
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
 import { createStreamableValue } from '@/lib/ai-stream'
+import { createAiGateway, listAiModels } from '@/lib/ai/gateway'
 import { DEFAULT_GEMINI_MODEL } from '@/lib/ai/model-selection'
+import { loadAiSettings } from '@/lib/ai/settings'
+import type { AiContent, AiRunContext } from '@/types'
 import sharp from 'sharp'
 
-// Initialize Gemini client
-const getGeminiClient = () => {
-    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY
-    if (!apiKey) {
-        throw new Error('GOOGLE_AI_API_KEY environment variable is not set')
+const getAiGateway = () => createAiGateway()
+
+const resolveModelId = async (requestedModelId?: string | null) => {
+    const settings = await loadAiSettings()
+    return requestedModelId?.trim() || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
+}
+
+const buildThinkingConfig = (thinkingValue: string | null | undefined, modelId: string) => {
+    if (!thinkingValue) {
+        return null
     }
-    return new GoogleGenAI({ apiKey })
+
+    const trimmed = thinkingValue.trim()
+    if (!trimmed) {
+        return null
+    }
+
+    const isGemini3 = modelId.includes('gemini-3')
+    const thinkingLevels = ['minimal', 'low', 'medium', 'high']
+    if (isGemini3 && thinkingLevels.includes(trimmed)) {
+        return {
+            enabled: true,
+            level: trimmed,
+        }
+    }
+
+    const parsedBudget = Number.parseInt(trimmed, 10)
+    if (Number.isFinite(parsedBudget)) {
+        return {
+            enabled: true,
+            budget: parsedBudget,
+        }
+    }
+
+    return {
+        enabled: true,
+        level: trimmed,
+    }
+}
+
+async function runAiText(input: {
+    feature: string
+    operation: string
+    prompt?: string
+    contents?: AiContent
+    modelId?: string | null
+    tools?: ('googleSearch')[]
+    temperature?: number
+    thinkingValue?: string | null
+    responseMimeType?: string | null
+    entityType?: string | null
+    entityId?: string | null
+    metadata?: Record<string, unknown>
+    systemInstruction?: string | null
+}) {
+    const settings = await loadAiSettings()
+    const modelId = input.modelId?.trim() || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
+    const systemInstruction = input.systemInstruction === undefined
+        ? await getSystemInstructionIfEnabled()
+        : input.systemInstruction
+
+    const result = await getAiGateway().generateText({
+        model: modelId,
+        contents: input.contents || input.prompt || '',
+        systemInstruction,
+        temperature: input.temperature ?? 1.0,
+        tools: input.tools || [],
+        thinking: buildThinkingConfig(input.thinkingValue, modelId),
+        responseMimeType: input.responseMimeType || null,
+        maxOutputTokens: settings.ai_max_output_tokens ?? null,
+        runContext: {
+            feature: input.feature,
+            operation: input.operation,
+            entity_type: input.entityType || null,
+            entity_id: input.entityId || null,
+            route_kind: 'llm',
+            metadata: input.metadata || {},
+        } satisfies AiRunContext,
+    })
+
+    return result
+}
+
+async function runAiStream(input: {
+    feature: string
+    operation: string
+    prompt?: string
+    contents?: AiContent
+    modelId?: string | null
+    tools?: ('googleSearch')[]
+    temperature?: number
+    thinkingValue?: string | null
+    entityType?: string | null
+    entityId?: string | null
+    metadata?: Record<string, unknown>
+    systemInstruction?: string | null
+}) {
+    const settings = await loadAiSettings()
+    const modelId = input.modelId?.trim() || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
+    const systemInstruction = input.systemInstruction === undefined
+        ? await getSystemInstructionIfEnabled()
+        : input.systemInstruction
+
+    return getAiGateway().streamText({
+        model: modelId,
+        contents: input.contents || input.prompt || '',
+        systemInstruction,
+        temperature: input.temperature ?? 1.0,
+        tools: input.tools || [],
+        thinking: buildThinkingConfig(input.thinkingValue, modelId),
+        maxOutputTokens: settings.ai_max_output_tokens ?? null,
+        runContext: {
+            feature: input.feature,
+            operation: input.operation,
+            entity_type: input.entityType || null,
+            entity_id: input.entityId || null,
+            route_kind: 'llm',
+            metadata: input.metadata || {},
+        } satisfies AiRunContext,
+    })
 }
 
 const IMPORT_DOCUMENT_BUCKET = 'import_documents'
@@ -706,56 +821,16 @@ export async function getAvailableModelsAction(): Promise<{
     models: AvailableModel[]
 }> {
     try {
-        const ai = getGeminiClient()
-        const modelsResponse = await ai.models.list()
+        const settings = await loadAiSettings()
+        const modelsResponse = await listAiModels(settings.ai_provider)
 
-        const models: AvailableModel[] = []
-
-        for await (const model of modelsResponse) {
-            // Filter to only include generative models (gemini-*)
-            if (model.name && model.name.includes('gemini')) {
-                // Extract the model ID from the full name (e.g., "models/gemini-2.0-flash" -> "gemini-2.0-flash")
-                const id = model.name.replace('models/', '')
-
-                // Check if model supports generateContent (text generation)
-                const supportsGeneration = model.supportedActions?.includes('generateContent')
-
-                if (supportsGeneration !== false) {
-                    const thinkingLevels: string[] = []
-                    const rawLevels =
-                        (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).thinkingLevels ??
-                        (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).supportedThinkingLevels
-                    if (Array.isArray(rawLevels)) {
-                        thinkingLevels.push(...rawLevels.map(level => String(level)))
-                    }
-
-                    models.push({
-                        id,
-                        name: model.name,
-                        displayName: model.displayName || id,
-                        description: model.description || '',
-                        inputTokenLimit: model.inputTokenLimit,
-                        outputTokenLimit: model.outputTokenLimit,
-                        thinkingLevels
-                    })
-                }
-            }
-        }
-
-        // Sort by name (prefer 2.0 > 1.5, flash > pro order)
-        models.sort((a, b) => {
-            // Prioritize 2.0 models
-            const a2 = a.id.includes('2.0') ? 0 : 1
-            const b2 = b.id.includes('2.0') ? 0 : 1
-            if (a2 !== b2) return a2 - b2
-
-            // Then prioritize flash models (faster)
-            const aFlash = a.id.includes('flash') ? 0 : 1
-            const bFlash = b.id.includes('flash') ? 0 : 1
-            if (aFlash !== bFlash) return aFlash - bFlash
-
-            return a.id.localeCompare(b.id)
-        })
+        const models: AvailableModel[] = modelsResponse.map(model => ({
+            id: model.id,
+            name: model.name,
+            displayName: model.displayName,
+            description: model.description,
+            thinkingLevels: model.thinkingLevels,
+        }))
 
         return { success: true, error: null, models }
     } catch (error) {
@@ -789,15 +864,9 @@ export async function getModelThinkingLevelsAction(modelId: string): Promise<{
     error?: string | null
 }> {
     try {
-        const ai = getGeminiClient()
-        const model = await ai.models.get({ model: modelId })
-        const rawLevels =
-            (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).thinkingLevels ??
-            (model as { thinkingLevels?: unknown; supportedThinkingLevels?: unknown }).supportedThinkingLevels
-
-        const levels = Array.isArray(rawLevels)
-            ? rawLevels.map(level => String(level))
-            : inferThinkingLevels(modelId)
+        const settings = await loadAiSettings()
+        const models = await listAiModels(settings.ai_provider)
+        const levels = models.find(model => model.id === modelId)?.thinkingLevels || inferThinkingLevels(modelId)
 
         return { success: true, levels }
     } catch (error) {
@@ -900,53 +969,29 @@ export async function testAIChatAction(
     }
 
     try {
-        const genAI = getGeminiClient()
+        const transcript = history
+            .map(entry => `${entry.role === 'assistant' ? 'Assistant' : 'User'}: ${entry.content}`)
+            .join('\n\n')
+        const prompt = transcript
+            ? `${transcript}\n\nUser: ${message}\nAssistant:`
+            : `User: ${message}\nAssistant:`
 
-        // Get generative model with system instruction (official pattern)
-        const model = genAI.models
-
-        // Convert history to proper Gemini format with full structure
-        const geminiHistory = history.map(msg => ({
-            role: msg.role === 'user' ? 'user' as const : 'model' as const,
-            parts: [{ text: msg.content }]
-        }))
-
-        // Use generateContent with full chat context
-        const result = await model.generateContent({
-            model: modelId,
-            contents: [
-                ...geminiHistory,
-                { role: 'user' as const, parts: [{ text: message }] }
-            ],
-            config: {
-                // Enable Google Search Grounding
-                tools: [{ googleSearch: {} }],
-
-                // System instruction for natural, intelligent assistant
-                systemInstruction: SYSTEM_INSTRUCTION,
-
-                // Generation config for natural, thoughtful responses
-                temperature: 0.9,      // Higher for more natural variation
-                topP: 0.95,
-                topK: 40,
-                maxOutputTokens: 8192,
-
-                // Safety settings: BLOCK_NONE for natural conversation
-                // (Falls back to BLOCK_ONLY_HIGH if BLOCK_NONE not supported)
-                safetySettings: [
-                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
-                ]
-            }
+        const result = await runAiText({
+            feature: 'admin_ai',
+            operation: 'test_chat',
+            prompt,
+            modelId,
+            tools: ['googleSearch'],
+            temperature: 0.9,
+            metadata: {
+                history_length: history.length,
+            },
+            systemInstruction: SYSTEM_INSTRUCTION,
         })
-
-        const responseText = result.text || ''
 
         return {
             success: true,
-            response: responseText,
+            response: result.text,
             error: null
         }
     } catch (error) {
@@ -1298,20 +1343,13 @@ export async function extractCategoriesAction(sourceUrl: string, modelId?: strin
     }
 
     try {
-        // Fetch Settings
-        const supabase = await createClient()
-        const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_category').single()
-
-        // Use provided modelId, or falling back to settings, or default
-        const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+        const settings = await loadAiSettings()
+        const activeModelId = modelId || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
         console.log('\n🤖 [AI Import] Extracting categories with Google Search...')
         console.log('   ├─ Using Model:', activeModelId)
         console.log('   ├─ Target URL:', sourceUrl)
         console.log('   └─ Mode: Google Search Tool (no manual fetch)')
-
-        // 2. Call Gemini API with Google Search tool
-        const ai = getGeminiClient()
 
         // Simplified prompt - let Gemini browse the site directly
         const defaultPrompt = `请访问这个网站：${sourceUrl}
@@ -1333,17 +1371,15 @@ export async function extractCategoriesAction(sourceUrl: string, modelId?: strin
             ? `${settings.ai_prompt_category}\n\n目标网站: ${sourceUrl}`
             : defaultPrompt
 
-        // Get system instruction if enabled
-        const systemInstruction = await getSystemInstructionIfEnabled()
-
-        const result = await ai.models.generateContent({
-            model: activeModelId,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                temperature: 1.0,
-                ...(systemInstruction && { systemInstruction })
-            }
+        const result = await runAiText({
+            feature: 'catalog_import',
+            operation: 'extract_categories',
+            prompt,
+            modelId: activeModelId,
+            tools: ['googleSearch'],
+            metadata: {
+                source_url: sourceUrl,
+            },
         })
 
         // 3. Parse Gemini response
@@ -1422,11 +1458,8 @@ export async function extractCategoriesStreamAction(sourceUrl: string, modelId?:
                 }
 
                 // Fetch Settings
-                const supabase = await createClient()
-                const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_category').single()
-
-                // Use provided modelId, or falling back to settings, or default
-                const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+                const settings = await loadAiSettings()
+                const activeModelId = modelId || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
                 // Simplified prompt - let Gemini browse the site directly
                 const defaultPrompt = `请访问这个网站：${sourceUrl}
@@ -1453,47 +1486,30 @@ export async function extractCategoriesStreamAction(sourceUrl: string, modelId?:
                     ? `${settings.ai_prompt_category}\n\n目标网站: ${sourceUrl}`
                     : defaultPrompt
 
-                // 2. Call Gemini API with Streaming
-                const ai = getGeminiClient()
-
-                // Get system instruction if enabled
-                const systemInstruction = await getSystemInstructionIfEnabled()
-
-                const response = await ai.models.generateContentStream({
-                    model: activeModelId,
-                    contents: prompt,
-                    config: {
-                        tools: [{ googleSearch: {} }],
-                        temperature: 1.0,
-                        thinkingConfig: { includeThoughts: true },
-                        ...(systemInstruction && { systemInstruction })
-                    }
+                const response = await runAiStream({
+                    feature: 'catalog_import',
+                    operation: 'extract_categories_stream',
+                    prompt,
+                    modelId: activeModelId,
+                    tools: ['googleSearch'],
+                    thinkingValue: 'low',
+                    metadata: {
+                        source_url: sourceUrl,
+                    },
                 })
 
                 let fullText = ''
 
                 // 3. Process stream chunks
                 for await (const chunk of response) {
-                    // Gemini 2.0+ thinking chain handling
-                    // Multiple parts can exist in a single chunk (e.g. thought part followed by text part)
-                    const parts = chunk.candidates?.[0]?.content?.parts || []
+                    stream.update({
+                        type: 'chunk',
+                        isThought: chunk.isThought,
+                        text: chunk.text
+                    })
 
-                    for (const part of parts) {
-                        const partWithThought = part as { thought?: unknown; text?: string }
-                        const isThought = partWithThought.thought === true
-                        const text = partWithThought.text || ''
-
-                        if (text) {
-                            stream.update({
-                                type: 'chunk',
-                                isThought,
-                                text
-                            })
-
-                            if (!isThought) {
-                                fullText += text
-                            }
-                        }
+                    if (!chunk.isThought) {
+                        fullText += chunk.text
                     }
                 }
 
@@ -1557,11 +1573,8 @@ export async function exploreSubCategoriesAction(
     }
 
     try {
-        const ai = getGeminiClient()
-
-        const supabase = await createClient()
-        const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_subcategory').single()
-        const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+        const settings = await loadAiSettings()
+        const activeModelId = modelId || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
         console.log('\n🔍 [AI Import] Exploring sub-categories for:', parentName)
         console.log('   ├─ Using Model:', activeModelId)
@@ -1576,17 +1589,16 @@ ${DEFAULT_PROMPT_SUBCATEGORY.replace('{parentName}', parentName).replace('HTML t
             ? `${settings.ai_prompt_subcategory}\n\nTarget URL: ${categoryUrl}`
             : defaultPrompt
 
-        // Get system instruction if enabled
-        const systemInstruction = await getSystemInstructionIfEnabled()
-
-        const result = await ai.models.generateContent({
-            model: activeModelId,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                temperature: 1.0,
-                ...(systemInstruction && { systemInstruction })
-            }
+        const result = await runAiText({
+            feature: 'catalog_import',
+            operation: 'explore_subcategories',
+            prompt,
+            modelId: activeModelId,
+            tools: ['googleSearch'],
+            metadata: {
+                category_url: categoryUrl,
+                parent_name: parentName,
+            },
         })
 
         const responseText = result.text || ''
@@ -1680,11 +1692,8 @@ export interface ScanResult {
 async function extractProductLinks(categoryUrl: string): Promise<string[]> {
     console.log('\n📋 [AI Import] Extracting product links from:', categoryUrl.substring(0, 60) + '...')
 
-    const ai = getGeminiClient()
-
-    const supabase = await createClient()
-    const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_product_list').single()
-    const activeModelId = settings?.ai_selected_model || 'gemini-2.0-flash'
+    const settings = await loadAiSettings()
+    const activeModelId = settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
     console.log('   ├─ Model:', activeModelId)
     console.log('   ├─ Target URL:', categoryUrl)
@@ -1698,17 +1707,15 @@ ${DEFAULT_PROMPT_PRODUCT_LIST.replace('HTML to analyze:', '')}`
         ? `${settings.ai_prompt_product_list}\n\nTarget URL: ${categoryUrl}`
         : defaultPrompt
 
-    // Get system instruction if enabled
-    const systemInstruction = await getSystemInstructionIfEnabled()
-
-    const result = await ai.models.generateContent({
-        model: activeModelId,
-        contents: prompt,
-        config: {
-            tools: [{ googleSearch: {} }],
-            temperature: 1.0,
-            ...(systemInstruction && { systemInstruction })
-        }
+    const result = await runAiText({
+        feature: 'catalog_import',
+        operation: 'extract_product_links',
+        prompt,
+        modelId: activeModelId,
+        tools: ['googleSearch'],
+        metadata: {
+            category_url: categoryUrl,
+        },
     })
 
     const responseText = result.text || ''
@@ -1734,14 +1741,11 @@ async function scrapeProductPage(url: string, modelId: string = 'gemini-2.0-flas
     const productName = url.split('/').pop()?.substring(0, 30) || 'product'
     console.log('   📦 Scraping:', productName)
 
-    const ai = getGeminiClient()
-
-    const supabase = await createClient()
-    const { data: settings } = await supabase.from('app_settings').select('ai_selected_model, ai_prompt_product_detail').single()
+    const settings = await loadAiSettings()
     // Prefer passed modelId if specific (though usually it comes from settings upstream), else settings, else default
     // Note: scanCategoriesAction passes the modelId which comes from UI -> Settings, so we likely just use modelId here.
     // BUT valid to double check if modelId is empty.
-    const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+    const activeModelId = modelId || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
     console.log('   └─ Mode: Google Search Tool (no manual fetch)')
 
@@ -1753,12 +1757,15 @@ ${DEFAULT_PROMPT_PRODUCT_DETAIL.replace('HTML:', '')}`
         ? `${settings.ai_prompt_product_detail}\n\nTarget URL: ${url}`
         : defaultPrompt
 
-    const result = await ai.models.generateContent({
-        model: activeModelId,
-        contents: prompt,
-        config: {
-            tools: [{ googleSearch: {} }]
-        }
+    const result = await runAiText({
+        feature: 'catalog_import',
+        operation: 'scrape_product_page',
+        prompt,
+        modelId: activeModelId,
+        tools: ['googleSearch'],
+        metadata: {
+            product_url: url,
+        },
     })
 
     const responseText = result.text || ''
@@ -2555,13 +2562,8 @@ export async function quickScanAction(
     try {
         const batch = await getBatchSummary(batchId, supabase)
 
-        // Get AI settings
-        const { data: settings } = await supabase
-            .from('app_settings')
-            .select('ai_selected_model, ai_prompt_quick_list')
-            .single()
-
-        const activeModelId = modelId || settings?.ai_selected_model || 'gemini-2.0-flash'
+        const settings = await loadAiSettings()
+        const activeModelId = modelId || settings.ai_primary_model || settings.ai_selected_model || DEFAULT_GEMINI_MODEL
 
         console.log('   ├─ Model:', activeModelId)
         console.log('   └─ Categories:', input.categories.length)
@@ -2571,8 +2573,6 @@ export async function quickScanAction(
             .from('staging_imports')
             .update({ status: 'scanning', current_category: 'Quick scanning...' })
             .eq('id', batchId)
-
-        const ai = getGeminiClient()
 
         for (const category of input.categories) {
             if (!category.url) continue
@@ -2590,18 +2590,18 @@ ${DEFAULT_PROMPT_QUICK_LIST.replace('HTML to analyze:', '')}`
                 ? `${settings.ai_prompt_quick_list}\n\nTarget URL: ${category.url}`
                 : defaultPrompt
 
-            // Get system instruction if enabled
-            const systemInstruction = await getSystemInstructionIfEnabled()
-
-            // Call Gemini API (single call for the whole category listing)
-            const result = await ai.models.generateContent({
-                model: activeModelId,
-                contents: prompt,
-                config: {
-                    tools: [{ googleSearch: {} }],
-                    temperature: 1.0,
-                    ...(systemInstruction && { systemInstruction })
-                }
+            const result = await runAiText({
+                feature: 'catalog_import',
+                operation: 'quick_scan',
+                prompt,
+                modelId: activeModelId,
+                tools: ['googleSearch'],
+                entityType: 'staging_batch',
+                entityId: batchId,
+                metadata: {
+                    category_name: category.name,
+                    category_url: category.url,
+                },
             })
 
             const responseText = result.text || ''
@@ -2709,13 +2709,11 @@ export async function quickScanStreamAction(
         ; (async () => {
             const supabase = await createClient()
             let totalItemsFound = 0
-            const ai = getGeminiClient()
 
             try {
                 const batch = await getBatchSummary(batchId, supabase)
 
-                // Get AI settings
-                const { data: settings } = await supabase.from('app_settings').select('ai_prompt_quick_list, ai_thinking_product_list').single()
+                const settings = await loadAiSettings()
 
                 await supabase.from('staging_imports')
                     .update({ status: 'scanning', current_category: 'Speed scanning...' })
@@ -2741,52 +2739,26 @@ Please clearly describe your thinking process as you analyze the page, for examp
                         ? `${settings.ai_prompt_quick_list}\n\nTarget URL: ${category.url}`
                         : defaultPrompt
 
-                    // Build thinking config
-                    // Gemini 3 uses thinkingLevel (string: "low", "medium", "high")
-                    // Gemini 2.5 uses thinkingBudget (integer: 1024, 8192, etc.)
-                    const thinkingConfig: Record<string, unknown> = { includeThoughts: true }
-                    if (settings?.ai_thinking_product_list) {
-                        const thinkingValue = settings.ai_thinking_product_list
-                        const isGemini3 = modelId.includes('gemini-3')
-                        const thinkingLevels = ['minimal', 'low', 'medium', 'high']
-                        const isLevelString = thinkingLevels.includes(thinkingValue)
-
-                        if (isGemini3 && isLevelString) {
-                            thinkingConfig.thinkingLevel = thinkingValue
-                        } else if (!isNaN(parseInt(thinkingValue, 10))) {
-                            thinkingConfig.thinkingBudget = parseInt(thinkingValue, 10)
-                        }
-                    }
-
-                    // Get system instruction if enabled
-                    const systemInstruction = await getSystemInstructionIfEnabled()
-
-                    // Generate stream
-                    const response = await ai.models.generateContentStream({
-                        model: modelId,
-                        contents: prompt,
-                        config: {
-                            tools: [{ googleSearch: {} }],
-                            temperature: 1.0,
-                            thinkingConfig,
-                            ...(systemInstruction && { systemInstruction })
-                        }
+                    const response = await runAiStream({
+                        feature: 'catalog_import',
+                        operation: 'quick_scan_stream',
+                        prompt,
+                        modelId,
+                        tools: ['googleSearch'],
+                        thinkingValue: settings.ai_thinking_product_list,
+                        entityType: 'staging_batch',
+                        entityId: batchId,
+                        metadata: {
+                            category_name: category.name,
+                            category_url: category.url,
+                        },
                     })
 
                     let fullText = ''
 
                     for await (const chunk of response) {
-                        const parts = chunk.candidates?.[0]?.content?.parts || []
-                        for (const part of parts) {
-                            const partWithThought = part as { thought?: unknown; text?: string }
-                            const isThought = partWithThought.thought === true
-                            const text = partWithThought.text || ''
-
-                            if (text) {
-                                stream.update({ type: 'chunk', isThought, text, categoryName: category.name })
-                                if (!isThought) fullText += text
-                            }
-                        }
+                        stream.update({ type: 'chunk', isThought: chunk.isThought, text: chunk.text, categoryName: category.name })
+                        if (!chunk.isThought) fullText += chunk.text
                     }
 
                     // Process JSON for this category
@@ -3255,9 +3227,7 @@ export async function matchPdfCatalogPageImagesAction(input: {
             throw new Error('Failed to read rendered PDF page image')
         }
 
-        const modelId = input.modelId?.trim() || DEFAULT_GEMINI_MODEL
-        const systemInstruction = await getSystemInstructionIfEnabled()
-        const ai = getGeminiClient()
+        const modelId = await resolveModelId(input.modelId)
         const prompt = `Match catalog items to product photos on a single PDF page image.
 
 Return a JSON array only. Each object must use:
@@ -3277,21 +3247,25 @@ Batch: ${getBatchSourceLabel(batch)}
 Targets:
 ${items.map(item => `- ${item.id}: ${item.sku || item.name} (${item.character_family})`).join('\n')}`
 
-        const response = await ai.models.generateContent({
-            model: modelId,
+        const response = await runAiText({
+            feature: 'pdf_catalog',
+            operation: 'match_page_images',
             contents: [
-                { text: prompt },
+                { type: 'text', text: prompt },
                 {
-                    inlineData: {
-                        mimeType,
-                        data: buffer.toString('base64'),
-                    },
+                    type: 'inlineData',
+                    mimeType,
+                    data: buffer.toString('base64'),
                 },
             ],
-            config: {
-                responseMimeType: 'application/json',
-                temperature: 0.1,
-                ...(systemInstruction && { systemInstruction }),
+            modelId,
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+            entityType: 'staging_batch',
+            entityId: input.batchId,
+            metadata: {
+                page_number: input.pageNumber,
+                item_count: items.length,
             },
         })
 
@@ -3766,7 +3740,6 @@ export async function autoCategorizeStagingItemsAction(
         return { success: false, error: 'No categories available for matching', updatedCount: 0, unmatched: [] }
     }
 
-    const ai = getGeminiClient()
     const nameToId = new Map(categories.map(c => [c.name.toLowerCase(), c.id]))
 
     const MAX_ITEMS_PER_CALL = 30
@@ -3788,16 +3761,16 @@ ${chunk.map(item => `{"id": "${item.id}", "name": "${item.name}", "details": "${
 Expected JSON format:
 [{"id": "<product-id>", "categoryName": "<category-name-from-list-or-null>"}]`
 
-        // Get system instruction if enabled
-        const systemInstruction = await getSystemInstructionIfEnabled()
-
-        const result = await ai.models.generateContent({
-            model: modelId,
-            contents: prompt,
-            config: {
-                temperature: 1.0,
-                ...(systemInstruction && { systemInstruction })
-            }
+        const result = await runAiText({
+            feature: 'catalog_import',
+            operation: 'auto_categorize',
+            prompt,
+            modelId,
+            entityType: 'staging_batch',
+            entityId: batchId,
+            metadata: {
+                chunk_size: chunk.length,
+            },
         })
 
         const responseText = result.text || '[]'
@@ -4099,17 +4072,9 @@ export async function testSpeedScanAction(
             const startTime = Date.now()
 
             try {
-                const supabase = await createClient()
-
-                // Get custom prompt if set
-                const { data: settings } = await supabase
-                    .from('app_settings')
-                    .select('ai_prompt_quick_list, ai_thinking_product_list')
-                    .single()
+                const settings = await loadAiSettings()
 
                 stream.update({ type: 'log', message: `Connecting to ${new URL(url).hostname}...`, elapsed: Date.now() - startTime })
-
-                const ai = getGeminiClient()
 
                 const defaultPrompt = `Please visit this URL: ${url}
 
@@ -4121,66 +4086,30 @@ Please clearly describe your thinking process as you analyze the page.`
                     ? `${settings.ai_prompt_quick_list}\n\nTarget URL: ${url}`
                     : defaultPrompt
 
-                // Build config with thinking enabled
-                const config: Record<string, unknown> = {
-                    tools: [{ googleSearch: {} }],
-                    temperature: 1.0,
-                    thinkingConfig: { includeThoughts: true }
-                }
-
-                // Add thinking config if set
-                // Gemini 3 uses thinkingLevel (string: "low", "medium", "high")
-                // Gemini 2.5 uses thinkingBudget (integer: 1024, 8192, etc.)
-                if (settings?.ai_thinking_product_list) {
-                    const thinkingValue = settings.ai_thinking_product_list
-                    const isGemini3 = modelId.includes('gemini-3')
-                    const thinkingLevels = ['minimal', 'low', 'medium', 'high']
-                    const isLevelString = thinkingLevels.includes(thinkingValue)
-
-                    if (isGemini3 && isLevelString) {
-                        // Gemini 3: use thinkingLevel
-                        (config.thinkingConfig as Record<string, unknown>).thinkingLevel = thinkingValue
-                    } else if (!isNaN(parseInt(thinkingValue, 10))) {
-                        // Gemini 2.5: use thinkingBudget (integer)
-                        (config.thinkingConfig as Record<string, unknown>).thinkingBudget = parseInt(thinkingValue, 10)
-                    }
-                    // If it's a string level on a non-Gemini-3 model, skip (don't set invalid budget)
-                }
-
-                // Get system instruction if enabled
-                const systemInstruction = await getSystemInstructionIfEnabled()
-                if (systemInstruction) {
-                    config.systemInstruction = systemInstruction
-                }
-
                 stream.update({ type: 'log', message: `Model: ${modelId}`, elapsed: Date.now() - startTime })
 
-                // Use streaming to capture thoughts
-                const response = await ai.models.generateContentStream({
-                    model: modelId,
-                    contents: prompt,
-                    config
+                const response = await runAiStream({
+                    feature: 'admin_ai',
+                    operation: 'test_speed_scan',
+                    prompt,
+                    modelId,
+                    tools: ['googleSearch'],
+                    thinkingValue: settings.ai_thinking_product_list,
+                    metadata: {
+                        url,
+                    },
                 })
 
                 let fullText = ''
 
                 for await (const chunk of response) {
-                    const parts = chunk.candidates?.[0]?.content?.parts || []
-                    for (const part of parts) {
-                        const partWithThought = part as { thought?: unknown; text?: string }
-                        const isThought = partWithThought.thought === true
-                        const text = partWithThought.text || ''
-
-                        if (text) {
-                            stream.update({
-                                type: 'chunk',
-                                isThought,
-                                text,
-                                elapsed: Date.now() - startTime
-                            })
-                            if (!isThought) fullText += text
-                        }
-                    }
+                    stream.update({
+                        type: 'chunk',
+                        isThought: chunk.isThought,
+                        text: chunk.text,
+                        elapsed: Date.now() - startTime
+                    })
+                    if (!chunk.isThought) fullText += chunk.text
                 }
 
                 // Parse JSON result

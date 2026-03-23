@@ -1,4 +1,5 @@
 import { inferCharacterFamilyFromText, inferJewelryTypeFromText, inferLineTypeFromText, normalizeLineType } from '@/lib/items/catalog-rules'
+import { loadServerPdfJs } from '@/lib/pdf/loadServerPdfJs'
 import type { ItemLineType } from '@/types'
 
 type PdfTextNode = {
@@ -281,7 +282,7 @@ export async function parsePdfCatalog(
     pdfBytes: Uint8Array,
     defaultLineType: ItemLineType
 ): Promise<ParsedPdfCatalogDocument> {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const pdfjs = await loadServerPdfJs()
     const document = await pdfjs.getDocument({ data: pdfBytes }).promise
     const parsedItems: ParsedPdfCatalogDraft[] = []
 

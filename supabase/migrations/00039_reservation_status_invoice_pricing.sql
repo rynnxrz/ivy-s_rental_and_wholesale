@@ -110,13 +110,68 @@ ALTER TABLE reservations
 -- 4) Overlap protection should only block Upcoming/Ongoing
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
-ALTER TABLE reservations
-ADD CONSTRAINT no_overlap_upcoming_ongoing
-EXCLUDE USING gist (
-  item_id WITH =,
-  daterange(start_date, end_date, '[]') WITH &&
-)
-WHERE (status::text IN ('Upcoming', 'Ongoing'));
+DO $$
+DECLARE
+  v_start_type TEXT;
+  v_end_type TEXT;
+  v_range_expression TEXT;
+  v_has_conflicts BOOLEAN;
+BEGIN
+  SELECT data_type
+  INTO v_start_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'reservations'
+    AND column_name = 'start_date';
+
+  SELECT data_type
+  INTO v_end_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'reservations'
+    AND column_name = 'end_date';
+
+  IF v_start_type = 'date' AND v_end_type = 'date' THEN
+    v_range_expression := 'daterange(start_date, end_date, ''[]'')';
+  ELSIF v_start_type = 'timestamp with time zone' AND v_end_type = 'timestamp with time zone' THEN
+    v_range_expression := 'tstzrange(start_date, end_date, ''[]'')';
+  ELSIF v_start_type = 'timestamp without time zone' AND v_end_type = 'timestamp without time zone' THEN
+    v_range_expression := 'tsrange(start_date, end_date, ''[]'')';
+  ELSE
+    RAISE EXCEPTION 'Unsupported reservations date column types: start_date=%, end_date=%', v_start_type, v_end_type;
+  END IF;
+
+  EXECUTE format(
+    'SELECT EXISTS (
+       SELECT 1
+       FROM reservations r1
+       JOIN reservations r2
+         ON r1.item_id = r2.item_id
+        AND r1.id < r2.id
+      WHERE r1.status IN (''Upcoming''::reservation_status, ''Ongoing''::reservation_status)
+        AND r2.status IN (''Upcoming''::reservation_status, ''Ongoing''::reservation_status)
+        AND %1$s && %2$s
+    )',
+    replace(replace(v_range_expression, 'start_date', 'r1.start_date'), 'end_date', 'r1.end_date'),
+    replace(replace(v_range_expression, 'start_date', 'r2.start_date'), 'end_date', 'r2.end_date')
+  )
+  INTO v_has_conflicts;
+
+  IF v_has_conflicts THEN
+    RAISE NOTICE 'Skipping no_overlap_upcoming_ongoing because existing reservation data still contains overlapping Upcoming/Ongoing rows.';
+  ELSE
+    EXECUTE format(
+      'ALTER TABLE reservations
+         ADD CONSTRAINT no_overlap_upcoming_ongoing
+         EXCLUDE USING gist (
+           item_id WITH =,
+           %s WITH &&
+         )
+         WHERE (status IN (''Upcoming''::reservation_status, ''Ongoing''::reservation_status))',
+      v_range_expression
+    );
+  END IF;
+END $$;
 
 -- 5) Refresh functions that depend on reservation statuses
 CREATE OR REPLACE FUNCTION check_item_availability(
