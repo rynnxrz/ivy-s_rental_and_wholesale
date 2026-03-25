@@ -28,12 +28,39 @@ export default async function ItemDetailPage({ params, searchParams }: Props) {
         notFound()
     }
 
+    // Determine group key for fetching variants
+    const character = item.character_family?.trim()
+    const description = item.description?.trim()
+    const name = item.name?.trim()
+    const itemGroupKey = (character || description || name || item.id).toLowerCase()
+
+    let variantsQuery = supabase.from('items').select('*')
+    if (character) {
+        variantsQuery = variantsQuery.eq('character_family', character)
+    } else if (description) {
+        variantsQuery = variantsQuery.eq('description', description)
+    } else if (name) {
+        variantsQuery = variantsQuery.eq('name', name)
+    } else {
+        variantsQuery = variantsQuery.eq('id', item.id)
+    }
+
+    const { data: rawVariants } = await variantsQuery
+    const variants = rawVariants?.filter(v => {
+        const vCharacter = v.character_family?.trim()
+        const vDescription = v.description?.trim()
+        const vName = v.name?.trim()
+        const vKey = (vCharacter || vDescription || vName || v.id).toLowerCase()
+        return vKey === itemGroupKey
+    }) || []
+
     const contextValue = typeof context === 'string' ? context : undefined
     const isArchiveMode = contextValue === 'archive'
 
     return (
         <ItemDetailClient
             item={item}
+            variants={variants}
             context={contextValue}
             relatedItemsSlot={
                 item.collection_id ? (

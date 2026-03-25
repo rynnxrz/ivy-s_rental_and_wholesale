@@ -26,6 +26,13 @@ import {
     isArchivedReservation,
     normalizeLegacyReservationStatus,
 } from '@/lib/constants/reservation-status'
+import {
+    buildReservationGroupKey,
+    ensureReservationGroupAssessment,
+    fetchReservationGroupAssessments,
+    type ReservationAssessmentRow,
+    type ReservationGroupAssessment,
+} from '@/lib/reservations/assessment'
 import type { BillingProfile } from '@/types'
 import { computeRentalChargeFromRetail } from '@/lib/invoice/pricing'
 
@@ -127,11 +134,47 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
             groups[key].push(r)
         })
 
-    // Convert to array and sort by latest activity (created_at of any item in group)
-    const sortedGroups = Object.values(groups).sort((a, b) => {
+    const baseSortedGroups = Object.values(groups).sort((a, b) => {
         const latestA = Math.max(...a.map(i => new Date(i.created_at).getTime()))
         const latestB = Math.max(...b.map(i => new Date(i.created_at).getTime()))
         return latestB - latestA
+    })
+
+    const groupKeys = baseSortedGroups.map(group => buildReservationGroupKey(group[0]))
+    const assessments = await fetchReservationGroupAssessments(groupKeys)
+
+    if (filter === 'pending_request') {
+        await Promise.all(baseSortedGroups.map(async (group) => {
+            const primary = group[0]
+            if (!primary) return
+
+            const groupKey = buildReservationGroupKey(primary)
+            if (assessments.has(groupKey)) return
+
+            const assessment = await ensureReservationGroupAssessment(group.map(toAssessmentRow))
+            if (assessment) {
+                assessments.set(groupKey, assessment)
+            }
+        }))
+    }
+
+    const sortedGroups = [...baseSortedGroups].sort((left, right) => {
+        if (filter !== 'pending_request') {
+            return 0
+        }
+
+        const leftAssessment = assessments.get(buildReservationGroupKey(left[0]))
+        const rightAssessment = assessments.get(buildReservationGroupKey(right[0]))
+        const leftScore = leftAssessment?.priorityScore || 0
+        const rightScore = rightAssessment?.priorityScore || 0
+
+        if (rightScore !== leftScore) {
+            return rightScore - leftScore
+        }
+
+        const latestLeft = Math.max(...left.map(item => new Date(item.created_at).getTime()))
+        const latestRight = Math.max(...right.map(item => new Date(item.created_at).getTime()))
+        return latestRight - latestLeft
     })
 
     if (error) {
@@ -192,7 +235,7 @@ export default async function AdminReservationsPage({ searchParams }: PageProps)
             </div>
 
             <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                <ReservationsTable groups={sortedGroups} billingProfiles={billingProfiles || []} />
+                <ReservationsTable groups={sortedGroups} billingProfiles={billingProfiles || []} assessments={assessments} />
             </div>
         </div>
     )
@@ -217,8 +260,12 @@ function FilterTab({ label, active, href }: { label: string, active: boolean, hr
 
 type ReservationGroup = {
     id: string
+    item_id: string
+    renter_id?: string | null
     status: string
     admin_notes?: string | null
+    dispatch_notes?: string | null
+    return_notes?: string | null
     start_date: string
     end_date: string
     original_start_date?: string | null
@@ -228,13 +275,23 @@ type ReservationGroup = {
     event_location?: string | null
     city_region?: string | null
     country?: string | null
+    address_line1?: string | null
+    address_line2?: string | null
     items?: { name?: string; sku?: string; image_paths?: string[]; rental_price?: number; replacement_cost?: number }
     profiles?: { full_name?: string; email?: string; company_name?: string }
     shipping?: { status?: string }
     billing_profile_id?: string | null
 }[]
 
-function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGroup[], billingProfiles: BillingProfile[] }) {
+function ReservationsTable({
+    groups,
+    billingProfiles,
+    assessments,
+}: {
+    groups: ReservationGroup[]
+    billingProfiles: BillingProfile[]
+    assessments: Map<string, ReservationGroupAssessment>
+}) {
     if (groups.length === 0) {
         return (
             <div className="p-12 text-center text-slate-400">
@@ -252,6 +309,7 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                     <TableHead>Customer</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Dates</TableHead>
+                    <TableHead>AI Intake</TableHead>
                     <TableHead className="text-right">Total Amount</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -264,6 +322,7 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                     const status = isArchivedReservation(primary)
                         ? ARCHIVED_STATUS
                         : normalizeLegacyReservationStatus(primary.status)
+                    const assessment = assessments.get(buildReservationGroupKey(primary))
                     // For status: simplified assumption that group shares status. 
                     // Make sure to display something reasonable if mixed, though normally they should sync.
 
@@ -382,8 +441,32 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
                                     </div>
                                 </div>
                             </TableCell>
+                            <TableCell className="align-top">
+                                {assessment ? (
+                                    <div className="space-y-2 text-xs">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <Badge variant="outline" className={priorityBadgeClass(assessment.priorityBand)}>
+                                                {assessment.priorityBand.toUpperCase()} · {assessment.priorityScore}
+                                            </Badge>
+                                            <Badge variant="outline" className={valueTierBadgeClass(assessment.valueTier)}>
+                                                {assessment.valueTier.toUpperCase()}
+                                            </Badge>
+                                            <Badge variant="outline" className={feasibilityBadgeClass(assessment.feasibilityStatus)}>
+                                                {assessment.feasibilityStatus.replace('_', ' ')}
+                                            </Badge>
+                                        </div>
+                                        <div className="space-y-1 text-slate-600">
+                                            {assessment.reasons.slice(0, 2).map((reason, index) => (
+                                                <p key={`${assessment.groupKey}-reason-${index}`}>{reason}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <span className="text-xs text-slate-400">Assessment pending</span>
+                                )}
+                            </TableCell>
                             <TableCell className="align-top text-right font-medium text-slate-900 text-sm">
-                                ${groupTotal.toFixed(2)}
+                                £{groupTotal.toFixed(2)}
                             </TableCell>
                             <TableCell className="align-top text-right">
                                 <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
@@ -437,6 +520,68 @@ function ReservationsTable({ groups, billingProfiles }: { groups: ReservationGro
             </TableBody>
         </Table>
     )
+}
+
+function toAssessmentRow(row: ReservationGroup[number]): ReservationAssessmentRow {
+    return {
+        id: row.id,
+        group_id: row.group_id,
+        renter_id: row.renter_id || null,
+        item_id: row.item_id,
+        status: row.status,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        created_at: row.created_at,
+        country: row.country || null,
+        city_region: row.city_region || null,
+        address_line1: row.address_line1 || null,
+        address_line2: row.address_line2 || null,
+        event_location: row.event_location || null,
+        dispatch_notes: row.dispatch_notes || null,
+        admin_notes: row.admin_notes || null,
+        return_notes: row.return_notes || null,
+        original_start_date: row.original_start_date || null,
+        original_end_date: row.original_end_date || null,
+        items: row.items || null,
+        profiles: row.profiles || null,
+    }
+}
+
+function priorityBadgeClass(priorityBand: ReservationGroupAssessment['priorityBand']) {
+    switch (priorityBand) {
+        case 'urgent':
+            return 'border-rose-200 bg-rose-50 text-rose-700'
+        case 'high':
+            return 'border-amber-200 bg-amber-50 text-amber-700'
+        case 'standard':
+            return 'border-sky-200 bg-sky-50 text-sky-700'
+        default:
+            return 'border-slate-200 bg-slate-50 text-slate-600'
+    }
+}
+
+function valueTierBadgeClass(valueTier: ReservationGroupAssessment['valueTier']) {
+    switch (valueTier) {
+        case 'vip':
+            return 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+        case 'high':
+            return 'border-violet-200 bg-violet-50 text-violet-700'
+        case 'standard':
+            return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        default:
+            return 'border-slate-200 bg-slate-50 text-slate-600'
+    }
+}
+
+function feasibilityBadgeClass(feasibilityStatus: ReservationGroupAssessment['feasibilityStatus']) {
+    switch (feasibilityStatus) {
+        case 'high_risk':
+            return 'border-rose-200 bg-rose-50 text-rose-700'
+        case 'watch':
+            return 'border-amber-200 bg-amber-50 text-amber-700'
+        default:
+            return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    }
 }
 
 function StatusBadge({ status }: { status: string }) {

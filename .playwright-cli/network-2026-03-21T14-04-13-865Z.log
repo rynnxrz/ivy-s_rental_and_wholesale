@@ -1,0 +1,5 @@
+[POST] https://bfizqdyngujjdmaaoggg.supabase.co/auth/v1/token?grant_type=password => [200] 
+[GET] http://localhost:3000/login?_rsc=1hoe2 => [200] OK
+[GET] http://localhost:3000/admin?_rsc=5c339 => [200] OK
+[HEAD] https://bfizqdyngujjdmaaoggg.supabase.co/rest/v1/system_errors?select=*&resolved=eq.false => [400] 
+[HEAD] https://bfizqdyngujjdmaaoggg.supabase.co/rest/v1/system_errors?select=*&resolved=eq.false => [400] 

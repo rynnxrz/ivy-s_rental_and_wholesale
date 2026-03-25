@@ -14,6 +14,7 @@ import {
 import { RESERVATION_STATUSES, isArchivedReservation } from '@/lib/constants/reservation-status'
 import { buildInvoicePdfBuffer } from '@/lib/invoice/document'
 import { buildPublicPaymentUrl } from '@/lib/public-url'
+import { getInclusiveReservationDays, parseReservationDateInput } from '@/lib/reservations/dates'
 
 // ============================================================
 // Invoice Types (until types are regenerated from Supabase)
@@ -131,6 +132,14 @@ function sanitizeOptionalNumber(value: unknown): number | null {
         return Number.isFinite(parsed) ? parsed : null
     }
     return null
+}
+
+function resolveRequiredRetailPrice(item: { replacement_cost?: number | null | string | unknown }) {
+    const value = item.replacement_cost != null ? Number(item.replacement_cost) : null
+    if (value === null || !Number.isFinite(value) || value <= 0) {
+        return null
+    }
+    return value
 }
 
 function resolveReservationPricingOverrides(reservation: Record<string, unknown>): ReservationPricingOverrides {
@@ -533,11 +542,23 @@ export async function generateInvoiceFromReservation(
 
         const startDateRaw = String(res.start_date)
         const endDateRaw = String(res.end_date)
-        const startDate = new Date(startDateRaw)
-        const endDate = new Date(endDateRaw)
-        const days = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        const days = getInclusiveReservationDays(startDateRaw, endDateRaw)
+        if (!days) {
+            return {
+                success: false,
+                error: `Invalid reservation date range for "${item.name}": end date must be on or after start date.`,
+                data: null,
+            }
+        }
 
-        const retailPrice = Number(item.replacement_cost ?? item.rental_price ?? 0)
+        const retailPrice = resolveRequiredRetailPrice(item)
+        if (retailPrice === null) {
+            return {
+                success: false,
+                error: `RRP missing for "${item.name}". replacement_cost must be greater than 0 before generating invoice.`,
+                data: null,
+            }
+        }
         replacementCostTotal += retailPrice
         const lineTotal = computeRentalChargeFromRetail({
             retailPrice,
@@ -969,9 +990,14 @@ export async function sendInvoiceEmail(reservationId: string) {
     }).items
     const item = Array.isArray(itemRaw) ? itemRaw[0] : itemRaw
 
-    const start = new Date(reservation.start_date)
-    const end = new Date(reservation.end_date)
-    const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const startDateRaw = String(reservation.start_date)
+    const endDateRaw = String(reservation.end_date)
+    const start = parseReservationDateInput(startDateRaw)
+    const end = parseReservationDateInput(endDateRaw)
+    const totalDays = getInclusiveReservationDays(startDateRaw, endDateRaw)
+    if (!start || !end || !totalDays) {
+        return { success: false, error: 'Invalid reservation dates: return date must be on or after start date.' }
+    }
     const paymentUrl = buildPublicPaymentUrl({
         reservationId,
         invoiceId: invoice.id,

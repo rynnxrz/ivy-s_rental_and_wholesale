@@ -1,0 +1,99 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - region "Notifications alt+T"
+  - banner [ref=e3]:
+    - link "IVYJSTUDIO" [ref=e5] [cursor=pointer]:
+      - /url: /
+  - generic [ref=e6]:
+    - complementary [ref=e7]:
+      - generic [ref=e9]: Ivy's Rental
+      - navigation [ref=e11]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Items" [ref=e20] [cursor=pointer]:
+          - /url: /admin/items
+          - img [ref=e22]
+          - generic [ref=e26]: Items
+        - link "Reservations" [ref=e27] [cursor=pointer]:
+          - /url: /admin/reservations
+          - img [ref=e29]
+          - generic [ref=e31]: Reservations
+        - link "Invoices" [ref=e32] [cursor=pointer]:
+          - /url: /admin/invoices
+          - img [ref=e34]
+          - generic [ref=e37]: Invoices
+        - link "Customers" [ref=e38] [cursor=pointer]:
+          - /url: /admin/customers
+          - img [ref=e40]
+          - generic [ref=e45]: Customers
+      - generic [ref=e46]:
+        - link "Settings" [ref=e47] [cursor=pointer]:
+          - /url: /admin/settings
+          - img [ref=e49]
+          - generic [ref=e52]: Settings
+        - button "Sign Out" [ref=e53]:
+          - img [ref=e55]
+          - generic [ref=e58]: Sign Out
+    - main [ref=e59]:
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e63]:
+            - heading "Items" [level=1] [ref=e64]
+            - paragraph [ref=e65]: Manage your rental inventory
+          - generic [ref=e67]:
+            - button "Lookbook Import" [ref=e68]:
+              - img
+              - text: Lookbook Import
+            - link "Add Item" [ref=e69] [cursor=pointer]:
+              - /url: /admin/items/new
+              - img
+              - text: Add Item
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic [ref=e72]:
+              - navigation [ref=e73]:
+                - button "Mainline5" [ref=e74]
+                - button "Collaboration0" [ref=e75]
+                - button "Archive0" [ref=e76]
+              - paragraph [ref=e77]: Grouped by Character in the selected line.
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - img [ref=e80]
+                - combobox [ref=e82]:
+                  - option "All statuses" [selected]
+                  - option "Active"
+                  - option "Maintenance"
+                  - option "Retired"
+              - button "Backfill Character Names" [ref=e83]:
+                - img
+                - text: Backfill Character Names
+          - table [ref=e86]:
+            - rowgroup [ref=e87]:
+              - row "Character SKUs Jewelry Type Mix Actions" [ref=e88]:
+                - columnheader [ref=e89]
+                - columnheader "Character" [ref=e90]
+                - columnheader "SKUs" [ref=e91]
+                - columnheader "Jewelry Type Mix" [ref=e92]
+                - columnheader "Actions" [ref=e93]
+            - rowgroup [ref=e94]:
+              - row "Uncategorized 5 Earring Mark Active Retire All" [ref=e95]:
+                - cell [ref=e96]:
+                  - button [ref=e97]:
+                    - img
+                - cell "Uncategorized" [ref=e98]
+                - cell "5" [ref=e99]:
+                  - generic [ref=e100]: "5"
+                - cell "Earring" [ref=e101]:
+                  - generic [ref=e103]: Earring
+                - cell "Mark Active Retire All" [ref=e104]:
+                  - generic [ref=e105]:
+                    - button "Mark Active" [ref=e106]
+                    - button "Retire All" [ref=e107]
+              - row [ref=e108]:
+                - cell [ref=e109]
+  - button "Open Next.js Dev Tools" [ref=e115] [cursor=pointer]:
+    - img [ref=e116]
+  - alert [ref=e119]

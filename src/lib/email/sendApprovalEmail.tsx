@@ -2,8 +2,14 @@ import { Resend } from 'resend';
 import { EmailTemplate } from './EmailTemplate';
 import { buildPublicPaymentUrl } from '@/lib/public-url';
 
-// Initiate Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+const getResendClient = () => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+        return null;
+    }
+
+    return new Resend(apiKey);
+};
 
 interface SendApprovalEmailParams {
     toIndices: string[];
@@ -43,6 +49,11 @@ export async function sendApprovalEmail({
     customFooter,
 }: SendApprovalEmailParams) {
     try {
+        const resend = getResendClient();
+        if (!resend) {
+            return { success: false, error: new Error('RESEND_API_KEY is not configured.') };
+        }
+
         const paymentConfirmUrl = paymentUrl
             || buildPublicPaymentUrl({
                 reservationId,

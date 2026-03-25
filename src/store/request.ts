@@ -6,6 +6,7 @@ export interface Item {
     name: string
     category: string
     rental_price: number
+    replacement_cost?: number | null
     image_paths: string[] | null
     status: string
 }

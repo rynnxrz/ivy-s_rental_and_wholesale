@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { CustomerServiceWidget } from '@/components/customer-service/CustomerServiceWidget'
 import { submitPaymentConfirmation } from './actions'
 import {
   IVY_BANK_DETAILS,
@@ -686,6 +687,26 @@ export default function PaymentConfirmationClient({
           </div>
         </DialogContent>
       </Dialog>
+      <CustomerServiceWidget
+        storageKey={`customer-service:payment:${invoiceId}`}
+        baseContext={{
+          pageType: 'payment_confirmation',
+          path: `/payment-confirmation/${invoiceId}`,
+          paymentConfirmation: {
+            invoiceId,
+            invoiceNumber,
+            totalDue,
+            subtotalAmount,
+            discountAmount,
+            depositAmount,
+            pdfUrl,
+            status,
+          },
+        }}
+        initialIdentityHints={{
+          email: customerEmail ?? null,
+        }}
+      />
     </>
   )
 }

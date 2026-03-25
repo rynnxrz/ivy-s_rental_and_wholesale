@@ -1,7 +1,7 @@
 # IVYJSTUDIO MVP 交接文档
 
-**日期:** 2026-03-23
-**版本:** v1.6 (AI/Lookbook Work Paused In Frontend)
+**日期:** 2026-03-25
+**版本:** v1.7 (Pricing + Intake Assessment + Ask Ivy Code Landed, Not Production Ready)
 **目标:** B2B 高级珠宝租赁与批发管理系统
 
 ---
@@ -64,6 +64,18 @@
 5.  **公共链接能力**:
     *   Approval Email 与付款确认链路统一通过公共 URL helper 生成。
     *   支持 `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` / `VERCEL_PROJECT_PRODUCTION_URL` 作为公开域名来源。
+6.  **定价与账单规则更新**:
+    *   租赁定价改为 tiered 规则:
+        *   1-7 天: 15% RRP
+        *   8-14 天: 20% RRP
+        *   15-30 天: 25% RRP（15-29 天按月费桥接显示）
+        *   30+ 天: 每超出一周加 3% RRP
+    *   审批与 Invoice 展示统一切换为 `£` 币种展示。
+    *   押金默认仍为 50% RRP，但不再有 `$300` 上限封顶逻辑。
+7.  **Pending Request Intake Assessment**:
+    *   后台 Reservations 列表和详情页新增 AI Intake Assessment 视图。
+    *   为每个 request group 生成 `priority_score / priority_band / value_tier / feasibility_status`。
+    *   Pending Request 默认按优先级评分排序，支持运营侧先处理高风险/高价值单。
 
 ### C. Catalog Setup 与 Inventory 模型
 1.  **Settings 改版为 Catalog Setup**:
@@ -78,17 +90,22 @@
         *   `Collaboration`
         *   `Archive`
     *   `character_family` 现在对齐官方 Character 命名体系。
+    *   新增 `side_character` 维度，用于 Character 下的子系列拆分（如 `Stud Earrings` / `Dangle Earrings`）。
 3.  **官方 Character 列表**:
     *   `Orchid Whisper`
-    *   `Daffodil Blossom`
+    *   `Daffodils Blossom`
     *   `Dasha Rebirth`
     *   `Oceanspine Petals`
     *   `Botanic Elegy`
     *   `Sea Passiflora`
 4.  **后台商品视图**:
-    *   列表页按 Line Type 与 Character 分组展示。
+    *   列表页按 Line Type + Character + Side Character 分组展示。
     *   支持 Character 维度批量启用 / 退役。
     *   支持 Character 名称回填与旧命名标准化。
+    *   支持批量编辑（Bulk Edit）:
+        *   批量更新 `replacement_cost`
+        *   批量更新 `character_family`
+        *   批量更新 `side_character`
 
 ### D. Guided Import 工作流 (PDF-first Import Pipeline)
 1.  **导入模式升级**:
@@ -137,6 +154,11 @@
     *   同一 lookbook session 内若抽取到重复 SKU，可能在最终 inventory import 时触发唯一键冲突。
     *   结构确认中的 `cover_pages` / `appendix_pages` 目前尚未真正参与 draft extraction 过滤。
     *   lookbook upload 目前通过 server action 进入，body limit 仍为 25 MB，但 bucket 侧配置目标为 50 MB，存在上限不一致。
+4.  **Ask Ivy / Customer Service v1（代码已落地，但尚未可上线）**
+    *   已新增 `/api/customer-service/*` 路由、会话存储、step-up 邮箱验证、执行器、回执反馈、handoff 和事实化渲染流程。
+    *   前台多个页面已接入 `CustomerServiceWidget` 组件与对话上下文。
+    *   当前结论: **Ask Ivy 功能尚未 ready，不应视为 production feature**。上线前需完成安全性、准确性、回滚演练与压测验收。
+    *   已提供回滚开关策略文档: `docs/customer-service-v1-rollbacks.md`。
 
 ---
 
@@ -171,6 +193,20 @@
 *   `00046_ai_gateway_and_decisions.sql`
     *   AI provider/document provider settings
     *   AI decision trace / event / feedback tables
+*   `00047_customer_service_sessions.sql`
+    *   customer_service_sessions / customer_service_messages
+    *   会话状态、消息历史、RLS 与索引
+*   `00048_customer_service_step_up_auth.sql`
+    *   session capability hash
+    *   email challenge 表与验证窗口
+*   `00049_customer_service_intake_and_assessments.sql`
+    *   customer_service_handoffs
+    *   reservation_group_assessments
+*   `00050_item_side_character.sql`
+    *   `items.side_character`
+    *   侧角色回填与索引
+*   `00051_backfill_daffodils_stud_side_character.sql`
+    *   Daffodils Blossom stud 子系列回填
 
 ### 关键表 / 字段
 *   `invoices`
@@ -195,6 +231,34 @@
     *   `message`
     *   `payload`
     *   `item_ref`
+*   `items`
+    *   `side_character`
+*   `customer_service_sessions`
+    *   `status`
+    *   `pending_plan`
+    *   `identity_snapshot`
+    *   `verified_email`
+    *   `verified_until`
+*   `customer_service_messages`
+    *   `role`
+    *   `kind`
+    *   `text_content`
+    *   `content`
+*   `customer_service_email_challenges`
+    *   `token_hash`
+    *   `expires_at`
+    *   `consumed_at`
+*   `customer_service_handoffs`
+    *   `intent`
+    *   `status`
+    *   `summary`
+*   `reservation_group_assessments`
+    *   `priority_score`
+    *   `priority_band`
+    *   `value_tier`
+    *   `feasibility_status`
+    *   `risk_tags`
+    *   `recommended_next_step`
 
 ### Storage 约定
 *   **主商品图 Bucket:** `rental_items`
@@ -242,6 +306,9 @@
 *   `LOOKBOOK_LLM_PROVIDER`
 *   `LOOKBOOK_LLM_MODEL`
 *   `LOOKBOOK_DOCUMENT_PROVIDER`
+*   `CS_TRACK_A_ONLY`
+*   `CS_DISABLE_SENSITIVE_AUTO_EXECUTE`
+*   `CS_FORCE_SENSITIVE_FACTS_ONLY`
 
 ### 维护要求
 *   所有 Schema 变更应通过 migration 文件管理。
@@ -256,5 +323,11 @@ npm run update-types
 *   Guided Import 的 Website Match 设计为“补充官网公开素材”，不是覆盖 PDF 原始业务字段。
 *   Reservation Archive 仍保留旧环境兼容策略，以适配未完全同步的状态枚举或历史数据。
 *   AI / Lookbook 相关前端入口当前已主动隐藏，属于保留中的 paused work，不应视为已上线功能。
+*   Ask Ivy（Customer Service）当前属于“代码落地但未上线”状态；默认按未上线能力管理，发布前必须完成专项验收。
 *   云端部署当前必须保持 AI provider secrets 与 document parser secrets 未配置；这些能力仅允许在本地开发环境启用。
 *   代码中已加入 fail-closed 保护：一旦检测到云端部署环境，AI runtime 会直接拒绝执行，避免误接云端 secrets。
+*   Customer Service v1 回滚开关:
+    *   `CS_DISABLE_SENSITIVE_AUTO_EXECUTE=1`
+    *   `CS_FORCE_SENSITIVE_FACTS_ONLY=1`
+    *   `CS_TRACK_A_ONLY=1`
+*   当前工作区包含大量导入产物与日志（例如 `output/pdf/**`、`.playwright-cli/**`、`tmp/**`、`docs/*.pdf`）；若打包全量提交，请在发布前确认仓库体积与文件治理策略。

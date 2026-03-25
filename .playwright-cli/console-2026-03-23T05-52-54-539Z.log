@@ -1,0 +1,5 @@
+[   38545ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://127.0.0.1:3000/api/customer-service/plan:0
+[ 9213328ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [false, , customer-service:catalog] [false, , , customer-service:catalog] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127

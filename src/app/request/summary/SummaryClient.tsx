@@ -30,6 +30,16 @@ import { submitBulkRequest } from "@/actions/bulkRequest"
 import { toast } from "sonner"
 import { Copy } from "lucide-react"
 import { SITE_CONFIG } from "@/config/site"
+import { CustomerServiceWidget } from "@/components/customer-service/CustomerServiceWidget"
+import {
+    buildTieredPricingDisplay,
+    MONTHLY_BRIDGE_NOTICE,
+    TIER_AMOUNT_UNAVAILABLE_MESSAGE,
+} from "@/lib/invoice/tiered-display"
+import { PricingDisplay } from "@/components/PricingDisplay"
+import {
+    normalizeBillableDays,
+} from "@/lib/invoice/pricing"
 
 export function SummaryClient() {
     const { items, dateRange, clearRequest, contactInfo, setContactInfo } = useRequestStore()
@@ -56,9 +66,29 @@ export function SummaryClient() {
     // Derived State
     const fromDate = dateRange.from ? new Date(dateRange.from) : null
     const toDate = dateRange.to ? new Date(dateRange.to) : null
-    const hasDates = !!(fromDate && toDate)
-    const days = hasDates ? Math.round((toDate!.getTime() - fromDate!.getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0
-    const totalEstimate = items.reduce((sum, item) => sum + (item.rental_price * days), 0)
+    const hasDates = Boolean(fromDate && toDate)
+    const days = hasDates
+        ? normalizeBillableDays(
+            Math.round((toDate!.getTime() - fromDate!.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        )
+        : 0
+    const durationPricing = buildTieredPricingDisplay({
+        replacementCost: null,
+        selectedDays: hasDates ? days : null,
+    })
+    const usesMonthlyBridgeRate = durationPricing.isMonthlyBridge
+    const itemPricing = items.map((item) => ({
+        itemId: item.id,
+        display: buildTieredPricingDisplay({
+            replacementCost: item.replacement_cost,
+            selectedDays: hasDates ? days : null,
+        }),
+    }))
+    const itemPricingById = new Map(itemPricing.map((entry) => [entry.itemId, entry.display]))
+    const unavailableEstimateCount = hasDates
+        ? itemPricing.filter((entry) => entry.display.selectedEstimate === null).length
+        : 0
+    const totalEstimate = itemPricing.reduce((sum, entry) => sum + (entry.display.selectedEstimate ?? 0), 0)
     const showEmergencyPanel = recoveryStatus !== null
 
     React.useEffect(() => {
@@ -108,6 +138,8 @@ export function SummaryClient() {
 
                     if (result.success) {
                         toast.success('Request submitted successfully')
+                        sessionStorage.setItem('latest_submitted_request_fingerprint', fingerprint)
+                        sessionStorage.setItem('latest_submitted_request_email', contactInfo.email)
                         sessionStorage.removeItem('current_request_fingerprint')
                         setRecoveryStatus(null)
                         clearRequest()
@@ -237,20 +269,34 @@ export function SummaryClient() {
                                                 <h3 className="font-medium text-gray-900">{item.name}</h3>
                                                 <p className="text-sm text-gray-500 capitalize">{item.category}</p>
                                             </div>
-                                            <div className="flex justify-between items-end">
-                                                <p className="text-sm text-gray-500">
-                                                    ${item.rental_price} / day
-                                                </p>
-                                                <p className="font-medium text-gray-900">
-                                                    ${(item.rental_price * days).toFixed(2)}
-                                                </p>
-                                            </div>
+                                            {(() => {
+                                                const tieredPricing = itemPricingById.get(item.id)
+                                                if (!tieredPricing) return null
+                                                return (
+                                                    <PricingDisplay 
+                                                        tieredPricing={tieredPricing} 
+                                                        hasDates={hasDates} 
+                                                        size="sm" 
+                                                        className="mt-2"
+                                                    />
+                                                )
+                                            })()}
                                         </div>
                                     </div>
                                 ))}
+                                {usesMonthlyBridgeRate && (
+                                    <div className="px-4 py-2 text-xs text-amber-700 bg-amber-50 border-y border-amber-100">
+                                        {MONTHLY_BRIDGE_NOTICE} for 15-29 day rentals.
+                                    </div>
+                                )}
+                                {hasDates && unavailableEstimateCount > 0 && (
+                                    <div className="px-4 py-2 text-xs text-amber-700 bg-amber-50 border-y border-amber-100">
+                                        {TIER_AMOUNT_UNAVAILABLE_MESSAGE} ({unavailableEstimateCount} item{unavailableEstimateCount > 1 ? 's' : ''}).
+                                    </div>
+                                )}
                                 <div className="p-4 bg-gray-50 flex justify-between items-center text-lg font-medium">
-                                    <span>Estimated Total</span>
-                                    <span>${totalEstimate.toFixed(2)}</span>
+                                    <span>{hasDates && unavailableEstimateCount > 0 ? 'Estimated Total (available items)' : 'Estimated Total'}</span>
+                                    <span>£{totalEstimate.toFixed(2)}</span>
                                 </div>
                             </div>
                         </div>
@@ -557,6 +603,29 @@ export function SummaryClient() {
                     Clear Form Data
                 </Button>
             </div>
+            <CustomerServiceWidget
+                storageKey="customer-service:request-summary"
+                baseContext={{
+                    pageType: 'request_summary',
+                    path: '/request/summary',
+                    requestSummary: {
+                        itemCount: items.length,
+                        items: items.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            rentalPrice: item.rental_price,
+                        })),
+                        dateFrom: dateRange.from,
+                        dateTo: dateRange.to,
+                        days,
+                        totalEstimate,
+                    },
+                }}
+                initialIdentityHints={{
+                    email: contactInfo.email || null,
+                    fingerprint,
+                }}
+            />
         </main>
     )
 }

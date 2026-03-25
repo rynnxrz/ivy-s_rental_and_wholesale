@@ -6,7 +6,7 @@ import type {
     DocumentAiProvider,
     DocumentRouteConfig,
 } from '@/types'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 const DEFAULT_PROVIDER: AiProvider = 'ollama'
 const DEFAULT_MODEL = 'qwen2.5-coder:32b'

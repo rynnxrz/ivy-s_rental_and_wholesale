@@ -97,7 +97,7 @@ export function BookingForm({ item }: BookingFormProps) {
                     </span>
                 </div>
                 <div className="text-[11px] mt-1.5 pl-1 text-green-700 font-semibold">
-                    ✓ Available to request ({rentalWeeks} week{rentalWeeks === 1 ? '' : 's'})
+                    ✓ Available to request ({rentalDays} day{rentalDays === 1 ? '' : 's'})
                 </div>
             </div>
 
@@ -110,7 +110,7 @@ export function BookingForm({ item }: BookingFormProps) {
                         </span>
                     </div>
                     <div className="text-[11px] mt-1.5 pl-1 text-green-700 font-semibold">
-                        ✓ Available to request ({rentalWeeks} week{rentalWeeks === 1 ? '' : 's'})
+                        ✓ Available to request ({rentalDays} day{rentalDays === 1 ? '' : 's'})
                     </div>
                 </div>
 

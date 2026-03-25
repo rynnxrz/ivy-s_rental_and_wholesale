@@ -1,0 +1,289 @@
+[  100582ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://127.0.0.1:3000/api/customer-service/plan:0
+[11990898ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12064930ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12113559ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12135514ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12188969ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12229341ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12291813ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[12307560ms] [ERROR] ./src/lib/supabase/server.ts:3:1
+Ecmascript file had an error
+  1 | import { createServerClient } from '@supabase/ssr'
+  2 | import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+> 3 | import { cookies } from 'next/headers'
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export async function createClient() {
+  6 |     const cookieStore = await cookies() // 必须有 await
+
+You're importing a component that needs "next/headers". That only works in a Server Component which is not supported in the pages/ directory. Read more: https://nextjs.org/docs/app/building-your-application/rendering/server-components
+
+Import traces:
+  Server Component:
+    ./src/lib/supabase/server.ts
+    ./src/app/catalog/page.tsx
+
+  Client Component Browser:
+    ./src/lib/supabase/server.ts [Client Component Browser]
+    ./src/lib/ai/settings.ts [Client Component Browser]
+    ./src/lib/ai/gateway.ts [Client Component Browser]
+    ./src/lib/customer-service/intake.ts [Client Component Browser]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Client Component Browser]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/supabase/server.ts [Client Component SSR]
+    ./src/lib/ai/settings.ts [Client Component SSR]
+    ./src/lib/ai/gateway.ts [Client Component SSR]
+    ./src/lib/customer-service/intake.ts [Client Component SSR]
+    ./src/components/customer-service/CustomerServiceWidget.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Client Component SSR]
+    ./src/app/CatalogClient.tsx [Server Component]
+    ./src/app/catalog/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127

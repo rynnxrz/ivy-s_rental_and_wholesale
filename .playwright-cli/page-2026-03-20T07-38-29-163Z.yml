@@ -1,0 +1,75 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - region "Notifications alt+T"
+  - banner [ref=e3]:
+    - link "IVYJSTUDIO" [ref=e5] [cursor=pointer]:
+      - /url: /
+  - main "Flame Orchid Earrings details" [ref=e6]:
+    - link "Back to Collection" [ref=e8] [cursor=pointer]:
+      - /url: /catalog
+      - img [ref=e9]
+      - text: Back to Collection
+    - region "Jewelry details" [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - img "Flame Orchid Earrings fine jewelry piece" [ref=e15]
+          - generic [ref=e16]:
+            - button "View image 1 of Flame Orchid Earrings" [pressed] [ref=e17]:
+              - img "Thumbnail 1 of Flame Orchid Earrings" [ref=e18]
+            - button "View image 2 of Flame Orchid Earrings" [ref=e19]:
+              - img "Thumbnail 2 of Flame Orchid Earrings" [ref=e20]
+            - button "View image 3 of Flame Orchid Earrings" [ref=e21]:
+              - img "Thumbnail 3 of Flame Orchid Earrings" [ref=e22]
+            - button "View image 4 of Flame Orchid Earrings" [ref=e23]:
+              - img "Thumbnail 4 of Flame Orchid Earrings" [ref=e24]
+            - button "View image 5 of Flame Orchid Earrings" [ref=e25]:
+              - img "Thumbnail 5 of Flame Orchid Earrings" [ref=e26]
+        - generic [ref=e27]:
+          - generic [ref=e28]: Earring
+          - heading "Orchid Earrings" [level=1] [ref=e29]
+          - generic [ref=e30]:
+            - generic [ref=e31]: $10
+            - paragraph [ref=e33]: / day (min. 10%)
+          - link "Select Dates First" [ref=e37] [cursor=pointer]:
+            - /url: /catalog
+            - button "Select Dates First" [ref=e38]:
+              - img
+              - text: Select Dates First
+          - paragraph [ref=e40]: Petals, porcelain-thin, where whispers softly hide, Ethereal secrets in each 3D-woven line. Gracefully suspended, they dance with the air, Orchids in bloom, suspended in time.
+          - generic [ref=e41]:
+            - heading "Specifications" [level=3] [ref=e42]
+            - generic [ref=e43]:
+              - generic [ref=e44]:
+                - term [ref=e45]: Color
+                - definition [ref=e46]: Flame
+              - generic [ref=e47]:
+                - term [ref=e48]: SKU
+                - definition [ref=e49]: OE-01
+              - generic [ref=e50]:
+                - term [ref=e51]: Replacement Value
+                - definition [ref=e52]: $188
+              - generic [ref=e53]:
+                - term [ref=e54]: Material
+                - definition [ref=e55]: Customised Resin
+              - generic [ref=e56]:
+                - term [ref=e57]: Weight
+                - definition [ref=e58]: 10 g / each
+      - region "More from this collection" [ref=e59]:
+        - heading "More from this Collection" [level=2] [ref=e60]
+        - generic [ref=e61]:
+          - link "View Burnt Orchid Earrings" [ref=e62] [cursor=pointer]:
+            - /url: /catalog/cb594410-3b30-48c8-bdfc-2aa0d82abc6a
+            - img "Burnt Orchid Earrings fine jewelry piece" [ref=e64]
+            - generic [ref=e65]:
+              - heading "Burnt Orchid Earrings" [level=3] [ref=e66]
+              - paragraph [ref=e67]: $20
+          - link "View Dark Angel Orchid Earrings" [ref=e68] [cursor=pointer]:
+            - /url: /catalog/c934bf44-94a4-480f-a2bf-7d574fb7fb43
+            - img "Dark Angel Orchid Earrings fine jewelry piece" [ref=e70]
+            - generic [ref=e71]:
+              - heading "Dark Angel Orchid Earrings" [level=3] [ref=e72]
+              - paragraph [ref=e73]: $10
+  - button "Open Next.js Dev Tools" [ref=e79] [cursor=pointer]:
+    - img [ref=e80]
+  - alert [ref=e83]

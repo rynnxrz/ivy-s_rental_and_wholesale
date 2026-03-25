@@ -21,6 +21,7 @@ import {
     isArchivedReservation,
 } from '@/lib/constants/reservation-status'
 import { buildPublicPaymentUrl } from '@/lib/public-url'
+import { getInclusiveReservationDays } from '@/lib/reservations/dates'
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceClient>
 const REMOVED_AT_REVIEW_NOTE_MESSAGE = 'Item excluded during invoice review as unavailable.'
@@ -35,20 +36,11 @@ function isMissingReservationPricingColumnsError(error: { message?: string | nul
     )
 }
 
-function parseReservationDateInput(value: string) {
-    const parsed = new Date(`${value}T00:00:00`)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-function getInclusiveReservationDays(startDate: string, endDate: string) {
-    const start = parseReservationDateInput(startDate)
-    const end = parseReservationDateInput(endDate)
-
-    if (!start || !end || end < start) {
+function parsePositiveReplacementCost(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
         return null
     }
-
-    return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return value > 0 ? value : null
 }
 
 function normalizeReservationItemRelation<T>(item: T | T[] | null | undefined) {
@@ -500,6 +492,7 @@ export async function approveReservation(
         confirmedStartDate?: string
         confirmedEndDate?: string
         includedReservationIds?: string[]
+        enforceAvailabilityCheck?: boolean
     }
 ) {
     const supabase = await createClient()
@@ -600,45 +593,66 @@ export async function approveReservation(
         return { error: 'Confirmed return date must be on or after the call-in date' }
     }
 
-    const availabilityChecks = await Promise.all(
-        includedReservations.map(async (reservation) => {
-            const reservationItem = normalizeReservationItemRelation(reservation.items)
-
-            const { data: available, error: availabilityError } = await supabase.rpc('check_item_availability', {
-                p_item_id: reservation.item_id,
-                p_start_date: confirmedStartDate,
-                p_end_date: confirmedEndDate,
-                p_exclude_reservation_id: reservation.id
-            })
-
-            if (availabilityError) {
-                return {
-                    itemName: reservationItem?.name || 'Unknown Item',
-                    error: availabilityError.message,
-                    available: false,
-                }
-            }
-
-            return {
-                itemName: reservationItem?.name || 'Unknown Item',
-                error: null as string | null,
-                available: Boolean(available),
-            }
+    const itemsMissingRrp = includedReservations
+        .map((reservation) => {
+            const reservationItem = normalizeReservationItemRelation(
+                (reservation as {
+                    items?: { replacement_cost?: number | null; name?: string } | Array<{ replacement_cost?: number | null; name?: string }> | null
+                }).items
+            )
+            const retailValue = parsePositiveReplacementCost(reservationItem?.replacement_cost)
+            if (retailValue !== null) return null
+            return reservationItem?.name || 'Unknown Item'
         })
-    )
+        .filter((itemName): itemName is string => Boolean(itemName))
 
-    const availabilityFailure = availabilityChecks.find((check) => check.error)
-    if (availabilityFailure?.error) {
-        return { error: availabilityFailure.error }
+    if (itemsMissingRrp.length > 0) {
+        return {
+            error: `RRP missing: ${itemsMissingRrp.join(', ')}. Set replacement_cost greater than 0 before approving.`,
+        }
     }
 
-    const conflictingItems = availabilityChecks
-        .filter((check) => !check.available)
-        .map((check) => check.itemName)
+    if (options?.enforceAvailabilityCheck) {
+        const availabilityChecks = await Promise.all(
+            includedReservations.map(async (reservation) => {
+                const reservationItem = normalizeReservationItemRelation(reservation.items)
 
-    if (conflictingItems.length > 0) {
-        return {
-            error: `Date conflict: ${conflictingItems.join(', ')} ${conflictingItems.length === 1 ? 'is' : 'are'} unavailable for the confirmed dates.`
+                const { data: available, error: availabilityError } = await supabase.rpc('check_item_availability', {
+                    p_item_id: reservation.item_id,
+                    p_start_date: confirmedStartDate,
+                    p_end_date: confirmedEndDate,
+                    p_exclude_reservation_id: reservation.id
+                })
+
+                if (availabilityError) {
+                    return {
+                        itemName: reservationItem?.name || 'Unknown Item',
+                        error: availabilityError.message,
+                        available: false,
+                    }
+                }
+
+                return {
+                    itemName: reservationItem?.name || 'Unknown Item',
+                    error: null as string | null,
+                    available: Boolean(available),
+                }
+            })
+        )
+
+        const availabilityFailure = availabilityChecks.find((check) => check.error)
+        if (availabilityFailure?.error) {
+            return { error: availabilityFailure.error }
+        }
+
+        const conflictingItems = availabilityChecks
+            .filter((check) => !check.available)
+            .map((check) => check.itemName)
+
+        if (conflictingItems.length > 0) {
+            return {
+                error: `Date conflict: ${conflictingItems.join(', ')} ${conflictingItems.length === 1 ? 'is' : 'are'} unavailable for the confirmed dates.`
+            }
         }
     }
 
@@ -719,7 +733,10 @@ export async function approveReservation(
         const start = new Date(`${confirmedStartDate}T00:00:00`)
         const end = new Date(`${confirmedEndDate}T00:00:00`)
         const days = confirmedRentalDays
-        const retailPrice = Number(item?.replacement_cost ?? item?.rental_price ?? 0)
+        const retailPrice = parsePositiveReplacementCost(item?.replacement_cost)
+        if (retailPrice === null) {
+            return { error: `RRP missing for "${item?.name || 'Unknown Item'}". replacement_cost must be greater than 0.` }
+        }
         const lineTotal = computeRentalChargeFromRetail({
             retailPrice,
             rentalDays: days,

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from "sonner"
+import { CustomerServiceWidget } from '@/components/customer-service/CustomerServiceWidget'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -190,6 +191,16 @@ export default function WholesalePage() {
                     animation: progress 1.5s infinite linear;
                 }
             `}</style>
+            <CustomerServiceWidget
+                storageKey="customer-service:wholesale"
+                baseContext={{
+                    pageType: 'wholesale_gate',
+                    path: '/wholesale',
+                    wholesale: {
+                        authenticated: isSuccess,
+                    },
+                }}
+            />
         </div>
     )
 }

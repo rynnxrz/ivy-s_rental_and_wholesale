@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState, useTransition } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -20,8 +20,9 @@ import {
     Collapsible,
     CollapsibleContent,
 } from '@/components/ui/collapsible'
-import { bulkUpdateItemStatus, runItemTaxonomyBackfill } from '@/actions/items'
+import { bulkUpdateItems, bulkUpdateItemStatus, runItemTaxonomyBackfill } from '@/actions/items'
 import type { Item, ItemLineType } from '@/types'
+import { OFFICIAL_CHARACTERS } from '@/lib/items/catalog-rules'
 import { DeleteItemButton } from '../DeleteItemButton'
 
 interface GroupedItemsListProps {
@@ -36,6 +37,7 @@ type StatusFilter = 'all' | 'active' | 'maintenance' | 'retired'
 type CharacterGroup = {
     key: string
     character: string
+    sideCharacter: string
     items: Item[]
 }
 
@@ -68,6 +70,33 @@ const getItemSize = (item: Item): string => {
     return '-'
 }
 
+type SelectionCheckboxProps = {
+    checked: boolean
+    indeterminate?: boolean
+    onChange: (checked: boolean) => void
+    ariaLabel: string
+}
+
+function SelectionCheckbox({ checked, indeterminate = false, onChange, ariaLabel }: SelectionCheckboxProps) {
+    const ref = useRef<HTMLInputElement | null>(null)
+
+    useEffect(() => {
+        if (!ref.current) return
+        ref.current.indeterminate = indeterminate
+    }, [indeterminate])
+
+    return (
+        <input
+            ref={ref}
+            type="checkbox"
+            checked={checked}
+            onChange={event => onChange(event.target.checked)}
+            aria-label={ariaLabel}
+            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+        />
+    )
+}
+
 export function GroupedItemsList({ initialItems, isAdmin, categories, collections }: GroupedItemsListProps) {
     const router = useRouter()
     const [lineFilter, setLineFilter] = useState<ItemLineType>('Mainline')
@@ -76,6 +105,11 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
     const [updatingGroup, setUpdatingGroup] = useState<string | null>(null)
     const [isBackfillPending, startBackfillTransition] = useTransition()
     const [isBulkPending, startBulkTransition] = useTransition()
+    const [isBulkEditPending, startBulkEditTransition] = useTransition()
+    const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+    const [bulkReplacementCost, setBulkReplacementCost] = useState('')
+    const [bulkCharacterFamily, setBulkCharacterFamily] = useState('')
+    const [bulkSideCharacter, setBulkSideCharacter] = useState('')
 
     const categoryMap = useMemo(() => {
         return new Map(categories.map(category => [category.id, category.name]))
@@ -113,9 +147,12 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
     const groupedCharacters = useMemo<CharacterGroup[]>(() => {
         const groups = new Map<string, Item[]>()
         const missingCharacterLabel = 'Needs Character'
+        const defaultSideCharacterLabel = 'General'
 
         for (const item of filteredItems) {
-            const key = (item.character_family || '').trim() || missingCharacterLabel
+            const character = (item.character_family || '').trim() || missingCharacterLabel
+            const sideCharacter = (item.side_character || '').trim() || defaultSideCharacterLabel
+            const key = `${character}::${sideCharacter}`
             const existing = groups.get(key)
             if (existing) {
                 existing.push(item)
@@ -125,23 +162,51 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         }
 
         return Array.from(groups.entries())
-            .map(([character, items]) => {
+            .map(([compositeKey, items]) => {
                 const sortedItems = [...items].sort((a, b) => {
+                    const sideCompare = (a.side_character || '').localeCompare(b.side_character || '')
+                    if (sideCompare !== 0) return sideCompare
                     return new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
                 })
+                const [character, sideCharacter] = compositeKey.split('::')
 
                 return {
-                    key: character.toLowerCase(),
+                    key: compositeKey.toLowerCase(),
                     character,
+                    sideCharacter,
                     items: sortedItems,
                 }
             })
             .sort((a, b) => {
                 if (a.character === missingCharacterLabel) return 1
                 if (b.character === missingCharacterLabel) return -1
-                return a.character.localeCompare(b.character)
+                const characterCompare = a.character.localeCompare(b.character)
+                if (characterCompare !== 0) return characterCompare
+                return a.sideCharacter.localeCompare(b.sideCharacter)
             })
     }, [filteredItems])
+
+    const filteredItemIds = useMemo(() => {
+        return filteredItems.map(item => item.id)
+    }, [filteredItems])
+
+    const selectedCount = selectedItemIds.size
+    const selectedVisibleCount = useMemo(() => {
+        return filteredItemIds.reduce((count, id) => count + (selectedItemIds.has(id) ? 1 : 0), 0)
+    }, [filteredItemIds, selectedItemIds])
+    const allVisibleSelected = filteredItemIds.length > 0 && selectedVisibleCount === filteredItemIds.length
+    const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected
+
+    useEffect(() => {
+        const visibleIds = new Set(filteredItemIds)
+        setSelectedItemIds(prev => {
+            const next = new Set<string>()
+            for (const id of prev) {
+                if (visibleIds.has(id)) next.add(id)
+            }
+            return next
+        })
+    }, [filteredItemIds])
 
     const toggleGroup = (groupKey: string) => {
         setOpenGroups(prev => {
@@ -152,13 +217,45 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
         })
     }
 
+    const toggleItemSelection = (itemId: string, checked: boolean) => {
+        setSelectedItemIds(prev => {
+            const next = new Set(prev)
+            if (checked) next.add(itemId)
+            else next.delete(itemId)
+            return next
+        })
+    }
+
+    const toggleAllVisible = (checked: boolean) => {
+        setSelectedItemIds(prev => {
+            const next = new Set(prev)
+            if (checked) {
+                for (const id of filteredItemIds) next.add(id)
+            } else {
+                for (const id of filteredItemIds) next.delete(id)
+            }
+            return next
+        })
+    }
+
+    const toggleGroupSelection = (group: CharacterGroup, checked: boolean) => {
+        setSelectedItemIds(prev => {
+            const next = new Set(prev)
+            for (const item of group.items) {
+                if (checked) next.add(item.id)
+                else next.delete(item.id)
+            }
+            return next
+        })
+    }
+
     const handleBulkStatus = (group: CharacterGroup, status: 'active' | 'retired') => {
         if (!isAdmin) return
 
         const confirmed = window.confirm(
             status === 'active'
-                ? `Mark all ${group.items.length} items in ${group.character} as active?`
-                : `Retire all ${group.items.length} items in ${group.character}?`
+                ? `Mark all ${group.items.length} items in ${group.character} / ${group.sideCharacter} as active?`
+                : `Retire all ${group.items.length} items in ${group.character} / ${group.sideCharacter}?`
         )
 
         if (!confirmed) return
@@ -203,16 +300,83 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
 
                     const summary = result.summary || {
                         'Orchid Whisper': 0,
-                        'Daffodil Blossom': 0,
+                        'Daffodils Blossom': 0,
                     }
 
                     toast.success(
-                        `Character backfill complete: ${result.updated}/${result.total} items updated (Orchid Whisper ${summary['Orchid Whisper']}, Daffodil Blossom ${summary['Daffodil Blossom']})`
+                        `Character backfill complete: ${result.updated}/${result.total} items updated (Orchid Whisper ${summary['Orchid Whisper']}, Daffodils Blossom ${summary['Daffodils Blossom']})`
                     )
                     router.refresh()
                 } catch (error) {
                     console.error('Backfill failed', error)
                     toast.error('Backfill failed')
+                }
+            })()
+        })
+    }
+
+    const handleBulkApply = () => {
+        if (!isAdmin || selectedCount === 0) return
+
+        const hasReplacementCost = bulkReplacementCost.trim().length > 0
+        const hasCharacterFamily = bulkCharacterFamily.trim().length > 0
+        const hasSideCharacter = bulkSideCharacter.trim().length > 0
+
+        if (!hasReplacementCost && !hasCharacterFamily && !hasSideCharacter) {
+            toast.error('Please fill at least one field to update')
+            return
+        }
+
+        const updates: {
+            replacement_cost?: number
+            character_family?: string
+            side_character?: string
+        } = {}
+        const summary: string[] = []
+
+        if (hasReplacementCost) {
+            const parsed = Number(bulkReplacementCost)
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                toast.error('RRP must be greater than 0')
+                return
+            }
+            updates.replacement_cost = parsed
+            summary.push(`RRP -> £${parsed.toFixed(2)} (daily rental auto recalculated)`)
+        }
+
+        if (hasCharacterFamily) {
+            updates.character_family = bulkCharacterFamily
+            summary.push(`Character -> ${bulkCharacterFamily}`)
+        }
+
+        if (hasSideCharacter) {
+            updates.side_character = bulkSideCharacter
+            summary.push(`Side Character -> ${bulkSideCharacter.trim()}`)
+        }
+
+        const confirmed = window.confirm(
+            `Apply updates to ${selectedCount} item(s)?\n\n${summary.join('\n')}`
+        )
+        if (!confirmed) return
+
+        startBulkEditTransition(() => {
+            void (async () => {
+                try {
+                    const result = await bulkUpdateItems(Array.from(selectedItemIds), updates)
+                    if (!result.success) {
+                        toast.error(result.error || 'Failed to update items')
+                        return
+                    }
+
+                    toast.success(`Updated ${selectedCount} item(s)`)
+                    setSelectedItemIds(new Set())
+                    setBulkReplacementCost('')
+                    setBulkCharacterFamily('')
+                    setBulkSideCharacter('')
+                    router.refresh()
+                } catch (error) {
+                    console.error('Bulk item update failed', error)
+                    toast.error('Failed to update items')
                 }
             })()
         })
@@ -238,9 +402,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                             </button>
                         ))}
                     </nav>
-                    <p className="text-xs text-slate-500">
-                        Grouped by Character in the selected line.
-                    </p>
+                    <p className="text-xs text-slate-500">Grouped by Character and Side Character in the selected line.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -271,6 +433,66 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                 </div>
             </div>
 
+            {isAdmin && selectedCount > 0 && (
+                <div className="rounded-md border border-slate-300 bg-slate-50 p-4">
+                    <div className="mb-3 text-sm font-medium text-slate-900">
+                        Bulk Edit ({selectedCount} selected)
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+                        <div className="space-y-1">
+                            <label htmlFor="bulk-rrp" className="text-xs text-slate-600">RRP (£)</label>
+                            <input
+                                id="bulk-rrp"
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={bulkReplacementCost}
+                                onChange={event => setBulkReplacementCost(event.target.value)}
+                                placeholder="e.g. 200"
+                                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="bulk-character" className="text-xs text-slate-600">Character</label>
+                            <select
+                                id="bulk-character"
+                                value={bulkCharacterFamily}
+                                onChange={event => setBulkCharacterFamily(event.target.value)}
+                                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            >
+                                <option value="">No change</option>
+                                {OFFICIAL_CHARACTERS.map(character => (
+                                    <option key={character} value={character}>
+                                        {character}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="bulk-side-character" className="text-xs text-slate-600">Side Character</label>
+                            <input
+                                id="bulk-side-character"
+                                type="text"
+                                value={bulkSideCharacter}
+                                onChange={event => setBulkSideCharacter(event.target.value)}
+                                placeholder="No change"
+                                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            onClick={handleBulkApply}
+                            disabled={isBulkEditPending}
+                        >
+                            {isBulkEditPending ? 'Saving...' : 'Apply & Save'}
+                        </Button>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                        Only filled fields will be updated. RRP updates will auto-recalculate daily rental price.
+                    </p>
+                </div>
+            )}
+
             {groupedCharacters.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500 bg-slate-50/50 rounded-lg border border-dashed">
                     <Package className="h-10 w-10 text-slate-300" />
@@ -281,8 +503,19 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50">
+                                <TableHead className="w-[40px]">
+                                    {isAdmin && (
+                                        <SelectionCheckbox
+                                            checked={allVisibleSelected}
+                                            indeterminate={someVisibleSelected}
+                                            onChange={toggleAllVisible}
+                                            ariaLabel="Select all visible items"
+                                        />
+                                    )}
+                                </TableHead>
                                 <TableHead className="w-[50px]"></TableHead>
                                 <TableHead>Character</TableHead>
+                                <TableHead>Side Character</TableHead>
                                 <TableHead>SKUs</TableHead>
                                 <TableHead>Jewelry Type Mix</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
@@ -290,6 +523,9 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                         </TableHeader>
                         <TableBody>
                             {groupedCharacters.map(group => {
+                                const selectedInGroup = group.items.filter(item => selectedItemIds.has(item.id)).length
+                                const allInGroupSelected = group.items.length > 0 && selectedInGroup === group.items.length
+                                const someInGroupSelected = selectedInGroup > 0 && !allInGroupSelected
                                 const groupCategories = Array.from(
                                     new Set(
                                         group.items
@@ -301,6 +537,16 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                 return (
                                     <Fragment key={group.key}>
                                         <TableRow className="hover:bg-slate-50/60">
+                                            <TableCell>
+                                                {isAdmin && (
+                                                    <SelectionCheckbox
+                                                        checked={allInGroupSelected}
+                                                        indeterminate={someInGroupSelected}
+                                                        onChange={checked => toggleGroupSelection(group, checked)}
+                                                        ariaLabel={`Select group ${group.character} / ${group.sideCharacter}`}
+                                                    />
+                                                )}
+                                            </TableCell>
                                             <TableCell>
                                                 <Button
                                                     variant="ghost"
@@ -314,6 +560,11 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                 </Button>
                                             </TableCell>
                                             <TableCell className="font-medium">{group.character}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="font-normal">
+                                                    {group.sideCharacter}
+                                                </Badge>
+                                            </TableCell>
                                             <TableCell>
                                                 <Badge variant="secondary" className="font-normal">
                                                     {group.items.length}
@@ -354,21 +605,23 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
 
                                         <Collapsible open={openGroups.has(group.key)} asChild>
                                             <TableRow className="border-0 p-0 hover:bg-transparent">
-                                                <TableCell colSpan={5} className="p-0">
+                                                <TableCell colSpan={7} className="p-0">
                                                     <CollapsibleContent>
                                                         <div className="border-b bg-slate-50/50 p-4 pl-12">
                                                             <Table>
                                                                 <TableHeader>
                                                                     <TableRow className="border-b-white/50 hover:bg-transparent">
+                                                                        <TableHead className="h-8 w-10 text-xs"></TableHead>
                                                                         <TableHead className="h-8 w-12 text-xs">Image</TableHead>
                                                                         <TableHead className="h-8 text-xs">SKU</TableHead>
-                                                                        <TableHead className="h-8 text-xs">Item</TableHead>
+                                                                        <TableHead className="h-8 text-xs">Description</TableHead>
+                                                                        <TableHead className="h-8 text-xs">Side Character</TableHead>
                                                                         <TableHead className="h-8 text-xs">Jewelry Type</TableHead>
                                                                         <TableHead className="h-8 text-xs">Website Collection</TableHead>
                                                                         <TableHead className="h-8 text-xs">Size</TableHead>
                                                                         <TableHead className="h-8 text-xs">Color</TableHead>
                                                                         <TableHead className="h-8 text-xs">Material</TableHead>
-                                                                        <TableHead className="h-8 text-right text-xs">Price</TableHead>
+                                                                        <TableHead className="h-8 text-right text-xs">RRP</TableHead>
                                                                         <TableHead className="h-8 text-xs">Status</TableHead>
                                                                         <TableHead className="h-8 text-right text-xs">Actions</TableHead>
                                                                     </TableRow>
@@ -376,6 +629,15 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                 <TableBody>
                                                                     {group.items.map(item => (
                                                                         <TableRow key={item.id} className="border-b-white/50 hover:bg-white">
+                                                                            <TableCell className="py-2">
+                                                                                {isAdmin && (
+                                                                                    <SelectionCheckbox
+                                                                                        checked={selectedItemIds.has(item.id)}
+                                                                                        onChange={checked => toggleItemSelection(item.id, checked)}
+                                                                                        ariaLabel={`Select item ${item.sku || item.name}`}
+                                                                                    />
+                                                                                )}
+                                                                            </TableCell>
                                                                             <TableCell className="py-2">
                                                                                 {item.image_paths && item.image_paths.length > 0 ? (
                                                                                     <Image
@@ -393,13 +655,18 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                                 )}
                                                                             </TableCell>
                                                                             <TableCell className="py-2 font-mono text-xs text-slate-600">{item.sku || '-'}</TableCell>
-                                                                            <TableCell className="py-2 text-sm font-medium">{item.name}</TableCell>
+                                                                            <TableCell className="py-2 text-sm font-medium">{item.description || item.name || '-'}</TableCell>
+                                                                            <TableCell className="py-2 text-sm">{item.side_character || '-'}</TableCell>
                                                                             <TableCell className="py-2 text-sm">{item.category_id ? categoryMap.get(item.category_id) || '-' : '-'}</TableCell>
                                                                             <TableCell className="py-2 text-sm">{item.collection_id ? collectionMap.get(item.collection_id) || '-' : '-'}</TableCell>
                                                                             <TableCell className="py-2 text-sm">{getItemSize(item)}</TableCell>
                                                                             <TableCell className="py-2 text-sm">{item.color || '-'}</TableCell>
                                                                             <TableCell className="py-2 text-sm">{item.material || '-'}</TableCell>
-                                                                            <TableCell className="py-2 text-right font-medium text-sm">${item.rental_price.toFixed(2)}</TableCell>
+                                                                            <TableCell className="py-2 text-right font-medium text-sm">
+                                                                                {Number(item.replacement_cost) > 0
+                                                                                    ? `£${Number(item.replacement_cost).toFixed(2)}`
+                                                                                    : <span className="text-amber-700">RRP missing</span>}
+                                                                            </TableCell>
                                                                             <TableCell className="py-2">
                                                                                 <Badge variant={statusVariant(item.status)} className="h-5 px-1.5 text-[10px]">
                                                                                     {item.status}

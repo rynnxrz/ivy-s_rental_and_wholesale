@@ -3,6 +3,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type {
+    BulkItemUpdates,
     GuidedImportIssue,
     GuidedImportQuestion,
     GuidedImportRun,
@@ -18,6 +19,7 @@ import {
     inferCharacterFamilyFromText,
     inferJewelryTypeFromText,
     inferLineTypeFromText,
+    inferSideCharacterFromText,
     normalizeLineType,
     OFFICIAL_CHARACTERS,
     resolveCatalogFields,
@@ -36,6 +38,23 @@ const slugify = (value: string, prefix: string) => {
     return base || `${prefix}-${Date.now()}`
 }
 
+const ONE_WEEK_RENTAL_RATE = 0.15
+const ONE_WEEK_DAYS = 7
+
+const roundCurrency = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
+const deriveDailyRentalFromRrp = (rrp: number) => {
+    const safeRrp = Number.isFinite(rrp) ? Math.max(0, rrp) : 0
+    return roundCurrency((safeRrp * ONE_WEEK_RENTAL_RATE) / ONE_WEEK_DAYS)
+}
+
+const parsePositiveReplacementCost = (value: unknown): number | null => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null
+    }
+    return value > 0 ? value : null
+}
+
 const normalizeItemPayload = (item: ItemInsert | ItemUpdate): ItemInsert | ItemUpdate => {
     const { lineType, characterFamily } = resolveCatalogFields({
         name: typeof item.name === 'string' ? item.name : undefined,
@@ -48,11 +67,27 @@ const normalizeItemPayload = (item: ItemInsert | ItemUpdate): ItemInsert | ItemU
         ),
     })
 
-    return {
+    const normalized: ItemInsert | ItemUpdate = {
         ...item,
         line_type: lineType,
         character_family: characterFamily,
+        side_character: inferSideCharacterFromText(
+            [item.name, item.description].filter(Boolean).join(' '),
+            typeof item.side_character === 'string' ? item.side_character : undefined
+        ),
     }
+
+    const replacementCost = parsePositiveReplacementCost(normalized.replacement_cost)
+
+    if (replacementCost !== null) {
+        return {
+            ...normalized,
+            replacement_cost: replacementCost,
+            rental_price: deriveDailyRentalFromRrp(replacementCost),
+        }
+    }
+
+    return normalized
 }
 
 export async function getItems() {
@@ -90,10 +125,23 @@ export async function createItem(item: ItemInsert) {
     await requireAdmin()
     const supabase = await createClient()
     const normalizedItem = normalizeItemPayload(item) as ItemInsert
+    const replacementCost = parsePositiveReplacementCost(normalizedItem.replacement_cost)
+    if (replacementCost === null) {
+        return { success: false, error: 'RRP missing: replacement_cost must be greater than 0', data: null }
+    }
+
+    const createPayload: ItemInsert = {
+        ...normalizedItem,
+        replacement_cost: replacementCost,
+        rental_price:
+            typeof normalizedItem.rental_price === 'number' && Number.isFinite(normalizedItem.rental_price)
+                ? normalizedItem.rental_price
+                : 0,
+    }
 
     const { data, error } = await supabase
         .from('items')
-        .insert(normalizedItem)
+        .insert(createPayload)
         .select()
         .single()
 
@@ -109,10 +157,14 @@ export async function updateItem(id: string, item: ItemUpdate) {
     await requireAdmin()
     const supabase = await createClient()
     const normalizedItem = normalizeItemPayload(item) as ItemUpdate
+    const replacementCost = parsePositiveReplacementCost(normalizedItem.replacement_cost)
+    if (replacementCost === null) {
+        return { success: false, error: 'RRP missing: replacement_cost must be greater than 0', data: null }
+    }
 
     const { data, error } = await supabase
         .from('items')
-        .update(normalizedItem)
+        .update({ ...normalizedItem, replacement_cost: replacementCost })
         .eq('id', id)
         .select()
         .single()
@@ -174,6 +226,58 @@ export async function bulkUpdateItemStatus(itemIds: string[], status: 'active' |
     const { error } = await supabase
         .from('items')
         .update({ status })
+        .in('id', itemIds)
+
+    if (error) {
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/admin/items')
+    return { success: true, error: null }
+}
+
+export async function bulkUpdateItems(itemIds: string[], updates: BulkItemUpdates) {
+    await requireAdmin()
+
+    if (!itemIds.length) {
+        return { success: false, error: 'No items selected' }
+    }
+
+    const updatePayload: ItemUpdate = {}
+
+    if (updates.replacement_cost !== undefined) {
+        const replacementCost = parsePositiveReplacementCost(updates.replacement_cost)
+        if (replacementCost === null) {
+            return { success: false, error: 'RRP must be greater than 0' }
+        }
+
+        updatePayload.replacement_cost = replacementCost
+        updatePayload.rental_price = deriveDailyRentalFromRrp(replacementCost)
+    }
+
+    if (updates.character_family !== undefined) {
+        const normalizedCharacter = sanitizeCharacterFamily(updates.character_family)
+        if (!normalizedCharacter.trim()) {
+            return { success: false, error: 'Character is required' }
+        }
+        updatePayload.character_family = normalizedCharacter
+    }
+
+    if (updates.side_character !== undefined) {
+        const trimmedSideCharacter = updates.side_character.trim()
+        if (trimmedSideCharacter) {
+            updatePayload.side_character = trimmedSideCharacter
+        }
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+        return { success: false, error: 'No valid fields to update' }
+    }
+
+    const supabase = createServiceClient()
+    const { error } = await supabase
+        .from('items')
+        .update(updatePayload)
         .in('id', itemIds)
 
     if (error) {
@@ -2360,6 +2464,16 @@ export async function commitStagingItemsAction(batchId: string) {
         return { success: false, error: 'No pending items to import', importedCount: 0 }
     }
 
+    const itemsMissingRrp = selectedItems.filter((staging) => parsePositiveReplacementCost(staging.replacement_cost) === null)
+    if (itemsMissingRrp.length > 0) {
+        const examples = itemsMissingRrp.slice(0, 5).map((item) => item.name || item.sku || item.id)
+        return {
+            success: false,
+            error: `RRP missing: ${itemsMissingRrp.length} item(s) require replacement_cost > 0 before commit (${examples.join(', ')})`,
+            importedCount: 0,
+        }
+    }
+
     await logImportEvent(supabase, {
         batchId,
         step: 'inventory_import',
@@ -2420,7 +2534,7 @@ export async function commitStagingItemsAction(batchId: string) {
                     name: staging.name,
                     description: staging.description,
                     rental_price: staging.rental_price || 0,
-                    replacement_cost: staging.replacement_cost || 0,
+                    replacement_cost: staging.replacement_cost,
                     sku: staging.sku,
                     material: staging.material,
                     color: staging.color,

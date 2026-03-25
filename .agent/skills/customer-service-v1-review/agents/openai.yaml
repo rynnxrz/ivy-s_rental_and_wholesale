@@ -1,0 +1,4 @@
+interface:
+  display_name: "Customer Service Review"
+  short_description: "Review Ask Ivy v1 guardrails & flows"
+  default_prompt: "Use $customer-service-v1-review to review Ask Ivy customer-service changes against the Ivy v1 plan."

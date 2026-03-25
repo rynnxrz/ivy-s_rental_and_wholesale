@@ -1,0 +1,228 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - region "Notifications alt+T"
+  - banner [ref=e3]:
+    - link "IVYJSTUDIO" [ref=e5] [cursor=pointer]:
+      - /url: /
+  - generic [ref=e6]:
+    - complementary [ref=e7]:
+      - generic [ref=e9]: Ivy's Rental
+      - navigation [ref=e11]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Items" [ref=e20] [cursor=pointer]:
+          - /url: /admin/items
+          - img [ref=e22]
+          - generic [ref=e26]: Items
+        - link "Reservations" [ref=e27] [cursor=pointer]:
+          - /url: /admin/reservations
+          - img [ref=e29]
+          - generic [ref=e31]: Reservations
+        - link "Invoices" [ref=e32] [cursor=pointer]:
+          - /url: /admin/invoices
+          - img [ref=e34]
+          - generic [ref=e37]: Invoices
+        - link "Customers" [ref=e38] [cursor=pointer]:
+          - /url: /admin/customers
+          - img [ref=e40]
+          - generic [ref=e45]: Customers
+      - generic [ref=e46]:
+        - link "Settings" [ref=e47] [cursor=pointer]:
+          - /url: /admin/settings
+          - img [ref=e49]
+          - generic [ref=e52]: Settings
+        - button "Sign Out" [ref=e53]:
+          - img [ref=e55]
+          - generic [ref=e58]: Sign Out
+    - main [ref=e59]:
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - button [ref=e122]:
+            - img
+          - generic [ref=e123]:
+            - heading "Lookbook Import" [level=2] [ref=e124]:
+              - img [ref=e125]
+              - text: Lookbook Import
+            - paragraph [ref=e128]: Upload a lookbook PDF, confirm the structure map, review draft items, then import.
+        - generic [ref=e129]:
+          - complementary [ref=e130]:
+            - generic [ref=e131]:
+              - generic [ref=e132]:
+                - heading "Import Sessions" [level=3] [ref=e133]
+                - paragraph [ref=e134]: Current and recent PDF imports.
+              - button "New" [ref=e135]:
+                - img
+                - text: New
+            - generic [ref=e136]:
+              - button "2026SS.pdf Confirm Structure 0 items" [ref=e219]:
+                - generic [ref=e220]: 2026SS.pdf
+                - generic [ref=e221]:
+                  - generic [ref=e222]: Confirm Structure
+                  - generic [ref=e223]: 0 items
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e137]:
+                - generic [ref=e138]: 2026SS.pdf
+                - generic [ref=e139]:
+                  - generic [ref=e140]: Parse Failed
+                  - generic [ref=e141]: 0 items
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e142]:
+                - generic [ref=e143]: 2026SS.pdf
+                - generic [ref=e144]:
+                  - generic [ref=e145]: Parse Failed
+                  - generic [ref=e146]: 0 items
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e147]:
+                - generic [ref=e148]: 2026SS.pdf
+                - generic [ref=e149]:
+                  - generic [ref=e150]: Parse Failed
+                  - generic [ref=e151]: 0 items
+          - generic [ref=e152]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: Confirm Structure
+              - generic [ref=e224]: 2026SS.pdf
+            - generic [ref=e225]:
+              - generic [ref=e226]:
+                - generic [ref=e227]:
+                  - generic [ref=e228]:
+                    - heading "Structure Confirmation" [level=3] [ref=e229]
+                    - paragraph [ref=e230]: Adjust the detected series, cover pages, and appendix pages before draft extraction.
+                  - button "Confirm Structure" [ref=e231]
+                - generic [ref=e232]:
+                  - generic [ref=e233]:
+                    - generic [ref=e234]: Cover Pages
+                    - textbox "1, 2" [ref=e235]: "1"
+                  - generic [ref=e236]:
+                    - generic [ref=e237]: Appendix Pages
+                    - textbox "48, 49, 50" [ref=e238]
+                - generic [ref=e239]:
+                  - generic [ref=e240]:
+                    - generic [ref=e241]:
+                      - generic [ref=e242]:
+                        - generic [ref=e243]: Series Name
+                        - textbox [ref=e244]: Imported Series
+                      - generic [ref=e245]:
+                        - generic [ref=e246]: Collection Name
+                        - textbox [ref=e247]
+                      - generic [ref=e248]:
+                        - generic [ref=e249]: Start Page
+                        - spinbutton [ref=e250]: "2"
+                      - generic [ref=e251]:
+                        - generic [ref=e252]: End Page
+                        - spinbutton [ref=e253]: "25"
+                      - generic [ref=e254]:
+                        - generic [ref=e255]: Estimated Items
+                        - spinbutton [ref=e256]: "0"
+                      - button "Remove" [ref=e258]:
+                        - img
+                        - text: Remove
+                    - generic [ref=e259]: Fallback structure map generated because automatic structure detection was unavailable.
+                  - button "Add Series Section" [ref=e260]:
+                    - img
+                    - text: Add Series Section
+              - generic [ref=e261]:
+                - heading "Page Digests" [level=3] [ref=e262]
+                - generic [ref=e263]:
+                  - generic [ref=e264]:
+                    - generic [ref=e265]: Page 1
+                    - generic [ref=e266]: Text 1% • Image 36%
+                    - paragraph [ref=e267]: L o n d o n I V Y J S T U D I O C A T A L O G U E 2 0 2 6
+                  - generic [ref=e268]:
+                    - generic [ref=e269]: Page 2
+                    - generic [ref=e270]: Text 3% • Image 32%
+                    - paragraph [ref=e271]: "\"Rebirth\" is a visual narrative that encapsulates the artist's journey, emotions, and newfound resilience. The pieces within this collection serve as a testament to the transformative power of embracing imperfection and recognizing that, within it, lies the essence of new and unparalleled perfection"
+                  - generic [ref=e272]:
+                    - generic [ref=e273]: Page 3
+                    - generic [ref=e274]: Text 5% • Image 42%
+                    - paragraph [ref=e275]: 3D-printed Asymmetry Voided Daffodil shows the beauty of the imperfection, strength and power. Daffodil is the birth month flower of March, symbolises rebirth and new beginnings. DAFFODILS BLOSSOM STUD EARRINGS - MINI [ Description ] Blossom Daffodil Stud Earrings [ Material ] Customised Resin [ Siz
+                  - generic [ref=e276]:
+                    - generic [ref=e277]: Page 4
+                    - generic [ref=e278]: Text 4% • Image 38%
+                    - paragraph [ref=e279]: 3D-printed Asymmetry Voided Daffodil shows the beauty of the imperfection, strength and power. Daffodil is the birth month flower of March, symbolises rebirth and new beginnings. [ Description ] Blossom Daffodil Stud Earrings [ Material ] Customised Resin [ Sizes ] Regular [ Weight] 4 g /per piece D
+                  - generic [ref=e280]:
+                    - generic [ref=e281]: Page 5
+                    - generic [ref=e282]: Text 3% • Image 46%
+                    - paragraph [ref=e283]: RB-DAF-BR001-M Customised Resin Clear & Brown Edge Daffodils Blossom Stud Earrings Regular Stainless Steel Stud 4 g /per piece £185 RB-DAF-BL002-M Customised Resin Clear & Turquoise Daffodils Blossom Stud Earrings Regular Stainless Steel Stud 4 g /per piece £185
+                  - generic [ref=e284]:
+                    - generic [ref=e285]: Page 6
+                    - generic [ref=e286]: Text 2% • Image 40%
+                    - paragraph [ref=e287]: 3D-printed Asymmetry Voided Daffodil shows the beauty of the imperfection, strength and power. Daffodil is the birth month flower of March, symbolises rebirth and new beginnings. [ Description ] Blossom Daffodil Mega Flower Earrings [ Material ] Customised Resin [ Sizes ] OS [ Weight] 15 g /per piec
+                  - generic [ref=e288]:
+                    - generic [ref=e289]: Page 7
+                    - generic [ref=e290]: Text 0% • Image 83%
+                    - paragraph [ref=e291]: No text preview available.
+                  - generic [ref=e292]:
+                    - generic [ref=e293]: Page 8
+                    - generic [ref=e294]: Text 2% • Image 44%
+                    - paragraph [ref=e295]: 3D-printed Asymmetry Voided Daffodil shows the beauty of the imperfection, strength and power. Daffodil is the birth month flower of March, symbolises rebirth and new beginnings. [ Description ] Blossom Daffodil Duo Flower Earrings [ Material ] Customised Resin [ Sizes ] OS [ Weight] 11 g /per piece
+                  - generic [ref=e296]:
+                    - generic [ref=e297]: Page 9
+                    - generic [ref=e298]: Text 1% • Image 79%
+                    - paragraph [ref=e299]: "[ Description ] Daffodils Dangle & Drop Earrings [ Material ] Customised Resin [ Sizes ] OS [ Weight] 22 g /each DAFFODILS BLOSSOM DANGLE EARRINGS 11 cm 8.5 cm 3D-printed Asymmetry Voided Daffodil shows the beauty of the imperfection, strength and power. Daffodil is the birth month flower of March,"
+                  - generic [ref=e300]:
+                    - generic [ref=e301]: Page 10
+                    - generic [ref=e302]: Text 1% • Image 51%
+                    - paragraph [ref=e303]: "RB-DAF-TS001-DL Customised Resin Clear Daffodils Dangle & Drop Earrings OS Stainless Steel Stud 22 g /per piece £270 Style: Material: Colour: Description: Sizes: Accessories: Weight: RRP:"
+                  - generic [ref=e304]:
+                    - generic [ref=e305]: Page 11
+                    - generic [ref=e306]: Text 1% • Image 57%
+                    - paragraph [ref=e307]: "RB-DAF-BR001-DL Customised Resin Brown Daffodils Dangle & Drop Earrings OS Stainless Steel Stud 22 g /per piece £330 Style: Material: Colour: Description: Sizes: Accessories: Weight: RRP:"
+                  - generic [ref=e308]:
+                    - generic [ref=e309]: Page 12
+                    - generic [ref=e310]: Text 4% • Image 52%
+                    - paragraph [ref=e311]: 3.5cm 2.9cm RB-DAF-TS001-RS Customised Resin Clear Mini Daffodils Flower Ring Nº1 S/M 3 g /per piece £80 RB-DAF-TSBL001-RS Customised Resin Clear & Electric Blue Point Mini Daffodils Flower Ring Nº1 S/M 3 g /per piece £95
+                  - generic [ref=e312]:
+                    - generic [ref=e313]: Page 13
+                    - generic [ref=e314]: Text 5% • Image 32%
+                    - paragraph [ref=e315]: RB-DAF-WH001-RM Customised Resin White Daffodils Flower Ring Nº1 S/M 5 g /per piece £110 RB-DAF-OG001-RM Customised Resin Clear & Orange Point Daffodils Flower Ring Nº1 S/M 5 g /per piece £150 RB-DAF-TSYL1-RM Customised Resin
+                  - generic [ref=e316]:
+                    - generic [ref=e317]: Page 14
+                    - generic [ref=e318]: Text 3% • Image 66%
+                    - paragraph [ref=e319]: 7 cm 7.5 cm RB-DAF-WT001-RD Customised Resin White Daffodils Duo Flower Ring S/M 11 g /per piece £160 RB-DAF-PK001-RD Customised Resin White & Sakura Pink Edge Daffodils Duo Flower Ring S/M 11 g /per piece £190
+                  - generic [ref=e320]:
+                    - generic [ref=e321]: Page 15
+                    - generic [ref=e322]: Text 2% • Image 53%
+                    - paragraph [ref=e323]: "ORCHID WHISPER RING RB-ORD-TS001-RS Customised Resin Clear Mini Orchid Whisper Ring RB-ORD-TSYL001-RS Customised Resin Clear & Greenyellow Point Mini Orchid Whisper Ring RB-ORD-TSPP001-RS Customised Resin Clear& Purple Edge Mini Orchid Whisper Ring Style: Material: Colour:"
+                  - generic [ref=e324]:
+                    - generic [ref=e325]: Page 16
+                    - generic [ref=e326]: Text 3% • Image 32%
+                    - paragraph [ref=e327]: Petals, porcelain-thin, where whispers softly hide, Ethereal secrets in each 3D-woven line. Gracefully suspended, they dance with the air, Orchids in bloom, suspended in time. ORCHID WHISPER EARRINGS M L s 6.5cm 8.8cm 3.5cm 5.5cm 8 cm 3cm [ Description ] Orchid Whisper Earrings [ Material ] Customis
+                  - generic [ref=e328]:
+                    - generic [ref=e329]: Page 17
+                    - generic [ref=e330]: Text 0% • Image 71%
+                    - paragraph [ref=e331]: "RB-ORD-RD001-L Customised Resin Burgundy Red Orchid Whisper Earrings Large Stainless Steel Stud 13 g /each £390 Style: Material: Colour: Description: Sizes: Accessories: Weight: RRP:"
+                  - generic [ref=e332]:
+                    - generic [ref=e333]: Page 18
+                    - generic [ref=e334]: Text 3% • Image 40%
+                    - paragraph [ref=e335]: Petals, porcelain-thin, where whispers softly hide, Ethereal secrets in each 3D-woven line. Gracefully suspended, they dance with the air, Orchids in bloom, suspended in time. HAPPY ORCHIDS EARRINGS [ Description ] Happy Orchid Earrings [ Material ] Customised Resin [ Sizes ] OS [ Weight] 10 g /each
+                  - generic [ref=e336]:
+                    - generic [ref=e337]: Page 19
+                    - generic [ref=e338]: Text 2% • Image 77%
+                    - paragraph [ref=e339]: Dasha Rebirth Inspired by the beauty of a decaying holy leaf, this design takes on a new life as it transforms into the graceful form of an insect. In this tale, endings unravel into beginnings, birthing untold chapters of enchantment. DASHA REBIRTH EARRINGS RB-DAS-TSBK001 Customised Resin Clear & B
+                  - generic [ref=e340]:
+                    - generic [ref=e341]: Page 20
+                    - generic [ref=e342]: Text 3% • Image 40%
+                    - paragraph [ref=e343]: "“Botanic Elegy: The Blossom’s Afterlife” it features the skeletal remains of flowers, intertwining their delicate, petal-like bones in a graceful dance. The empty garden, once vibrant and alive, now serves as a canvas for the remnants of nature’s ephemeral beauty. BOTANIC ELEGY: THE BLOSSOM’S AFTERL"
+                  - generic [ref=e344]:
+                    - generic [ref=e345]: Page 21
+                    - generic [ref=e346]: Text 4% • Image 45%
+                    - paragraph [ref=e347]: Oceanspine Petals Earrings are a mesmerizing hybrid of human spine and fish bones. Their skeletal, ethereal form echoes the barren beauty of winter branches—stripped yet resilient. With abstract elegance, they whisper of the sea’s rhythm and the delicate fragility of nature, a sculptural balance bet
+                  - generic [ref=e348]:
+                    - generic [ref=e349]: Page 22
+                    - generic [ref=e350]: Text 1% • Image 61%
+                    - paragraph [ref=e351]: "RB-OP-C-TS001 Customised Resin Clear Oceanspine Coral Earrings OS Stainless Steel Stud 10g /each £350 Style: Material: Colour: Description: Sizes: Accessories: Weight: RRP:"
+                  - generic [ref=e352]:
+                    - generic [ref=e353]: Page 23
+                    - generic [ref=e354]: Text 0% • Image 100%
+                    - paragraph [ref=e355]: No text preview available.
+                  - generic [ref=e356]:
+                    - generic [ref=e357]: Page 24
+                    - generic [ref=e358]: Text 2% • Image 37%
+                    - paragraph [ref=e359]: Born in the deep ocean, where waves are strong and tides unyielding, the Sea Passiflora grows not in defiance of her surroundings, but in harmony with them. The currents teach her to bend without breaking, to anchor deeply yet move with grace. SEA PASSIFLORA [ Description ] Resilient Passiflora Arc
+                  - generic [ref=e360]:
+                    - generic [ref=e361]: Page 25
+                    - generic [ref=e362]: Text 2% • Image 46%
+                    - paragraph [ref=e363]: BROOCH RB-ORD-WH001-B Customised Resin White Orchid Whisper Brooch OS Copper 13 g /each £190 RB-DAF-WT001-B Customised Resin White Daffodils Duo Flower Brooch OS Copper 11 g /each
+  - button "Open Next.js Dev Tools" [ref=e115] [cursor=pointer]:
+    - img [ref=e116]
+  - alert [ref=e119]

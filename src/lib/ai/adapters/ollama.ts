@@ -109,23 +109,28 @@ export class OllamaAdapter implements AiProviderAdapter {
     }
 
     async listModels(route: { base_url: string | null }): Promise<AiModelInfo[]> {
-        const response = await fetch(`${route.base_url}/api/tags`)
-        if (!response.ok) {
-            throw new Error(`Ollama model listing failed (${response.status})`)
-        }
-
-        const payload = await response.json() as OllamaTagPayload
-        return (payload.models || []).map(model => {
-            const id = model.name || model.model || 'unknown'
-            return {
-                id,
-                name: id,
-                displayName: id,
-                description: model.details?.family ? `Family: ${model.details.family}` : 'Local Ollama model',
-                thinkingLevels: [],
-                provider: this.provider,
+        const baseUrl = route.base_url || 'http://127.0.0.1:11434'
+        try {
+            const response = await fetch(`${baseUrl}/api/tags`)
+            if (!response.ok) {
+                return []
             }
-        })
+
+            const payload = await response.json() as OllamaTagPayload
+            return (payload.models || []).map(model => {
+                const id = model.name || model.model || 'unknown'
+                return {
+                    id,
+                    name: id,
+                    displayName: id,
+                    description: model.details?.family ? `Family: ${model.details.family}` : 'Local Ollama model',
+                    thinkingLevels: [],
+                    provider: this.provider,
+                }
+            })
+        } catch {
+            return []
+        }
     }
 
     async healthCheck(route: { base_url: string | null }): Promise<AiHealthStatus> {

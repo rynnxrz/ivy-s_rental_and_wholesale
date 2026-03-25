@@ -1,5 +1,5 @@
 import type { Json } from '@/types'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 const toJsonValue = (value: unknown): Json => {
     if (value === null || value === undefined) {

@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import { format, parse } from "date-fns"
-import { Calendar as CalendarIcon, Check, Filter } from "lucide-react"
+import { Calendar as CalendarIcon, Filter } from "lucide-react"
 import { DateRange } from "react-day-picker"
-import Link from "next/link"
-import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 
+import { CustomerServiceWidget } from "@/components/customer-service/CustomerServiceWidget"
+import { ProductGroupCard } from "@/components/catalog/ProductGroupCard"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -26,18 +26,44 @@ import {
 } from "@/components/ui/popover"
 import { useRequestStore } from "@/store/request"
 import { toast } from "sonner"
+import { normalizeBillableDays } from "@/lib/invoice/pricing"
 
 interface Item {
     id: string
     name: string
     category: string
     rental_price: number
+    replacement_cost?: number | null
     image_paths: string[] | null
     status: string
     category_id?: string | null
     collection_id?: string | null
     color?: string | null
     priority?: number | null
+    description?: string | null
+    character_family?: string | null
+    sku?: string | null
+}
+
+interface CatalogVariant {
+    id: string
+    name: string
+    color?: string | null
+    image_paths: string[] | null
+    rental_price: number
+    replacement_cost?: number | null
+    sku?: string | null
+    category: string
+    status: string
+}
+
+interface GroupedCatalogItem {
+    groupKey: string
+    displayName: string
+    category: string
+    category_id?: string | null
+    collection_id?: string | null
+    variants: CatalogVariant[]
 }
 
 interface Category {
@@ -128,11 +154,6 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
     )
 
     // (Client-side filtering logic is defined below at 'filteredItems')
-
-    const getImageUrl = (images: string[] | null) => {
-        if (images && images.length > 0) return images[0]
-        return 'https://placehold.co/600x400.png?text=No+Image'
-    }
 
     // === ACTION HANDLERS ===
 
@@ -232,13 +253,17 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
         }
     }
 
-    const hasCommittedDate = committedDate?.from && committedDate?.to
+    const committedFromDate = committedDate?.from ?? null
+    const committedToDate = committedDate?.to ?? null
+    const hasCommittedDate = Boolean(committedFromDate && committedToDate)
     const hasDraftComplete = draftDate?.from && draftDate?.to
 
     // Calculate rental days for display
-    const rentalDays = hasCommittedDate
-        ? Math.ceil((committedDate.to!.getTime() - committedDate.from!.getTime()) / (1000 * 60 * 60 * 24))
-        : 0
+    const rentalDays = (committedFromDate && committedToDate)
+        ? normalizeBillableDays(
+            Math.round((committedToDate.getTime() - committedFromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        )
+        : null
 
     // Filter Logic
     const filteredItems = React.useMemo(() => {
@@ -248,6 +273,48 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
             return true
         })
     }, [items, selectedCategoryId, selectedCollectionId])
+
+    const groupedItems = React.useMemo<GroupedCatalogItem[]>(() => {
+        const groups = new Map<string, GroupedCatalogItem>()
+
+        for (const item of filteredItems) {
+            const character = item.character_family?.trim()
+            const description = item.description?.trim()
+            const name = item.name?.trim()
+            const rawGroupKey = character || description || name || item.id
+            const normalizedGroupKey = rawGroupKey.toLowerCase()
+            const displayName = character || description || name || "Untitled Piece"
+
+            const variant: CatalogVariant = {
+                id: item.id,
+                name: item.name,
+                color: item.color,
+                image_paths: item.image_paths,
+                rental_price: item.rental_price,
+                replacement_cost: item.replacement_cost,
+                sku: item.sku,
+                category: item.category,
+                status: item.status,
+            }
+
+            const existing = groups.get(normalizedGroupKey)
+            if (existing) {
+                existing.variants.push(variant)
+                continue
+            }
+
+            groups.set(normalizedGroupKey, {
+                groupKey: normalizedGroupKey,
+                displayName,
+                category: item.category,
+                category_id: item.category_id,
+                collection_id: item.collection_id,
+                variants: [variant],
+            })
+        }
+
+        return Array.from(groups.values())
+    }, [filteredItems])
 
     // Dynamic counts for sidebar (based on current items, respecting collection filter)
     const categoryCounts = React.useMemo(() => {
@@ -583,7 +650,7 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                                     {hasCommittedDate && !isCalendarOpen && (
                                         <div>
                                             <span className="text-[10px] text-slate-600 font-bold uppercase tracking-[0.1em]">
-                                                {rentalDays} days
+                                                {rentalDays ?? 0} days
                                             </span>
                                         </div>
                                     )}
@@ -731,132 +798,27 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
 
                     {/* Grid Content */}
                     <div className="transition-opacity duration-300">
-                        {filteredItems.length > 0 ? (
+                        {groupedItems.length > 0 ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[1px] bg-slate-50 border border-slate-50 center-grid">
-                                {filteredItems.map((item, index) => {
-                                    const displayName = item.color ? `${item.color} ${item.name}` : item.name
-                                    const isSelected = isMounted && hasItem(item.id)
-
-                                    return (
-                                        <article key={item.id} className="group flex flex-col h-full bg-white relative" aria-label={displayName}>
-                                            <Link
-                                                href={hasCommittedDate
-                                                    ? `/catalog/${item.id}?start=${format(committedDate!.from!, 'yyyy-MM-dd')}&end=${format(committedDate!.to!, 'yyyy-MM-dd')}`
-                                                    : `/catalog/${item.id}`
-                                                }
-                                                aria-label={`View details for ${displayName}`}
-                                                className="block group/link focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 focus-visible:ring-offset-white focus-visible:outline-none rounded-md"
-                                            >
-                                                {/* Image */}
-                                                <div className="relative aspect-[4/5] bg-white overflow-hidden p-10">
-                                                    <Image
-                                                        src={getImageUrl(item.image_paths)}
-                                                        alt={`${displayName} fine jewelry piece`}
-                                                        fill
-                                                        className="object-contain object-center group-hover/link:scale-105 transition-transform duration-300"
-                                                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                                                        priority={index < 10}
-                                                    />
-                                                </div>
-
-                                                {/* Title Only (Inside Link) */}
-                                                <div className="px-5 pt-3">
-                                                    <h3 className="text-sm font-semibold text-slate-900 line-clamp-2 min-h-[40px] group-hover/link:text-slate-700 transition-colors text-left">
-                                                        {displayName}
-                                                    </h3>
-                                                </div>
-                                            </Link>
-
-                                            {/* Action Area: Category + Price + Button (Separate Click Zone) */}
-                                            <div className="px-5 pb-5 pt-1 mt-auto transition-colors hover:bg-slate-50/80 group/action">
-                                                {/* Category */}
-                                                <p className="text-[11px] text-slate-700 truncate uppercase tracking-widest mb-2">
-                                                    {item.category}
-                                                </p>
-                                                {/* Price & Button Row */}
-                                                <div className="flex items-center justify-between">
-                                                    {/* Price (Left) */}
-                                                    <div className="text-sm font-bold text-slate-900" aria-label={`Rental price ${item.rental_price} dollars per day`}>
-                                                        ${item.rental_price}/d
-                                                    </div>
-
-                                                    {/* Right: Add/Remove Button */}
-                                                    <div className="flex-shrink-0">
-                                                        {hasCommittedDate ? (
-                                                            isSelected ? (
-                                                                <Button
-                                                                    type="button"
-                                                                    aria-pressed={isSelected}
-                                                                    aria-label={`Remove ${displayName} from request`}
-                                                                    className="h-11 w-11 min-w-[44px] rounded-md bg-white border border-green-300 text-green-700 hover:text-green-800 hover:border-green-400 hover:bg-green-50 p-0 flex items-center justify-center transition-all group-hover/action:scale-105"
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault()
-                                                                        e.stopPropagation()
-                                                                        removeItem(item.id)
-                                                                        toast("Item removed from request", {
-                                                                            action: {
-                                                                                label: 'Undo',
-                                                                                onClick: () => addItem({
-                                                                                    id: item.id,
-                                                                                    name: item.name,
-                                                                                    category: item.category,
-                                                                                    rental_price: item.rental_price,
-                                                                                    image_paths: item.image_paths,
-                                                                                    status: item.status
-                                                                                })
-                                                                            }
-                                                                        })
-                                                                    }}
-                                                                >
-                                                                    <Check className="h-5 w-5" aria-hidden="true" />
-                                                                    <span className="sr-only">Remove from request</span>
-                                                                </Button>
-                                                            ) : (
-                                                                <Button
-                                                                    type="button"
-                                                                    aria-pressed={false}
-                                                                    aria-label={`Add ${displayName} to request`}
-                                                                    className="h-11 min-w-[44px] rounded-md bg-slate-900 text-white hover:bg-slate-800 group-hover/action:scale-105 text-xs font-semibold px-6 transition-transform"
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault()
-                                                                        e.stopPropagation()
-                                                                        addItem({
-                                                                            id: item.id,
-                                                                            name: item.name,
-                                                                            category: item.category,
-                                                                            rental_price: item.rental_price,
-                                                                            image_paths: item.image_paths,
-                                                                            status: item.status
-                                                                        })
-                                                                        toast.success("Added to request")
-                                                                    }}
-                                                                >
-                                                                    + Add
-                                                                </Button>
-                                                            )
-                                                        ) : (
-                                                            <Button
-                                                                type="button"
-                                                                aria-disabled="true"
-                                                                aria-label="Rental dates must be selected first"
-                                                                className="h-11 min-w-[44px] rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-semibold px-6 cursor-not-allowed opacity-50"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault()
-                                                                    e.stopPropagation()
-                                                                    triggerDateError()
-                                                                }}
-                                                            >
-                                                                + Add
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </article>
-                                    )
-                                })}
+                                {groupedItems.map((group, index) => (
+                                    <ProductGroupCard
+                                        key={group.groupKey}
+                                        group={group}
+                                        index={index}
+                                        committedDate={hasCommittedDate ? {
+                                            from: committedDate!.from!,
+                                            to: committedDate!.to!,
+                                        } : undefined}
+                                        rentalDays={rentalDays}
+                                        isMounted={isMounted}
+                                        hasItem={hasItem}
+                                        addItem={addItem}
+                                        removeItem={removeItem}
+                                        triggerDateError={triggerDateError}
+                                    />
+                                ))}
                                 {/* Ghost Cells for Full Grid Fill */}
-                                {Array.from({ length: Math.max(12, Math.ceil(filteredItems.length / 4) * 4) - filteredItems.length }).map((_, i) => (
+                                {Array.from({ length: Math.max(12, Math.ceil(groupedItems.length / 4) * 4) - groupedItems.length }).map((_, i) => (
                                     <div key={`ghost-${i}`} className="bg-white" />
                                 ))}
                             </div>
@@ -870,6 +832,21 @@ export function CatalogClient({ initialItems, categories, collections }: Catalog
                     </div>
                 </section>
             </div>
+            <CustomerServiceWidget
+                storageKey="customer-service:catalog"
+                baseContext={{
+                    pageType: 'catalog_list',
+                    path: '/catalog',
+                    catalog: {
+                        mode: searchParams.get('mode') === 'wholesale' ? 'wholesale' : 'rental',
+                        itemCount: filteredItems.length,
+                        selectedCategoryId,
+                        selectedCollectionId,
+                        dateFrom: committedDate?.from ? format(committedDate.from, 'yyyy-MM-dd') : null,
+                        dateTo: committedDate?.to ? format(committedDate.to, 'yyyy-MM-dd') : null,
+                    },
+                }}
+            />
         </main>
     )
 }

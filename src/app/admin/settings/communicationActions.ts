@@ -5,7 +5,14 @@ import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const getResendClient = () => {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) {
+        return null
+    }
+
+    return new Resend(apiKey)
+}
 
 interface CommunicationSettings {
     email_approval_body: string | null
@@ -89,6 +96,11 @@ export async function sendTestEmail(params: SendTestEmailParams) {
     // Validate email
     if (!params.toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(params.toEmail)) {
         return { error: 'Please enter a valid email address' }
+    }
+
+    const resend = getResendClient()
+    if (!resend) {
+        return { error: 'RESEND_API_KEY is not configured' }
     }
 
     try {

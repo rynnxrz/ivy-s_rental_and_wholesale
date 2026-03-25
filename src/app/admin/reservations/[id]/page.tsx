@@ -14,6 +14,13 @@ import {
     isArchivedReservation,
     normalizeLegacyReservationStatus,
 } from '@/lib/constants/reservation-status'
+import {
+    buildReservationGroupKey,
+    ensureReservationGroupAssessment,
+    fetchReservationGroupAssessments,
+    type ReservationAssessmentRow,
+    type ReservationGroupAssessment,
+} from '@/lib/reservations/assessment'
 
 interface Props {
     params: Promise<{ id: string }>
@@ -47,10 +54,24 @@ export default async function RequestDetailPage(props: Props) {
 
     // Fetch Group Siblings
     let groupItems: {
+        created_at?: string
+        renter_id?: string | null
+        item_id?: string
+        group_id?: string | null
         start_date: string
         end_date: string
         admin_notes?: string | null
+        dispatch_notes?: string | null
+        return_notes?: string | null
+        original_start_date?: string | null
+        original_end_date?: string | null
+        country?: string | null
+        city_region?: string | null
+        address_line1?: string | null
+        address_line2?: string | null
+        event_location?: string | null
         items?: { name?: string; sku?: string; rental_price?: number; replacement_cost?: number; image_paths?: string[] }
+        profiles?: { full_name?: string; email?: string; company_name?: string } | null
         id: string
         status: string
     }[] = []
@@ -59,11 +80,25 @@ export default async function RequestDetailPage(props: Props) {
             .from('reservations')
             .select(`
                 id,
+                created_at,
+                group_id,
+                renter_id,
+                item_id,
                 status,
                 admin_notes,
+                dispatch_notes,
+                return_notes,
                 start_date,
                 end_date,
-                items (name, sku, rental_price, replacement_cost, image_paths)
+                original_start_date,
+                original_end_date,
+                country,
+                city_region,
+                address_line1,
+                address_line2,
+                event_location,
+                items (name, sku, rental_price, replacement_cost, image_paths),
+                profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
             `)
             .eq('group_id', reservation.group_id)
             .neq('id', reservation.id) // Exclude current
@@ -72,7 +107,8 @@ export default async function RequestDetailPage(props: Props) {
             type SiblingRow = typeof siblings[number]
             groupItems = siblings.map((s: SiblingRow) => ({
                 ...s,
-                items: Array.isArray(s.items) ? s.items[0] : s.items
+                items: Array.isArray(s.items) ? s.items[0] : s.items,
+                profiles: Array.isArray(s.profiles) ? s.profiles[0] : s.profiles,
             }))
         }
     }
@@ -119,6 +155,16 @@ export default async function RequestDetailPage(props: Props) {
     const isRemovedAtReview = hasRemovedAtReviewMarker(reservation.admin_notes)
     const status = isArchived ? ARCHIVED_STATUS : normalizeLegacyReservationStatus(reservation.status)
     const statusLabel = isRemovedAtReview ? 'Unavailable' : status
+    const assessmentGroupRows = [reservation, ...groupItems]
+    const groupKey = buildReservationGroupKey({
+        id: reservation.id,
+        group_id: reservation.group_id,
+    })
+    const existingAssessments = await fetchReservationGroupAssessments([groupKey])
+    const assessment = existingAssessments.get(groupKey)
+        || (status === RESERVATION_STATUSES.PENDING_REQUEST
+            ? await ensureReservationGroupAssessment(assessmentGroupRows.map(toAssessmentRow))
+            : null)
 
     const isDispatchEditable = status === RESERVATION_STATUSES.UPCOMING || status === RESERVATION_STATUSES.ONGOING
     const isReturnEditable = status === RESERVATION_STATUSES.ONGOING
@@ -274,7 +320,9 @@ export default async function RequestDetailPage(props: Props) {
                                                 <div className="flex flex-col">
                                                     <span className="text-[10px] text-gray-400 uppercase tracking-wider">Price</span>
                                                     <div className="text-gray-700 text-xs font-medium">
-                                                        ${itemData?.rental_price}/day
+                                                        {typeof itemData?.rental_price === 'number'
+                                                            ? `£${itemData.rental_price.toFixed(2)}/day`
+                                                            : '£0.00/day'}
                                                     </div>
                                                 </div>
                                             </div>
@@ -319,6 +367,62 @@ export default async function RequestDetailPage(props: Props) {
 
                 {/* Right Column: Key Details */}
                 <div className="space-y-6">
+                    {assessment ? (
+                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 className="font-semibold text-gray-900">Intake Assessment</h2>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Snapshot generated {format(new Date(assessment.generatedAt), 'PPP p')}
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap justify-end gap-2">
+                                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium uppercase tracking-wide ${priorityPillClass(assessment.priorityBand)}`}>
+                                        {assessment.priorityBand} · {assessment.priorityScore}
+                                    </span>
+                                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium uppercase tracking-wide ${valueTierPillClass(assessment.valueTier)}`}>
+                                        {assessment.valueTier}
+                                    </span>
+                                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium uppercase tracking-wide ${feasibilityPillClass(assessment.feasibilityStatus)}`}>
+                                        {assessment.feasibilityStatus.replace('_', ' ')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 space-y-5 text-sm">
+                                <section>
+                                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Risk Assessment</h3>
+                                    <div className="mt-2 space-y-2 text-gray-700">
+                                        {assessment.snapshot.riskAssessment.map((line, index) => (
+                                            <p key={`risk-${index}`}>{line}</p>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Feasibility Check</h3>
+                                    <div className="mt-2 space-y-2 text-gray-700">
+                                        {assessment.snapshot.feasibilityCheck.map((line, index) => (
+                                            <p key={`feasibility-${index}`}>{line}</p>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Value Tier</h3>
+                                    <p className="mt-2 text-gray-700">
+                                        {assessment.snapshot.customerSummary || 'Request overview pending.'}
+                                    </p>
+                                </section>
+
+                                <section>
+                                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Recommended Next Step</h3>
+                                    <p className="mt-2 text-gray-700">{assessment.recommendedNextStep}</p>
+                                </section>
+                            </div>
+                        </div>
+                    ) : null}
+
                     {/* Customer Card */}
                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                         <h2 className="font-semibold text-gray-900 mb-4">Customer Info</h2>
@@ -378,4 +482,82 @@ export default async function RequestDetailPage(props: Props) {
             </div>
         </div>
     )
+}
+
+function toAssessmentRow(row: Record<string, unknown>): ReservationAssessmentRow {
+    const itemRecord = row.items && typeof row.items === 'object' && !Array.isArray(row.items)
+        ? row.items as Record<string, unknown>
+        : null
+    const profileRecord = row.profiles && typeof row.profiles === 'object' && !Array.isArray(row.profiles)
+        ? row.profiles as Record<string, unknown>
+        : null
+
+    return {
+        id: String(row.id),
+        group_id: typeof row.group_id === 'string' ? row.group_id : null,
+        renter_id: typeof row.renter_id === 'string' ? row.renter_id : null,
+        item_id: String(row.item_id),
+        status: typeof row.status === 'string' ? row.status : null,
+        start_date: String(row.start_date),
+        end_date: String(row.end_date),
+        created_at: typeof row.created_at === 'string' ? row.created_at : null,
+        country: typeof row.country === 'string' ? row.country : null,
+        city_region: typeof row.city_region === 'string' ? row.city_region : null,
+        address_line1: typeof row.address_line1 === 'string' ? row.address_line1 : null,
+        address_line2: typeof row.address_line2 === 'string' ? row.address_line2 : null,
+        event_location: typeof row.event_location === 'string' ? row.event_location : null,
+        dispatch_notes: typeof row.dispatch_notes === 'string' ? row.dispatch_notes : null,
+        admin_notes: typeof row.admin_notes === 'string' ? row.admin_notes : null,
+        return_notes: typeof row.return_notes === 'string' ? row.return_notes : null,
+        original_start_date: typeof row.original_start_date === 'string' ? row.original_start_date : null,
+        original_end_date: typeof row.original_end_date === 'string' ? row.original_end_date : null,
+        items: itemRecord ? {
+            name: typeof itemRecord.name === 'string' ? itemRecord.name : null,
+            sku: typeof itemRecord.sku === 'string' ? itemRecord.sku : null,
+            rental_price: typeof itemRecord.rental_price === 'number' ? itemRecord.rental_price : null,
+            replacement_cost: typeof itemRecord.replacement_cost === 'number' ? itemRecord.replacement_cost : null,
+        } : null,
+        profiles: profileRecord ? {
+            full_name: typeof profileRecord.full_name === 'string' ? profileRecord.full_name : null,
+            email: typeof profileRecord.email === 'string' ? profileRecord.email : null,
+            company_name: typeof profileRecord.company_name === 'string' ? profileRecord.company_name : null,
+        } : null,
+    }
+}
+
+function priorityPillClass(priorityBand: ReservationGroupAssessment['priorityBand']) {
+    switch (priorityBand) {
+        case 'urgent':
+            return 'bg-rose-100 text-rose-700'
+        case 'high':
+            return 'bg-amber-100 text-amber-700'
+        case 'standard':
+            return 'bg-sky-100 text-sky-700'
+        default:
+            return 'bg-slate-100 text-slate-600'
+    }
+}
+
+function valueTierPillClass(valueTier: ReservationGroupAssessment['valueTier']) {
+    switch (valueTier) {
+        case 'vip':
+            return 'bg-fuchsia-100 text-fuchsia-700'
+        case 'high':
+            return 'bg-violet-100 text-violet-700'
+        case 'standard':
+            return 'bg-emerald-100 text-emerald-700'
+        default:
+            return 'bg-slate-100 text-slate-600'
+    }
+}
+
+function feasibilityPillClass(feasibilityStatus: ReservationGroupAssessment['feasibilityStatus']) {
+    switch (feasibilityStatus) {
+        case 'high_risk':
+            return 'bg-rose-100 text-rose-700'
+        case 'watch':
+            return 'bg-amber-100 text-amber-700'
+        default:
+            return 'bg-emerald-100 text-emerald-700'
+    }
 }

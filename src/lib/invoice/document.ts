@@ -152,6 +152,13 @@ function normalizeReservationItem(rawItem: RawReservationContractRow['items']) {
   return rawItem ?? null
 }
 
+function resolveRetailValueForContractItem(item: { replacement_cost?: number | string | null; rental_price?: number | string | null } | null) {
+  if (!item) return 0
+  const preferred = item.replacement_cost != null && !Number.isNaN(Number(item.replacement_cost)) ? Number(item.replacement_cost) : null
+  const fallback = item.rental_price != null && !Number.isNaN(Number(item.rental_price)) ? Number(item.rental_price) : null
+  return sanitizeAmount(preferred ?? fallback ?? 0)
+}
+
 function buildCustomerAddressLines(address: Record<string, unknown> | null | undefined) {
   if (!address) return [] as string[]
 
@@ -226,7 +233,7 @@ function buildContractDetails(
   const totalRetailValue = roundCurrency(
     reservations.reduce((sum, reservation) => {
       const item = normalizeReservationItem(reservation.items)
-      return sum + sanitizeAmount(item?.replacement_cost ?? item?.rental_price)
+      return sum + resolveRetailValueForContractItem(item)
     }, 0)
   )
 

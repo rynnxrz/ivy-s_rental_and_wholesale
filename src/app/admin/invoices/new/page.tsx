@@ -212,7 +212,7 @@ export default function NewInvoicePage() {
                                             />
                                         </div>
                                         <div className="col-span-1 text-right font-medium text-slate-700">
-                                            ${lineTotal.toFixed(2)}
+                                            £{lineTotal.toFixed(2)}
                                         </div>
                                         <div className="col-span-1 flex justify-end">
                                             {fields.length > 1 && (
@@ -237,11 +237,11 @@ export default function NewInvoicePage() {
                                     <div className="w-64 space-y-2">
                                         <div className="flex justify-between text-sm">
                                             <span className="text-slate-500">Subtotal</span>
-                                            <span className="font-medium">${subtotal.toFixed(2)}</span>
+                                            <span className="font-medium">£{subtotal.toFixed(2)}</span>
                                         </div>
                                         <div className="flex justify-between text-lg font-bold border-t pt-2">
                                             <span>Total</span>
-                                            <span>${subtotal.toFixed(2)}</span>
+                                            <span>£{subtotal.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 </div>

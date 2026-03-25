@@ -198,7 +198,7 @@ function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
                             <ItemsSummary items={invoice.invoice_items || []} />
                         </TableCell>
                         <TableCell className="text-right font-medium text-slate-900">
-                            ${invoice.total_amount.toFixed(2)}
+                            £{invoice.total_amount.toFixed(2)}
                         </TableCell>
                         <TableCell>
                             <div className="text-sm text-slate-700">

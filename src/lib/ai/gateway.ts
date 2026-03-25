@@ -575,14 +575,27 @@ const gatewayImpl: AiGateway = {
         const route = await resolveAiRouteConfig()
         const resolvedRoute = buildRouteForProvider(route, provider || route.provider)
         const adapter = getAdapter(resolvedRoute.provider)
-        return adapter.listModels(resolvedRoute)
+        try {
+            return await adapter.listModels(resolvedRoute)
+        } catch {
+            return []
+        }
     },
 
     async healthCheck(provider) {
         const route = await resolveAiRouteConfig()
         const resolvedRoute = buildRouteForProvider(route, provider || route.provider)
         const adapter = getAdapter(resolvedRoute.provider)
-        return adapter.healthCheck(resolvedRoute)
+        try {
+            return await adapter.healthCheck(resolvedRoute)
+        } catch (error) {
+            return {
+                provider: resolvedRoute.provider,
+                ok: false,
+                message: error instanceof Error ? error.message : 'AI health check failed.',
+                capabilities: adapter.capabilities,
+            }
+        }
     },
 }
 

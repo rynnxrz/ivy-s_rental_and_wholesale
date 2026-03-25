@@ -220,8 +220,8 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                                         )}
                                     </TableCell>
                                     <TableCell className="text-center">{item.quantity}</TableCell>
-                                    <TableCell className="text-right">${item.unit_price.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right font-medium">${item.total.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">£{item.unit_price.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-medium">£{item.total.toFixed(2)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -233,23 +233,23 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                             <div className="w-64 space-y-2">
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Subtotal</span>
-                                    <span>${subtotalAmount.toFixed(2)}</span>
+                                    <span>£{subtotalAmount.toFixed(2)}</span>
                                 </div>
                                 {discountAmount > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">
                                             Discount ({discountPercentage.toFixed(2)}%)
                                         </span>
-                                        <span className="text-red-600">- ${discountAmount.toFixed(2)}</span>
+                                        <span className="text-red-600">- £{discountAmount.toFixed(2)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Deposit</span>
-                                    <span>${depositAmount.toFixed(2)}</span>
+                                    <span>£{depositAmount.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-lg font-bold border-t pt-2">
                                     <span>Total Due</span>
-                                    <span>${totalAmount.toFixed(2)}</span>
+                                    <span>£{totalAmount.toFixed(2)}</span>
                                 </div>
                             </div>
                         </div>

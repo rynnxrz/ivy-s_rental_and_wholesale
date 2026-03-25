@@ -22,7 +22,7 @@ import { Upload, X, Plus, CheckCircle2, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { createItem, updateItem, uploadItemImage, createCategory, createCollection } from '@/actions/items'
 import type { Item, ItemSpecs, ITEM_STATUS_OPTIONS } from '@/types'
-import { OFFICIAL_CHARACTERS } from '@/lib/items/catalog-rules'
+import { OFFICIAL_CHARACTERS, OFFICIAL_SIDE_CHARACTERS } from '@/lib/items/catalog-rules'
 import { toast } from 'sonner'
 
 const itemSchema = z.object({
@@ -31,14 +31,15 @@ const itemSchema = z.object({
     description: z.string().optional(),
     line_type: z.enum(['Mainline', 'Collaboration', 'Archive']),
     character_family: z.string().trim().min(1, 'Character is required'),
+    side_character: z.string().trim().optional(),
     category_id: z.string().optional(),
     collection_id: z.string().optional(),
     material: z.string().optional(),
     weight: z.string().optional(),
     color: z.string().optional(),
     category: z.string().optional(), // Legacy, sync from category_id
-    rental_price: z.coerce.number().min(0, 'Price must be positive'),
-    replacement_cost: z.coerce.number().min(0, 'Cost must be positive'),
+    rental_price: z.coerce.number().min(0, 'Price must be positive').optional(),
+    replacement_cost: z.coerce.number().gt(0, 'RRP must be greater than 0'),
     status: z.enum(['active', 'maintenance', 'retired']),
 })
 
@@ -70,6 +71,31 @@ const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
     { value: 'maintenance', label: 'Maintenance' },
     { value: 'retired', label: 'Retired' },
 ]
+
+const ONE_WEEK_RENTAL_RATE = 0.15
+const ONE_WEEK_DAYS = 7
+
+const roundCurrency = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
+const deriveDailyRentalFromRrp = (rrp: number) => {
+    const safeRrp = Number.isFinite(rrp) ? Math.max(0, rrp) : 0
+    return roundCurrency((safeRrp * ONE_WEEK_RENTAL_RATE) / ONE_WEEK_DAYS)
+}
+
+const RING_SIZE_GUIDE_TEXT = 'Ring size guide: S diameter 16.9mm (circumference 51.8mm), M diameter 18.2mm (circumference 57.2mm).'
+
+const normalizeTemplateKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+
+const SIZE_TEMPLATE_BY_NAME: Record<string, string> = {
+    [normalizeTemplateKey('ORCHID WHISPER EARRINGS')]: 'S / M / L\nL: 8.8cm * 8cm\nM: 6.5cm * 5.5cm\nS: 3.5cm * 3cm',
+    [normalizeTemplateKey('HAPPY ORCHIDS EARRINGS')]: 'OS\nOS: 7.8cm * 8cm',
+    [normalizeTemplateKey('DASHA REBIRTH EARRINGS')]: 'OS',
+    [normalizeTemplateKey("BOTANIC ELEGY: THE BLOSSOM'S AFTERLIFE")]: 'OS\nOS: 8.2cm * 8cm',
+    [normalizeTemplateKey('OCEANSPINE PETALS')]: 'OS\nOS: 12cm * 2.1cm',
+    [normalizeTemplateKey('OCEANSPINE CORAL EARRINGS')]: 'OS',
+    [normalizeTemplateKey('SEA PASSIFLORA')]: 'OS\nOS: 9.5cm * 8.5cm',
+    [normalizeTemplateKey('BROOCH')]: 'S / M\nS: 8.8cm * 8cm\nM: 7cm * 7.5cm',
+}
 
 export const ItemForm = ({
     item,
@@ -116,6 +142,7 @@ export const ItemForm = ({
             description: initialData?.description ?? item?.description ?? '',
             line_type: initialData?.line_type ?? item?.line_type ?? 'Mainline',
             character_family: defaultCharacterFamily,
+            side_character: initialData?.side_character ?? item?.side_character ?? '',
             category_id: initialData?.category_id ?? item?.category_id ?? '',
             collection_id: initialData?.collection_id ?? item?.collection_id ?? '',
             material: initialData?.material ?? item?.material ?? '',
@@ -138,6 +165,14 @@ export const ItemForm = ({
             setValue('category', cat.name)
         }
     }
+
+    const selectedCategoryName = categories.find((c) => c.id === watch('category_id'))?.name ?? ''
+    const normalizedCategoryName = selectedCategoryName.toLowerCase().replace(/\s+/g, '')
+    const singularCategoryName = normalizedCategoryName.endsWith('s')
+        ? normalizedCategoryName.slice(0, -1)
+        : normalizedCategoryName
+    const isRingCategory = singularCategoryName === 'ring'
+    const isEarringCategory = singularCategoryName === 'earring'
 
     const handleQuickAddCategory = async () => {
         const name = prompt("Enter new jewelry type name:")
@@ -217,12 +252,15 @@ export const ItemForm = ({
         startSubmitting(() => {
             void (async () => {
                 try {
+                    const derivedRentalPrice = deriveDailyRentalFromRrp(data.replacement_cost)
                     const itemData = {
                         ...data,
+                        rental_price: derivedRentalPrice,
                         image_paths: images,
                         specs,
                         description: data.description || undefined,
                         character_family: data.character_family.trim(),
+                        side_character: data.side_character?.trim() || undefined,
                         category_id: data.category_id || undefined,
                         collection_id: data.collection_id || undefined,
                         material: data.material || undefined,
@@ -330,11 +368,11 @@ export const ItemForm = ({
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="sku">SKU *</Label>
+                            <Label htmlFor="sku">Style *</Label>
                             <Input
                                 id="sku"
                                 {...register('sku')}
-                                placeholder="e.g., RING-001"
+                                placeholder="e.g., RB-ORD-WH001-S"
                             />
                             {errors.sku && (
                                 <p className="text-sm text-red-500">{errors.sku.message}</p>
@@ -342,15 +380,21 @@ export const ItemForm = ({
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="name">Name *</Label>
+                            <Label htmlFor="material">Material</Label>
                             <Input
-                                id="name"
-                                {...register('name')}
-                                placeholder="e.g., Diamond Solitaire Ring"
+                                id="material"
+                                {...register('material')}
+                                placeholder="e.g., Customised Resin"
                             />
-                            {errors.name && (
-                                <p className="text-sm text-red-500">{errors.name.message}</p>
-                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="color">Colour</Label>
+                            <Input
+                                id="color"
+                                {...register('color')}
+                                placeholder="e.g., White"
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -361,6 +405,124 @@ export const ItemForm = ({
                                 placeholder="Describe the item..."
                                 rows={3}
                             />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="category_id">Jewelry Type</Label>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={watch('category_id') || "none"}
+                                        onValueChange={(value) => setValue('category_id', value === "none" ? "" : value)}
+                                    >
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Select Jewelry Type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">None</SelectItem>
+                                            {categories.map((c) => (
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCategory} title="Quick Add Jewelry Type">
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="size">Sizes</Label>
+                                <Input
+                                    id="size"
+                                    value={specs.size ?? ''}
+                                    onChange={(e) => updateSpec('size', e.target.value)}
+                                    placeholder="e.g., Mini / Regular / OS"
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                    {isRingCategory ? (
+                                        <>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => updateSpec('size', 'S')}>
+                                                S
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => updateSpec('size', 'M')}>
+                                                M
+                                            </Button>
+                                        </>
+                                    ) : isEarringCategory ? (
+                                        <>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => updateSpec('size', 'Mini')}>
+                                                Mini
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => updateSpec('size', 'Regular')}>
+                                                Regular
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => updateSpec('size', 'OS')}>
+                                                OS
+                                            </Button>
+                                        </>
+                                    ) : null}
+                                </div>
+                                {isRingCategory && (
+                                    <p className="text-xs text-muted-foreground">{RING_SIZE_GUIDE_TEXT}</p>
+                                )}
+                                {SIZE_TEMPLATE_BY_NAME[normalizeTemplateKey(watch('name') || '')] && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => updateSpec('size', SIZE_TEMPLATE_BY_NAME[normalizeTemplateKey(watch('name') || '')])}
+                                    >
+                                        Apply Recommended Size Template
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="name">Accessories *</Label>
+                            <Input
+                                id="name"
+                                {...register('name')}
+                                placeholder="e.g., Orchid Whisper Earrings"
+                            />
+                            {errors.name && (
+                                <p className="text-sm text-red-500">{errors.name.message}</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="weight">Weight</Label>
+                            <Input
+                                id="weight"
+                                {...register('weight')}
+                                placeholder="e.g., 1g/each"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="replacement_cost">RRP *</Label>
+                            <Input
+                                id="replacement_cost"
+                                type="number"
+                                step="0.01"
+                                {...register('replacement_cost')}
+                                placeholder="0.00"
+                            />
+                            {errors.replacement_cost && (
+                                <p className="text-sm text-red-500">
+                                    {errors.replacement_cost.message}
+                                </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                Recommended retail price (used for invoice rental tier and deposit).
+                            </p>
+                        </div>
+
+                        <div className="border-t pt-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Secondary Information
+                            </p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -408,80 +570,57 @@ export const ItemForm = ({
                             </div>
                         </div>
 
-                        {/* Website Collections & Jewelry Types */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="category_id">Jewelry Type</Label>
-                                <div className="flex gap-2">
-                                    <Select
-                                        value={watch('category_id') || "none"}
-                                        onValueChange={(value) => setValue('category_id', value === "none" ? "" : value)}
+                        <div className="space-y-2">
+                            <Label htmlFor="side_character">Side Character</Label>
+                            <Input
+                                id="side_character"
+                                {...register('side_character')}
+                                placeholder="e.g., Stud Earrings / Dangle Earrings / Mega Earrings"
+                                list="side-character-options"
+                            />
+                            <datalist id="side-character-options">
+                                {OFFICIAL_SIDE_CHARACTERS.map((option) => (
+                                    <option key={option} value={option} />
+                                ))}
+                            </datalist>
+                            <div className="flex flex-wrap gap-2">
+                                {OFFICIAL_SIDE_CHARACTERS.slice(0, 6).map((option) => (
+                                    <Button
+                                        key={option}
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setValue('side_character', option)}
                                     >
-                                        <SelectTrigger className="flex-1">
-                                            <SelectValue placeholder="Select Jewelry Type" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            {categories.map((c) => (
-                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCategory} title="Quick Add Jewelry Type">
-                                        <Plus className="h-4 w-4" />
+                                        {option}
                                     </Button>
-                                </div>
+                                ))}
                             </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="collection_id">Website Collection</Label>
-                                <div className="flex gap-2">
-                                    <Select
-                                        value={watch('collection_id') || "none"}
-                                        onValueChange={(value) => setValue('collection_id', value === "none" ? "" : value)}
-                                    >
-                                        <SelectTrigger className="flex-1">
-                                            <SelectValue placeholder="Select Website Collection" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            {collections.map((c) => (
-                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCollection} title="Quick Add Website Collection">
-                                        <Plus className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Keep Character short (e.g., Daffodils Blossom) and use Side Character for sub-series.
+                            </p>
                         </div>
 
-                        {/* Color, Material & Weight */}
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="color">Color / Variant</Label>
-                                <Input
-                                    id="color"
-                                    {...register('color')}
-                                    placeholder="e.g., Red, Clear"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="material">Material</Label>
-                                <Input
-                                    id="material"
-                                    {...register('material')}
-                                    placeholder="e.g., 18K Gold"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="weight">Weight</Label>
-                                <Input
-                                    id="weight"
-                                    {...register('weight')}
-                                    placeholder="e.g., 3.5g"
-                                />
+                        <div className="space-y-2">
+                            <Label htmlFor="collection_id">Website Collection</Label>
+                            <div className="flex gap-2">
+                                <Select
+                                    value={watch('collection_id') || "none"}
+                                    onValueChange={(value) => setValue('collection_id', value === "none" ? "" : value)}
+                                >
+                                    <SelectTrigger className="flex-1">
+                                        <SelectValue placeholder="Select Website Collection" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        {collections.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Button type="button" variant="outline" size="icon" onClick={handleQuickAddCollection} title="Quick Add Website Collection">
+                                    <Plus className="h-4 w-4" />
+                                </Button>
                             </div>
                         </div>
 
@@ -504,51 +643,6 @@ export const ItemForm = ({
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Pricing */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Pricing</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="rental_price">Rental Price ($) *</Label>
-                            <Input
-                                id="rental_price"
-                                type="number"
-                                step="0.01"
-                                {...register('rental_price')}
-                                placeholder="0.00"
-                            />
-                            {errors.rental_price && (
-                                <p className="text-sm text-red-500">
-                                    {errors.rental_price.message}
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="replacement_cost">
-                                Replacement Cost ($) *
-                            </Label>
-                            <Input
-                                id="replacement_cost"
-                                type="number"
-                                step="0.01"
-                                {...register('replacement_cost')}
-                                placeholder="0.00"
-                            />
-                            {errors.replacement_cost && (
-                                <p className="text-sm text-red-500">
-                                    {errors.replacement_cost.message}
-                                </p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                                Used for deposit/insurance reference
-                            </p>
                         </div>
                     </CardContent>
                 </Card>

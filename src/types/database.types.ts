@@ -553,6 +553,7 @@ export type Database = {
           priority: number | null
           rental_price: number
           replacement_cost: number
+          side_character: string | null
           sku: string | null
           source_url: string | null
           specs: Json | null
@@ -579,6 +580,7 @@ export type Database = {
           priority?: number | null
           rental_price: number
           replacement_cost?: number
+          side_character?: string | null
           sku?: string | null
           source_url?: string | null
           specs?: Json | null
@@ -605,6 +607,7 @@ export type Database = {
           priority?: number | null
           rental_price?: number
           replacement_cost?: number
+          side_character?: string | null
           sku?: string | null
           source_url?: string | null
           specs?: Json | null
@@ -1193,6 +1196,7 @@ export type Database = {
           priority: number | null
           rental_price: number
           replacement_cost: number
+          side_character: string | null
           sku: string | null
           source_url: string | null
           specs: Json | null

@@ -28,8 +28,10 @@ import type { BillingProfile } from '@/types'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import {
+    buildRentalTierDescription,
     computeInvoicePricing,
     computeRentalChargeFromRetail,
+    isMonthlyRateBridgeDays,
 } from '@/lib/invoice/pricing'
 
 interface ApproveItem {
@@ -156,7 +158,10 @@ export function ApproveButton({
         return {
             ...item,
             lineTotal,
-            tierDescription: `50% of Retail Value: $${(item.retailPrice * 0.5).toFixed(2)}`,
+            tierDescription: buildRentalTierDescription({
+                retailPrice: item.retailPrice,
+                rentalDays: effectiveRentalDays,
+            }),
         }
     })
 
@@ -179,8 +184,7 @@ export function ApproveButton({
         replacementCostTotal,
     })
     const hasManualDeposit = normalizedDepositOverride !== null
-    const isDefaultDepositCapped =
-        pricing.uncappedDefaultDepositAmount > pricing.defaultDepositAmount
+    const usesMonthlyBridgeRate = isMonthlyRateBridgeDays(effectiveRentalDays)
     const lateFeeNotice = 'Late return fee: £20 per day, which will be deducted from the deposit.'
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
@@ -419,11 +423,16 @@ export function ApproveButton({
                                                 <div className="text-xs text-gray-500">{item.tierDescription}</div>
                                             </div>
                                             <div className="text-right">
-                                                <span>${item.lineTotal.toFixed(2)}</span>
+                                                <span>£{item.lineTotal.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </div>
                                 ))
+                            )}
+                            {usesMonthlyBridgeRate && previewItems.length > 0 && (
+                                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                    1-Month Rate applied (charged at monthly rate) for 15-29 day rentals.
+                                </div>
                             )}
                         </div>
 
@@ -432,39 +441,33 @@ export function ApproveButton({
                             <h3 className="font-bold text-gray-900 mb-2 uppercase text-xs tracking-wider border-b border-gray-200 pb-1">Charges</h3>
                             <div className="flex justify-between py-2 border-b border-gray-50">
                                 <span className="text-gray-600">Subtotal</span>
-                                <span className="font-medium">${pricing.subtotal.toFixed(2)}</span>
+                                <span className="font-medium">£{pricing.subtotal.toFixed(2)}</span>
                             </div>
                             {pricing.discountAmount > 0 && (
                                 <div className="flex justify-between py-2 border-b border-gray-50">
                                     <span className="text-gray-600">Discount ({pricing.discountPercentage.toFixed(2)}%)</span>
-                                    <span className="font-medium text-red-600">- ${pricing.discountAmount.toFixed(2)}</span>
+                                    <span className="font-medium text-red-600">- £{pricing.discountAmount.toFixed(2)}</span>
                                 </div>
                             )}
                             {!hasManualDeposit && (
                                 <div className="flex justify-between py-2 border-b border-gray-50">
                                     <span className="text-gray-600">Deposit (50% Retail)</span>
-                                    <span className="font-medium">${pricing.uncappedDefaultDepositAmount.toFixed(2)}</span>
-                                </div>
-                            )}
-                            {!hasManualDeposit && isDefaultDepositCapped && (
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-600">Deposit (Capped at $300)</span>
-                                    <span className="font-medium">${pricing.defaultDepositAmount.toFixed(2)}</span>
+                                    <span className="font-medium">£{pricing.defaultDepositAmount.toFixed(2)}</span>
                                 </div>
                             )}
                             {hasManualDeposit && (
                                 <div className="flex justify-between py-2 border-b border-gray-50">
                                     <span className="text-gray-600">Default Deposit (50% Retail)</span>
-                                    <span className="font-medium">${pricing.defaultDepositAmount.toFixed(2)}</span>
+                                    <span className="font-medium">£{pricing.defaultDepositAmount.toFixed(2)}</span>
                                 </div>
                             )}
                             <div className="flex justify-between py-2 border-b border-gray-50">
                                 <span className="text-gray-600">{hasManualDeposit ? 'Deposit (Manual)' : 'Deposit'}</span>
-                                <span className="font-medium">${pricing.depositAmount.toFixed(2)}</span>
+                                <span className="font-medium">£{pricing.depositAmount.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between py-3 border-t-2 border-gray-800 mt-2">
                                 <span className="font-bold text-lg">Total Due</span>
-                                <span className="font-bold text-lg text-green-700">${pricing.totalDue.toFixed(2)}</span>
+                                <span className="font-bold text-lg text-green-700">£{pricing.totalDue.toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -559,7 +562,7 @@ export function ApproveButton({
                                     <div key={item.reservationId} className="flex items-center justify-between gap-3 rounded border border-gray-100 px-3 py-2">
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-medium text-gray-900">{item.name}</p>
-                                            <p className="text-xs text-gray-500">Retail value: ${item.retailPrice.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-500">Retail value: £{item.retailPrice.toFixed(2)}</p>
                                         </div>
                                         <Button
                                             type="button"
@@ -640,14 +643,13 @@ export function ApproveButton({
                                     id="deposit-override"
                                     type="number"
                                     min={0}
-                                    max={300}
                                     step={0.01}
                                     value={depositAmountOverrideInput}
                                     onChange={(e) => setDepositAmountOverrideInput(e.target.value)}
                                     placeholder="0 to waive or custom"
                                     className="bg-white"
                                 />
-                                <p className="text-xs text-gray-500">Blank = default. Max $300.</p>
+                                <p className="text-xs text-gray-500">Blank = default (50% of retail value).</p>
                             </div>
                         </div>
                         <Label htmlFor="invoice-notes" className="text-sm font-medium text-gray-700">

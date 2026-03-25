@@ -1,7 +1,14 @@
 import { Resend } from 'resend';
 import { ShippingEmailTemplate } from './ShippingEmailTemplate';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const getResendClient = () => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+        return null;
+    }
+
+    return new Resend(apiKey);
+};
 
 interface EmailAttachment {
     filename: string;
@@ -51,6 +58,11 @@ export async function sendShippingEmail({
     customFooter,
 }: SendShippingEmailParams) {
     try {
+        const resend = getResendClient();
+        if (!resend) {
+            return { success: false, error: new Error('RESEND_API_KEY is not configured.') };
+        }
+
         const fromName = companyName ? `${companyName}` : 'Ivy Rental';
 
         // Process subject line with placeholders

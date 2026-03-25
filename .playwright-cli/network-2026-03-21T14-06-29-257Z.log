@@ -1,0 +1,5 @@
+[POST] http://localhost:3000/admin/items => [200] OK
+[POST] http://localhost:3000/admin/items => [200] OK
+[POST] http://localhost:3000/admin/items => [200] OK
+[GET] http://localhost:3000/admin/items?_rsc=1uaga => [200] OK
+[POST] http://localhost:3000/admin/items => [200] OK

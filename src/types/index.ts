@@ -23,6 +23,7 @@ export type Item = Omit<Database['public']['Tables']['items']['Row'], 'status'> 
     status: 'active' | 'maintenance' | 'retired'
     line_type: ItemLineType
     character_family: string
+    side_character: string | null
     category_id: string | null
     collection_id: string | null
     material: string | null
@@ -34,6 +35,11 @@ export type Item = Omit<Database['public']['Tables']['items']['Row'], 'status'> 
 }
 export type ItemInsert = Database['public']['Tables']['items']['Insert']
 export type ItemUpdate = Database['public']['Tables']['items']['Update']
+export type BulkItemUpdates = {
+    replacement_cost?: number
+    character_family?: string
+    side_character?: string
+}
 
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']

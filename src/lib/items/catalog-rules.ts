@@ -4,7 +4,7 @@ export const UNCATEGORIZED_CHARACTER = 'Uncategorized'
 
 export const OFFICIAL_CHARACTERS = [
     'Orchid Whisper',
-    'Daffodil Blossom',
+    'Daffodils Blossom',
     'Dasha Rebirth',
     'Oceanspine Petals',
     'Botanic Elegy',
@@ -20,7 +20,7 @@ type CharacterRule = {
 
 const CHARACTER_RULES: CharacterRule[] = [
     { character: 'Orchid Whisper', patterns: [/orchid whisper/i, /\borchid\b/i] },
-    { character: 'Daffodil Blossom', patterns: [/daffodils?\s*blossom/i, /\bdaffodils?\b/i] },
+    { character: 'Daffodils Blossom', patterns: [/daffodils?\s*blossom/i, /\bdaffodils?\b/i] },
     { character: 'Dasha Rebirth', patterns: [/dasha\s*rebirth/i, /\brebirth\b/i] },
     { character: 'Oceanspine Petals', patterns: [/oceanspine\s*petals/i, /ocean\s*spine/i, /\boceanspine\b/i] },
     { character: 'Botanic Elegy', patterns: [/botanic\s*elegy/i] },
@@ -37,6 +37,25 @@ const JEWELRY_TYPE_RULES: Array<{ label: string; patterns: RegExp[] }> = [
     { label: 'Rings', patterns: [/\brings?\b/i] },
     { label: 'Brooch', patterns: [/\bbrooch(?:es)?\b/i, /\bpin\b/i] },
 ]
+
+type SideCharacterRule = {
+    label: string
+    patterns: RegExp[]
+}
+
+const SIDE_CHARACTER_RULES: SideCharacterRule[] = [
+    { label: 'Mega Earrings', patterns: [/\bmega\s+earrings?\b/i] },
+    { label: 'Dangle Earrings', patterns: [/\bdangle\s+earrings?\b/i] },
+    { label: 'Stud Earrings', patterns: [/\bstud\s+earrings?\b/i, /\bstuds?\b/i] },
+    { label: 'Hoop Earrings', patterns: [/\bhoop\s+earrings?\b/i, /\bhoops?\b/i] },
+    { label: 'Ear Cuff', patterns: [/\bear\s*cuffs?\b/i] },
+    { label: 'Brooch', patterns: [/\bbrooch(?:es)?\b/i, /\bpin\b/i] },
+    { label: 'Ring', patterns: [/\brings?\b/i] },
+    { label: 'Necklace', patterns: [/\bnecklaces?\b/i] },
+    { label: 'Bracelet', patterns: [/\bbracelets?\b/i] },
+]
+
+export const OFFICIAL_SIDE_CHARACTERS = SIDE_CHARACTER_RULES.map(rule => rule.label)
 
 export function isOfficialCharacter(value?: string | null): value is OfficialCharacter {
     return OFFICIAL_CHARACTERS.includes((value || '').trim() as OfficialCharacter)
@@ -84,6 +103,20 @@ export function inferCharacterFamilyFromText(text: string, existingCharacter?: s
 export function inferJewelryTypeFromText(text: string): string | null {
     const matched = JEWELRY_TYPE_RULES.find(rule => rule.patterns.some(pattern => pattern.test(text)))
     return matched?.label || null
+}
+
+export function sanitizeSideCharacter(value?: string | null): string | null {
+    const normalized = value?.trim()
+    return normalized ? normalized : null
+}
+
+export function inferSideCharacterFromText(text: string, existingSideCharacter?: string | null): string | null {
+    const matched = SIDE_CHARACTER_RULES.find(rule => rule.patterns.some(pattern => pattern.test(text)))
+    if (matched) {
+        return matched.label
+    }
+
+    return sanitizeSideCharacter(existingSideCharacter)
 }
 
 type ResolveCatalogFieldsInput = {

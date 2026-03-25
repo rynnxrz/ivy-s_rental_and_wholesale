@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CustomerServiceWidget } from '@/components/customer-service/CustomerServiceWidget'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2 } from 'lucide-react'
 
@@ -27,6 +28,17 @@ export default function RequestSuccessPage() {
                     </Link>
                 </div>
             </div>
+            <CustomerServiceWidget
+                storageKey="customer-service:request-success"
+                baseContext={{
+                    pageType: 'request_success',
+                    path: '/request/success',
+                    requestSuccess: {
+                        latestEmail: null,
+                        latestFingerprint: null,
+                    },
+                }}
+            />
         </main>
     )
 }

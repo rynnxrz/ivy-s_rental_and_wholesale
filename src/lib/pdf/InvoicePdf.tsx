@@ -312,7 +312,7 @@ export const InvoicePdf = ({ data }: InvoiceProps) => {
                                     </View>
                                     <View style={[styles.colAmount, styles.tableCell]}>
                                         <Text style={{ textAlign: 'right', fontFamily: 'Helvetica-Bold' }}>
-                                            ${itemTotal.toFixed(2)}
+                                            £{itemTotal.toFixed(2)}
                                         </Text>
                                     </View>
                                 </View>
@@ -323,23 +323,23 @@ export const InvoicePdf = ({ data }: InvoiceProps) => {
                     <View style={styles.totalsSection}>
                         <View style={styles.totalsRow}>
                             <Text style={{ color: '#666' }}>Subtotal</Text>
-                            <Text>${resolvedSubtotal.toFixed(2)}</Text>
+                            <Text>£{resolvedSubtotal.toFixed(2)}</Text>
                         </View>
                         {resolvedDiscountAmount > 0 && (
                             <View style={styles.totalsRow}>
                                 <Text style={{ color: '#666' }}>
                                     Discount ({resolvedDiscountPercentage.toFixed(2)}%)
                                 </Text>
-                                <Text>- ${resolvedDiscountAmount.toFixed(2)}</Text>
+                                <Text>- £{resolvedDiscountAmount.toFixed(2)}</Text>
                             </View>
                         )}
                         <View style={styles.totalsRow}>
                             <Text style={{ color: '#666' }}>Deposit</Text>
-                            <Text>${resolvedDepositAmount.toFixed(2)}</Text>
+                            <Text>£{resolvedDepositAmount.toFixed(2)}</Text>
                         </View>
                         <View style={styles.grandTotalRow}>
                             <Text style={styles.grandTotalLabel}>Total Due</Text>
-                            <Text style={styles.grandTotalValue}>${resolvedTotalDue.toFixed(2)}</Text>
+                            <Text style={styles.grandTotalValue}>£{resolvedTotalDue.toFixed(2)}</Text>
                         </View>
                     </View>
                 </View>

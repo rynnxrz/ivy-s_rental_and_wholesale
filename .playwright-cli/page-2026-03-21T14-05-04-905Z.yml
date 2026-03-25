@@ -1,0 +1,86 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - region "Notifications alt+T"
+  - banner [ref=e3]:
+    - link "IVYJSTUDIO" [ref=e5] [cursor=pointer]:
+      - /url: /
+  - generic [ref=e6]:
+    - complementary [ref=e7]:
+      - generic [ref=e9]: Ivy's Rental
+      - navigation [ref=e11]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Items" [ref=e20] [cursor=pointer]:
+          - /url: /admin/items
+          - img [ref=e22]
+          - generic [ref=e26]: Items
+        - link "Reservations" [ref=e27] [cursor=pointer]:
+          - /url: /admin/reservations
+          - img [ref=e29]
+          - generic [ref=e31]: Reservations
+        - link "Invoices" [ref=e32] [cursor=pointer]:
+          - /url: /admin/invoices
+          - img [ref=e34]
+          - generic [ref=e37]: Invoices
+        - link "Customers" [ref=e38] [cursor=pointer]:
+          - /url: /admin/customers
+          - img [ref=e40]
+          - generic [ref=e45]: Customers
+      - generic [ref=e46]:
+        - link "Settings" [ref=e47] [cursor=pointer]:
+          - /url: /admin/settings
+          - img [ref=e49]
+          - generic [ref=e52]: Settings
+        - button "Sign Out" [ref=e53]:
+          - img [ref=e55]
+          - generic [ref=e58]: Sign Out
+    - main [ref=e59]:
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - button [ref=e122]:
+            - img
+          - generic [ref=e123]:
+            - heading "Lookbook Import" [level=2] [ref=e124]:
+              - img [ref=e125]
+              - text: Lookbook Import
+            - paragraph [ref=e128]: Upload a lookbook PDF, confirm the structure map, review draft items, then import.
+        - generic [ref=e129]:
+          - complementary [ref=e130]:
+            - generic [ref=e131]:
+              - generic [ref=e132]:
+                - heading "Import Sessions" [level=3] [ref=e133]
+                - paragraph [ref=e134]: Current and recent PDF imports.
+              - button "New" [ref=e135]:
+                - img
+                - text: New
+            - generic [ref=e136]:
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e137]:
+                - generic [ref=e138]: 2026SS.pdf
+                - generic [ref=e139]:
+                  - generic [ref=e140]: Parse Failed
+                  - generic [ref=e141]: 0 items
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e142]:
+                - generic [ref=e143]: 2026SS.pdf
+                - generic [ref=e144]:
+                  - generic [ref=e145]: Parse Failed
+                  - generic [ref=e146]: 0 items
+              - button "2026SS.pdf Parse Failed 0 items" [ref=e147]:
+                - generic [ref=e148]: 2026SS.pdf
+                - generic [ref=e149]:
+                  - generic [ref=e150]: Parse Failed
+                  - generic [ref=e151]: 0 items
+          - generic [ref=e152]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: Parse Failed
+              - generic [ref=e172]: 2026SS.pdf
+            - generic [ref=e174]:
+              - img [ref=e175]
+              - generic [ref=e177]:
+                - generic [ref=e178]: Parsing failed for this session.
+                - generic [ref=e179]: Start a new import session with another PDF or retry the current file.
+  - button "Open Next.js Dev Tools" [ref=e115] [cursor=pointer]:
+    - img [ref=e116]
+  - alert [ref=e119]

@@ -1,0 +1,69 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - region "Notifications alt+T"
+  - banner [ref=e3]:
+    - link "IVYJSTUDIO" [ref=e5] [cursor=pointer]:
+      - /url: /
+  - main "Jewelry catalog" [ref=e6]:
+    - generic [ref=e7]:
+      - heading "Fine jewelry catalog" [level=1] [ref=e8]
+      - complementary "Catalog filters" [ref=e9]:
+        - generic [ref=e10]:
+          - heading "Rental Dates" [level=3] [ref=e11]
+          - group "Rental dates" [ref=e12]:
+            - button "Start Select date" [ref=e13]:
+              - generic [ref=e14]: Start
+              - generic [ref=e15]: Select date
+            - button "End Select date" [ref=e16]:
+              - generic [ref=e17]: End
+              - generic [ref=e18]: Select date
+        - generic [ref=e19]:
+          - heading "Categories" [level=3] [ref=e20]
+          - generic [ref=e21]:
+            - button "Brooch 0" [ref=e22]:
+              - generic [ref=e23]: Brooch
+              - generic [ref=e24]: "0"
+            - button "Earring 2" [ref=e25]:
+              - generic [ref=e26]: Earring
+              - generic [ref=e27]: "2"
+            - button "Necklace 0" [ref=e28]:
+              - generic [ref=e29]: Necklace
+              - generic [ref=e30]: "0"
+            - button "Rings 0" [ref=e31]:
+              - generic [ref=e32]: Rings
+              - generic [ref=e33]: "0"
+        - generic [ref=e34]:
+          - heading "Collections" [level=3] [ref=e35]
+          - button "Spring 2026 2" [ref=e37]:
+            - generic [ref=e38]: Spring 2026
+            - generic [ref=e39]: "2"
+      - region "Catalog results" [ref=e40]:
+        - heading "Collection Pieces" [level=2] [ref=e42]
+        - generic [ref=e44]:
+          - article "Flame Orchid Earrings" [ref=e45]:
+            - link "View details for Flame Orchid Earrings" [ref=e46] [cursor=pointer]:
+              - /url: /catalog/c8c64efa-f921-4a91-9eec-b6f13cfa7483
+              - img "Flame Orchid Earrings fine jewelry piece" [ref=e48]
+              - heading "Flame Orchid Earrings" [level=3] [ref=e50]
+            - generic [ref=e51]:
+              - paragraph [ref=e52]: Earring
+              - generic [ref=e53]:
+                - generic "Rental price 10 dollars per day" [ref=e54]: $10/d
+                - button "Rental dates must be selected first" [disabled] [ref=e56]: + Add
+          - article "Burnt Orchid Earrings" [ref=e57]:
+            - link "View details for Burnt Orchid Earrings" [ref=e58] [cursor=pointer]:
+              - /url: /catalog/cb594410-3b30-48c8-bdfc-2aa0d82abc6a
+              - img "Burnt Orchid Earrings fine jewelry piece" [ref=e60]
+              - heading "Burnt Orchid Earrings" [level=3] [ref=e62]
+            - generic [ref=e63]:
+              - paragraph [ref=e64]: Earring
+              - generic [ref=e65]:
+                - generic "Rental price 20 dollars per day" [ref=e66]: $20/d
+                - button "Rental dates must be selected first" [disabled] [ref=e68]: + Add
+    - button "Ask Ivy" [ref=e72]:
+      - img
+      - text: Ask Ivy
+  - button "Open Next.js Dev Tools" [ref=e78] [cursor=pointer]:
+    - img [ref=e79]
+  - alert [ref=e82]

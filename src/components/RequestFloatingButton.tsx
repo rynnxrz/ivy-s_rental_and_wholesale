@@ -18,6 +18,15 @@ import {
 import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import {
+    buildTieredPricingDisplay,
+    getTierName,
+    MONTHLY_BRIDGE_NOTICE,
+    TIER_AMOUNT_UNAVAILABLE_MESSAGE,
+} from "@/lib/invoice/tiered-display"
+import {
+    normalizeBillableDays,
+} from "@/lib/invoice/pricing"
 
 export function RequestFloatingButton() {
     const pathname = usePathname()
@@ -45,15 +54,33 @@ export function RequestFloatingButton() {
     }, [pathname])
 
     // Calculate details
-    const hasDates = dateRange.from && dateRange.to
+    const hasDates = Boolean(dateRange.from && dateRange.to)
     const fromDate = hasDates ? parse(dateRange.from!, 'yyyy-MM-dd', new Date()) : null
     const toDate = hasDates ? parse(dateRange.to!, 'yyyy-MM-dd', new Date()) : null
 
     const days = (fromDate && toDate)
-        ? Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)))
+        ? normalizeBillableDays(
+            Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        )
         : 0
+    const durationPricing = buildTieredPricingDisplay({
+        replacementCost: null,
+        selectedDays: hasDates ? days : null,
+    })
+    const usesMonthlyBridgeRate = hasDates && durationPricing.isMonthlyBridge
 
-    const totalCost = items.reduce((sum, item) => sum + (item.rental_price * days), 0)
+    const itemPricing = items.map((item) => ({
+        itemId: item.id,
+        display: buildTieredPricingDisplay({
+            replacementCost: item.replacement_cost,
+            selectedDays: hasDates ? days : null,
+        }),
+    }))
+    const itemPricingById = new Map(itemPricing.map((entry) => [entry.itemId, entry.display]))
+    const unavailableEstimateCount = hasDates
+        ? itemPricing.filter((entry) => entry.display.selectedEstimate === null).length
+        : 0
+    const totalCost = itemPricing.reduce((sum, entry) => sum + (entry.display.selectedEstimate ?? 0), 0)
 
     const getImageUrl = (images: string[] | null) => {
         if (images && images.length > 0) return images[0]
@@ -118,7 +145,12 @@ export function RequestFloatingButton() {
                             </p>
                             {hasDates && (
                                 <p className="text-xs text-gray-500 mt-0.5">
-                                    Duration: {days} day{days !== 1 ? 's' : ''}
+                                    Duration: {days} day{days !== 1 ? 's' : ''} <span className="text-gray-400 ml-1">({getTierName(days)})</span>
+                                </p>
+                            )}
+                            {hasDates && usesMonthlyBridgeRate && (
+                                <p className="text-xs text-amber-700 mt-0.5">
+                                    {MONTHLY_BRIDGE_NOTICE}
                                 </p>
                             )}
                         </div>
@@ -142,16 +174,28 @@ export function RequestFloatingButton() {
                                     <h4 className="font-semibold text-sm text-gray-900 truncate pr-6">{item.name}</h4>
                                     <p className="text-xs text-gray-700 capitalize">{item.category}</p>
                                 </div>
-                                <div className="flex items-center justify-between mt-2">
-                                    <p className="text-sm font-medium text-gray-900">
-                                        ${item.rental_price} <span className="text-xs text-gray-500 font-normal">/ day</span>
-                                    </p>
-                                    {hasDates && (
-                                        <p className="text-xs text-gray-500">
-                                            Total: <span className="font-medium text-gray-900">${(item.rental_price * days).toFixed(2)}</span>
+                                {(() => {
+                                    const tieredPricing = itemPricingById.get(item.id)
+                                    if (!tieredPricing) return null
+
+                                    if (tieredPricing.usesPercentageFallback) {
+                                        return (
+                                            <p className="mt-2 text-xs text-slate-500">
+                                                Price unavailable
+                                            </p>
+                                        )
+                                    }
+
+                                    const displayPrice = hasDates && tieredPricing.selectedEstimate !== null
+                                        ? tieredPricing.selectedEstimate
+                                        : tieredPricing.week1Amount
+
+                                    return (
+                                        <p className="mt-2 font-semibold text-sm text-slate-900">
+                                            £{displayPrice}
                                         </p>
-                                    )}
-                                </div>
+                                    )
+                                })()}
                             </div>
                             <Button
                                 variant="ghost"
@@ -169,9 +213,14 @@ export function RequestFloatingButton() {
                 {/* Footer Actions */}
                 <div className="mt-auto border-t pt-4 space-y-4">
                     <div className="flex items-center justify-between text-base font-medium">
-                        <span>Estimated Total</span>
-                        <span>${totalCost.toFixed(2)}</span>
+                        <span>{hasDates && unavailableEstimateCount > 0 ? 'Estimated Total (available items)' : 'Estimated Total'}</span>
+                        <span>£{totalCost.toFixed(2)}</span>
                     </div>
+                    {hasDates && unavailableEstimateCount > 0 && (
+                        <p className="text-xs text-amber-700">
+                            {TIER_AMOUNT_UNAVAILABLE_MESSAGE} ({unavailableEstimateCount} item{unavailableEstimateCount > 1 ? 's' : ''}).
+                        </p>
+                    )}
 
                     <SheetFooter>
                         <Link href="/request/summary" className="w-full" onClick={() => setOpen(false)}>

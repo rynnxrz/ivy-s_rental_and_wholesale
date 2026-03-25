@@ -1,0 +1,106 @@
+- generic:
+  - link:
+    - /url: "#main-content"
+    - text: Skip to content
+  - region "Notifications alt+T"
+  - banner:
+    - generic:
+      - link:
+        - /url: /
+        - text: IVYJSTUDIO
+  - main:
+    - generic:
+      - heading [level=1]: Fine jewelry catalog
+      - complementary:
+        - generic:
+          - heading [level=3]: Rental Dates
+          - group:
+            - button:
+              - generic: Start
+              - generic: Select date
+            - button:
+              - generic: End
+              - generic: Select date
+        - generic:
+          - heading [level=3]: Categories
+          - generic:
+            - button:
+              - generic: Brooch
+              - generic: "0"
+            - button:
+              - generic: Earring
+              - generic: "2"
+            - button:
+              - generic: Necklace
+              - generic: "0"
+            - button:
+              - generic: Rings
+              - generic: "0"
+        - generic:
+          - heading [level=3]: Collections
+          - generic:
+            - button:
+              - generic: Spring 2026
+              - generic: "2"
+      - region:
+        - generic:
+          - heading [level=2]: Collection Pieces
+        - generic:
+          - generic:
+            - article:
+              - link:
+                - /url: /catalog/c8c64efa-f921-4a91-9eec-b6f13cfa7483
+                - generic:
+                  - img
+                - generic:
+                  - heading [level=3]: Flame Orchid Earrings
+              - generic:
+                - paragraph: Earring
+                - generic:
+                  - generic: $10/d
+                  - generic:
+                    - button [disabled]: + Add
+            - article:
+              - link:
+                - /url: /catalog/cb594410-3b30-48c8-bdfc-2aa0d82abc6a
+                - generic:
+                  - img
+                - generic:
+                  - heading [level=3]: Burnt Orchid Earrings
+              - generic:
+                - paragraph: Earring
+                - generic:
+                  - generic: $20/d
+                  - generic:
+                    - button [disabled]: + Add
+    - generic:
+      - button [expanded]:
+        - img
+        - text: Ask Ivy
+  - button "Open Next.js Dev Tools" [ref=e78] [cursor=pointer]:
+    - img [ref=e79]
+  - alert
+  - dialog "Ask Ivy" [ref=e84]:
+    - button "Close" [ref=e85]:
+      - img [ref=e86]
+      - generic [ref=e89]: Close
+    - generic [ref=e91]:
+      - img [ref=e93]
+      - generic [ref=e96]:
+        - heading "Ask Ivy" [level=2] [ref=e97]
+        - paragraph [ref=e98]: Natural-language help for product details, request status, and invoice guidance.
+    - generic [ref=e99]:
+      - generic [ref=e101]: Activity
+      - paragraph [ref=e103]: Waiting for your question...
+      - generic [ref=e104]:
+        - generic [ref=e105]: Planning
+        - generic [ref=e106]: Verification
+        - generic [ref=e107]: Approved
+        - generic [ref=e108]: Running
+        - generic [ref=e109]: Done
+    - generic [ref=e114]: Ask about the current piece, your request summary, or a payment-confirmation page.
+    - generic [ref=e116]:
+      - textbox "Ask about this page, your request status, or invoice details..." [active] [ref=e117]: where is my order
+      - button "Send" [ref=e118]:
+        - img
+        - text: Send

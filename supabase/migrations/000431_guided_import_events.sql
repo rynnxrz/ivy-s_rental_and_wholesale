@@ -124,7 +124,7 @@ WHERE character_family IS NULL
 UPDATE items
 SET character_family = CASE
   WHEN character_family = 'Orchid' THEN 'Orchid Whisper'
-  WHEN character_family = 'Daffodil' THEN 'Daffodil Blossom'
+  WHEN character_family = 'Daffodil' THEN 'Daffodils Blossom'
   WHEN character_family = 'Oceanspine' THEN 'Oceanspine Petals'
   ELSE character_family
 END
@@ -133,7 +133,7 @@ WHERE character_family IN ('Orchid', 'Daffodil', 'Oceanspine');
 UPDATE staging_items
 SET character_family = CASE
   WHEN character_family = 'Orchid' THEN 'Orchid Whisper'
-  WHEN character_family = 'Daffodil' THEN 'Daffodil Blossom'
+  WHEN character_family = 'Daffodil' THEN 'Daffodils Blossom'
   WHEN character_family = 'Oceanspine' THEN 'Oceanspine Petals'
   ELSE character_family
 END
