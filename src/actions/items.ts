@@ -3521,7 +3521,7 @@ export async function answerImportQuestionsAction(input: {
     sectionSelections?: Record<string, boolean>
     answers?: Array<{
         itemId: string
-        type: 'character' | 'jewelry_type' | 'source_page'
+        type: GuidedImportIssue['type']
         value: string | number
     }>
 }): Promise<{ success: boolean; error: string | null }> {
