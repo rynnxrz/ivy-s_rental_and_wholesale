@@ -26,12 +26,12 @@ import {
 } from "@/components/ui/sheet"
 import { OrgSwitcher, type OrgSwitcherMembership } from './OrgSwitcher'
 
-const navItems: { href: string; label: string; icon: typeof LayoutDashboard; tour?: string }[] = [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/items', label: 'Items', icon: Package, tour: 'listings' },
-    { href: '/admin/reservations', label: 'Reservations', icon: Calendar, tour: 'reservations' },
-    { href: '/admin/invoices', label: 'Invoices', icon: FileText, tour: 'lookbook' },
-    { href: '/admin/customers', label: 'Customers', icon: Users, tour: 'team' },
+const navSuffixes: { suffix: string; label: string; icon: typeof LayoutDashboard; tour?: string }[] = [
+    { suffix: '', label: 'Dashboard', icon: LayoutDashboard },
+    { suffix: '/items', label: 'Items', icon: Package, tour: 'listings' },
+    { suffix: '/reservations', label: 'Reservations', icon: Calendar, tour: 'reservations' },
+    { suffix: '/invoices', label: 'Invoices', icon: FileText, tour: 'lookbook' },
+    { suffix: '/customers', label: 'Customers', icon: Users, tour: 'team' },
 ]
 
 
@@ -65,6 +65,15 @@ export const Sidebar = ({
     const supabase = createClient()
     const [isHovered, setIsHovered] = useState(false)
     const [isMobileOpen, setIsMobileOpen] = useState(false)
+
+    const basePath = currentOrg ? `/${currentOrg.slug}/admin` : '/admin'
+    const settingsHref = `${basePath}/settings`
+    const navItems = navSuffixes.map((s) => ({
+        href: `${basePath}${s.suffix}`,
+        label: s.label,
+        icon: s.icon,
+        tour: s.tour,
+    }))
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
@@ -117,7 +126,7 @@ export const Sidebar = ({
         <nav className="flex-1 space-y-1 px-2 py-4">
             {navItems.map((item) => {
                 const isActive = pathname === item.href ||
-                    (item.href !== '/admin' && pathname.startsWith(item.href))
+                    (item.href !== basePath && pathname.startsWith(item.href))
 
                 return (
                     <Link
@@ -171,7 +180,7 @@ export const Sidebar = ({
 
                             <div className="p-4 border-t border-slate-200 bg-white space-y-1">
                                 <Link
-                                    href="/admin/settings"
+                                    href={settingsHref}
                                     onClick={closeMobileMenu}
                                     className="flex w-full items-center rounded-lg py-2 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 mb-1 gap-3"
                                 >
@@ -215,7 +224,7 @@ export const Sidebar = ({
                     <nav className="flex-1 space-y-1 py-4" style={{ width: '240px' }}>
                         {navItems.map((item) => {
                             const isActive = pathname === item.href ||
-                                (item.href !== '/admin' && pathname.startsWith(item.href))
+                                (item.href !== basePath && pathname.startsWith(item.href))
 
                             return (
                                 <Link
@@ -252,12 +261,12 @@ export const Sidebar = ({
                 {/* Footer Controls */}
                 <div className="py-2" style={{ width: '240px' }}>
                     <Link
-                        href="/admin/settings"
+                        href={settingsHref}
                         title={!isHovered ? 'Settings' : undefined}
                         data-tour="settings"
                         className={cn(
                             'flex items-center mx-2 rounded-lg py-2 text-sm font-medium transition-colors',
-                            pathname === '/admin/settings'
+                            pathname === settingsHref
                                 ? 'bg-slate-200 text-slate-900'
                                 : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                         )}
