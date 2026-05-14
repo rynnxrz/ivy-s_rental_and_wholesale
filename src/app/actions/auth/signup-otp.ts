@@ -102,32 +102,6 @@ export async function requestSignupOtpAction(
     const requestedSlug = input.slug.trim().toLowerCase()
     const country = input.country?.trim() || null
 
-    // Duplicate-email pre-check (service role) so we don't silently
-    // turn /signup into a magic-link login for an existing account.
-    const service = createServiceClient()
-    try {
-        const { data, error } = await service.auth.admin.listUsers({
-            page: 1,
-            perPage: 200,
-        })
-        if (!error && data) {
-            const exists = data.users.some(
-                (u) => (u.email ?? '').toLowerCase() === email,
-            )
-            if (exists) {
-                return {
-                    ok: false,
-                    error:
-                        'An account with this email already exists. Please log in instead.',
-                    field: 'email',
-                }
-            }
-        }
-    } catch {
-        // Soft-fail: if we can't pre-check, fall through to signInWithOtp
-        // which will still create the user (or hit Supabase rate limit).
-    }
-
     const supabase = await createClient()
     const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -200,36 +174,6 @@ export async function verifySignupOtpAction(
         }
     }
 
-    // Idempotency guard: if this user already has an org membership
-    // (e.g. the user retried verifyOtp after Stage A->B->refresh), we
-    // skip provisioning and just route them to their existing slug.
-    const service = createServiceClient()
-    {
-        const { data: existing } = await service
-            .from('organization_members')
-            .select('role, organizations!inner(slug, name)')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle()
-        const existingOrg = (existing as
-            | { organizations?: { slug?: string; name?: string } }
-            | null)?.organizations
-        if (existingOrg?.slug && existingOrg?.name) {
-            // refresh JWT just in case current_org_id was lost
-            await supabase.auth.refreshSession().catch(() => {})
-            return {
-                ok: true,
-                slug: existingOrg.slug,
-                orgName: existingOrg.name,
-            }
-        }
-    }
-
-    // Pull store_name + requested_slug from user_metadata (stamped in
-    // Stage A). Fall back to email-prefix-derived defaults if metadata
-    // was lost (rare — only if the user manually invoked verifyOtp
-    // without going through requestSignupOtp).
     type Metadata = { store_name?: string; requested_slug?: string }
     const md = (user.user_metadata as Metadata | null) ?? {}
     const storeName =
@@ -239,6 +183,32 @@ export async function verifySignupOtpAction(
     const requestedSlug =
         md.requested_slug?.trim().toLowerCase() ||
         (email.split('@')[0] || 'studio').toLowerCase().replace(/[^a-z0-9-]/g, '-')
+
+    // Idempotency guard: if this user already owns the exact slug being
+    // requested (e.g. retried verifyOtp after Stage A->B->refresh), skip
+    // provisioning and route them there. But if they own *other* orgs,
+    // proceed — multi-org signup is intentional.
+    const service = createServiceClient()
+    {
+        const { data: existing } = await service
+            .from('organization_members')
+            .select('role, organizations!inner(slug, name)')
+            .eq('user_id', user.id)
+
+        type MemberRow = { organizations?: { slug?: string; name?: string } }
+        const rows = (existing ?? []) as MemberRow[]
+        const match = rows.find(
+            (r) => r.organizations?.slug === requestedSlug,
+        )
+        if (match?.organizations?.slug && match.organizations.name) {
+            await supabase.auth.refreshSession().catch(() => {})
+            return {
+                ok: true,
+                slug: match.organizations.slug,
+                orgName: match.organizations.name,
+            }
+        }
+    }
 
     const prov = await provisionOrgForNewUser({
         userId: user.id,

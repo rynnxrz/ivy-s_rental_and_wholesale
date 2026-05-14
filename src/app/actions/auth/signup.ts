@@ -237,7 +237,7 @@ export async function signupAction(input: SignupInput): Promise<SignupResult> {
             return {
                 ok: false,
                 error:
-                    'An account with this email already exists. Try logging in or reset your password.',
+                    'An account with this email already exists. To create an additional workspace, use the 6-digit code option instead.',
                 field: 'email',
             }
         }
