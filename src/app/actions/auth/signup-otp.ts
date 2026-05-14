@@ -3,6 +3,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { validateSignupShape } from '@/lib/auth/signup-shape'
 import {
+    getOriginAsync,
     provisionOrgForNewUser,
 } from '@/app/actions/auth/signup'
 
@@ -102,11 +103,14 @@ export async function requestSignupOtpAction(
     const requestedSlug = input.slug.trim().toLowerCase()
     const country = input.country?.trim() || null
 
+    const origin = await getOriginAsync()
+
     const supabase = await createClient()
     const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
             shouldCreateUser: true,
+            emailRedirectTo: `${origin}/auth/callback?next=/`,
             data: {
                 store_name: storeName,
                 requested_slug: requestedSlug,
