@@ -85,7 +85,11 @@ export async function requireOrgAdmin(
         .eq('organizations.slug', slug)
         .maybeSingle()
 
-    if (!memberErr && membership && membership.role === 'admin') {
+    if (
+        !memberErr &&
+        membership &&
+        (membership.role === 'admin' || membership.role === 'owner')
+    ) {
         return { user, orgSlug: slug, role: membership.role }
     }
 

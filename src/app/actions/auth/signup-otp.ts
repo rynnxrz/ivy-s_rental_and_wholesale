@@ -62,6 +62,14 @@ export type RequestSignupOtpResult =
           ok: false
           error: string
           field?: 'email' | 'storeName' | 'slug'
+          /**
+           * BRIEF — set when the email already owns the requested slug.
+           * Page reads this and renders a "Sign in to <slug>" CTA instead
+           * of inline error. Email+slug overlap is the only case we
+           * redirect; email-exists-only allows multi-org signup.
+           */
+          action?: 'redirect_to_login'
+          slug?: string
       }
 
 export interface VerifySignupOtpInput {
@@ -102,6 +110,43 @@ export async function requestSignupOtpAction(
     const storeName = input.storeName.trim()
     const requestedSlug = input.slug.trim().toLowerCase()
     const country = input.country?.trim() || null
+
+    // BRIEF — duplicate email + slug-overlap detection before sending OTP.
+    // Design: email+slug both already owned → redirect to login. Email
+    // exists but slug is new → fall through (legitimate multi-org signup
+    // per BRIEF-60). New email → fall through to signup.
+    const service = createServiceClient()
+    const { data: listed } = await service.auth.admin.listUsers({
+        page: 1,
+        perPage: 200,
+    })
+    const existingUser = listed?.users?.find(
+        (u) => (u.email ?? '').toLowerCase() === email,
+    )
+
+    if (existingUser) {
+        const { data: memberships } = await service
+            .from('organization_members')
+            .select('organizations!inner(slug)')
+            .eq('user_id', existingUser.id)
+
+        type MemberRow = { organizations?: { slug?: string } }
+        const rows = (memberships ?? []) as MemberRow[]
+        const ownsRequestedSlug = rows.some(
+            (r) => r.organizations?.slug === requestedSlug,
+        )
+
+        if (ownsRequestedSlug) {
+            return {
+                ok: false,
+                error: `You already own "${requestedSlug}". Sign in instead.`,
+                field: 'email',
+                action: 'redirect_to_login',
+                slug: requestedSlug,
+            }
+        }
+        // else: existing user creating a second workspace — fall through.
+    }
 
     const origin = await getOriginAsync()
 
@@ -184,9 +229,19 @@ export async function verifySignupOtpAction(
         md.store_name?.trim() ||
         email.split('@')[0]?.replace(/[^a-zA-Z0-9 ]+/g, ' ') ||
         'My Studio'
-    const requestedSlug =
-        md.requested_slug?.trim().toLowerCase() ||
-        (email.split('@')[0] || 'studio').toLowerCase().replace(/[^a-z0-9-]/g, '-')
+    // BRIEF — do NOT fall back to email-prefix for slug. The fallback
+    // (e.g. `rynnxrz@gmail.com` → `rynnxrz`) caused the idempotency
+    // guard below to match a user's pre-existing org and silently
+    // override the slug they typed at signup. If metadata was lost,
+    // make the user restart so we don't park them in the wrong org.
+    const requestedSlug = md.requested_slug?.trim().toLowerCase()
+    if (!requestedSlug) {
+        return {
+            ok: false,
+            error:
+                'Signup state was lost (no workspace name carried with the code). Please restart from /signup.',
+        }
+    }
 
     // Idempotency guard: if this user already owns the exact slug being
     // requested (e.g. retried verifyOtp after Stage A->B->refresh), skip
