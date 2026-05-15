@@ -30,6 +30,7 @@ interface GroupedItemsListProps {
     isAdmin: boolean
     categories: { id: string; name: string }[]
     collections: { id: string; name: string }[]
+    basePath?: string
 }
 
 type StatusFilter = 'all' | 'active' | 'maintenance' | 'retired'
@@ -97,7 +98,7 @@ function SelectionCheckbox({ checked, indeterminate = false, onChange, ariaLabel
     )
 }
 
-export function GroupedItemsList({ initialItems, isAdmin, categories, collections }: GroupedItemsListProps) {
+export function GroupedItemsList({ initialItems, isAdmin, categories, collections, basePath = '/admin' }: GroupedItemsListProps) {
     const router = useRouter()
     const [lineFilter, setLineFilter] = useState<ItemLineType>('Mainline')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -677,7 +678,7 @@ export function GroupedItemsList({ initialItems, isAdmin, categories, collection
                                                                                     <div className="flex justify-end gap-1">
                                                                                         {statusFilter !== 'retired' && (
                                                                                             <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                                                                                                <Link href={`/admin/items/${item.id}/edit`}>
+                                                                                                <Link href={`${basePath}/items/${item.id}/edit`}>
                                                                                                     <Edit className="h-3.5 w-3.5" />
                                                                                                 </Link>
                                                                                             </Button>

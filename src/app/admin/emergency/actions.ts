@@ -1,7 +1,7 @@
 'use server'
 
 import { createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { requireAdmin } from '@/lib/auth/guards'
 import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
 import {
@@ -247,7 +247,7 @@ export async function convertEmergencyBackup(backupId: string) {
 
     await supabase.from('emergency_backups').delete().eq('id', backupId)
 
-    revalidatePath('/admin')
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('')
+    revalidateAdminPath('/reservations')
     return { success: true as const }
 }

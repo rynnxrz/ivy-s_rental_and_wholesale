@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { requireAdmin } from '@/lib/auth/guards'
 import { format } from 'date-fns'
 import { sendApprovalEmail } from '@/lib/email/sendApprovalEmail'
@@ -422,7 +422,7 @@ export async function createManualInvoice(input: CreateManualInvoiceInput) {
         return { success: false, error: itemsError.message, data: null }
     }
 
-    revalidatePath('/admin/invoices')
+    revalidateAdminPath('/invoices')
     return { success: true, error: null, data: invoice }
 }
 
@@ -646,8 +646,8 @@ export async function generateInvoiceFromReservation(
         return { success: false, error: itemsError.message, data: null }
     }
 
-    revalidatePath('/admin/invoices')
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/invoices')
+    revalidateAdminPath('/reservations')
     return { success: true, error: null, data: invoice }
 }
 
@@ -693,10 +693,10 @@ export async function markInvoiceAsPaid(invoiceId: string) {
                 .in('id', activeReservationIdsResult.data)
         }
 
-        revalidatePath('/admin/reservations')
+        revalidateAdminPath('/reservations')
     }
 
-    revalidatePath('/admin/invoices')
+    revalidateAdminPath('/invoices')
     return { success: true, error: null }
 }
 
@@ -782,8 +782,8 @@ export async function updateInvoice(invoiceId: string, input: UpdateInvoiceInput
         }
     }
 
-    revalidatePath('/admin/invoices')
-    revalidatePath(`/admin/invoices/${invoiceId}`)
+    revalidateAdminPath('/invoices')
+    revalidateAdminPath(`/invoices/${invoiceId}`)
     return { success: true, error: null, data: invoice }
 }
 
@@ -884,7 +884,7 @@ export async function deleteInvoice(invoiceId: string) {
         return { success: false, error: deleteError.message }
     }
 
-    revalidatePath('/admin/invoices')
+    revalidateAdminPath('/invoices')
     return { success: true, error: null }
 }
 
@@ -905,7 +905,7 @@ export async function voidInvoice(invoiceId: string) {
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/invoices')
+    revalidateAdminPath('/invoices')
     return { success: true, error: null }
 }
 
@@ -926,7 +926,7 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/invoices')
+    revalidateAdminPath('/invoices')
     return { success: true, error: null }
 }
 
@@ -1038,7 +1038,7 @@ export async function sendInvoiceEmail(reservationId: string) {
             .eq('id', invoice.id)
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true, error: null as string | null }
 }
 

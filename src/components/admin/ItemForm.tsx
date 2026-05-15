@@ -64,6 +64,7 @@ interface ItemFormProps {
     onSubmitOverride?: (data: ItemFormData & { image_paths: string[] }) => Promise<{ success: boolean; error?: string }>
     initialData?: Partial<ItemFormData> & { image_paths?: string[] }
     onCancel?: () => void
+    basePath?: string
 }
 
 const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
@@ -105,7 +106,8 @@ export const ItemForm = ({
     isStaging = false,
     onSubmitOverride,
     initialData,
-    onCancel
+    onCancel,
+    basePath = '/admin',
 }: ItemFormProps) => {
     const router = useRouter()
     const [isSubmitting, startSubmitting] = useTransition()
@@ -333,7 +335,7 @@ export const ItemForm = ({
 
                         } else {
                             toast.success("Item saved successfully")
-                            router.push('/admin/items')
+                            router.push(`${basePath}/items`)
                             router.refresh()
                         }
                     } else {
@@ -757,13 +759,13 @@ export const ItemForm = ({
                         if (isAddingVariation) {
                             // Confirm before leaving if variants were added
                             if (confirm("Your previously saved variants are safe. Do you want to stop adding more?")) {
-                                router.push('/admin/items')
+                                router.push(`${basePath}/items`)
                             }
                         } else {
                             if (isStaging && onSubmitOverride) {
                                 // In staging mode the parent dialog handles dismissal via onCancel.
                             } else {
-                                router.push('/admin/items')
+                                router.push(`${basePath}/items`)
                             }
                         }
                     }}

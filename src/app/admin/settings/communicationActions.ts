@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { Resend } from 'resend'
 import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
 
@@ -58,7 +58,7 @@ export async function updateCommunicationSettings(settings: CommunicationSetting
         return { error: 'Failed to update settings' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 

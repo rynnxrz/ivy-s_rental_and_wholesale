@@ -59,6 +59,7 @@ interface ApproveButtonProps {
     items?: ApproveItem[]
     originalStartDate?: string
     originalEndDate?: string
+    basePath?: string
 }
 
 const DISCOUNT_OPTIONS = [
@@ -109,6 +110,7 @@ export function ApproveButton({
     items,
     originalStartDate,
     originalEndDate,
+    basePath = '/admin',
 }: ApproveButtonProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
@@ -300,7 +302,7 @@ export function ApproveButton({
                             Review Invoice Preview
                         </div>
                         <a
-                            href="/admin/settings"
+                            href={`${basePath}/settings`}
                             target="_blank"
                             className="text-xs text-blue-600 hover:text-blue-800 underline font-normal"
                         >
@@ -320,7 +322,7 @@ export function ApproveButton({
                         </Label>
                         {billingProfiles.length === 0 ? (
                             <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded border border-amber-200">
-                                No billing profiles found. <a href="/admin/settings" target="_blank" className="underline">Create one in Settings</a> first.
+                                No billing profiles found. <a href={`${basePath}/settings`} target="_blank" className="underline">Create one in Settings</a> first.
                             </div>
                         ) : (
                             <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
