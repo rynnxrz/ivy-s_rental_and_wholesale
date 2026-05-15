@@ -72,7 +72,9 @@ export default async function OrgInvoiceDetailPage({ params }: PageProps) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
-    const { data: invoice, error } = await supabase
+    const orgId = user.app_metadata?.current_org_id as string | undefined
+
+    let invoiceQuery = supabase
         .from('invoices')
         .select(`
             *,
@@ -80,7 +82,10 @@ export default async function OrgInvoiceDetailPage({ params }: PageProps) {
             billing_profiles (*)
         `)
         .eq('id', id)
-        .single()
+
+    if (orgId) invoiceQuery = invoiceQuery.eq('organization_id', orgId)
+
+    const { data: invoice, error } = await invoiceQuery.single()
 
     if (error || !invoice) {
         notFound()

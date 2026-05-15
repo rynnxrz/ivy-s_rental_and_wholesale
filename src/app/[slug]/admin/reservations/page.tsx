@@ -57,21 +57,29 @@ export default async function OrgReservationsPage({ params, searchParams }: Page
     const customerEmail = resolvedSearchParams.customer
 
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
     let query = supabase
         .from('reservations')
         .select(`
             *,
             items (name, sku, rental_price, replacement_cost, image_paths),
-            profiles:renter_id (full_name, email, company_name)
+            profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
         `)
         .order('created_at', { ascending: false })
 
-    const { data: billingProfiles } = await supabase
+    if (orgId) query = query.eq('organization_id', orgId)
+
+    let billingProfilesQuery = supabase
         .from('billing_profiles')
         .select('*')
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
+
+    if (orgId) billingProfilesQuery = billingProfilesQuery.eq('organization_id', orgId)
+
+    const { data: billingProfiles } = await billingProfilesQuery
 
     if (!customerEmail && filter !== 'archived') {
         const status = STATUS_FILTERS[filter as keyof typeof STATUS_FILTERS]

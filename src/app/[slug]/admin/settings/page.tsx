@@ -7,11 +7,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function OrgSettingsPage() {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
-    let { data: settings } = await supabase
-        .from('app_settings')
-        .select('*')
-        .single()
+    let settingsQuery = supabase.from('app_settings').select('*')
+    if (orgId) settingsQuery = settingsQuery.eq('organization_id', orgId)
+    let { data: settings } = await settingsQuery.maybeSingle()
 
     if (!settings) {
         settings = {
@@ -23,10 +24,12 @@ export default async function OrgSettingsPage() {
         }
     }
 
-    const { data: billingProfiles } = await supabase
+    let billingProfilesQuery = supabase
         .from('billing_profiles').select('*')
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
+    if (orgId) billingProfilesQuery = billingProfilesQuery.eq('organization_id', orgId)
+    const { data: billingProfiles } = await billingProfilesQuery
 
     const [categories, collections] = await Promise.all([getCategories(), getCollections()])
 

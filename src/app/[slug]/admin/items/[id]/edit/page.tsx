@@ -11,11 +11,17 @@ export default async function OrgEditItemPage({ params }: Props) {
     const { slug, id } = await params
     const basePath = `/${slug}/admin`
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
     const [itemResult, { data: categories }, { data: collections }] = await Promise.all([
         getItem(id),
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('collections').select('*').order('name'),
+        orgId
+            ? supabase.from('categories').select('*').eq('organization_id', orgId).order('name')
+            : Promise.resolve({ data: [] }),
+        orgId
+            ? supabase.from('collections').select('*').eq('organization_id', orgId).order('name')
+            : Promise.resolve({ data: [] }),
     ])
 
     const { data: item, error } = itemResult

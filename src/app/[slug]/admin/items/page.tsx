@@ -12,12 +12,16 @@ export default async function OrgItemsPage({
     const { slug } = await params
     const basePath = `/${slug}/admin`
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
-    const [itemsResult, categoriesResult, collectionsResult] = await Promise.all([
-        supabase.from('items').select('*').order('created_at', { ascending: false }),
-        supabase.from('categories').select('id, name').order('name'),
-        supabase.from('collections').select('id, name').order('name'),
-    ])
+    const [itemsResult, categoriesResult, collectionsResult] = orgId
+        ? await Promise.all([
+            supabase.from('items').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }),
+            supabase.from('categories').select('id, name').eq('organization_id', orgId).order('name'),
+            supabase.from('collections').select('id, name').eq('organization_id', orgId).order('name'),
+        ])
+        : [{ data: [] }, { data: [] }, { data: [] }]
 
     return (
         <ItemsPageClient

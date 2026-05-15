@@ -49,6 +49,8 @@ export default async function OrgInvoicesPage({ params, searchParams }: PageProp
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
+    const orgId = user.app_metadata?.current_org_id as string | undefined
+
     let query = supabase
         .from('invoices')
         .select(`
@@ -57,6 +59,8 @@ export default async function OrgInvoicesPage({ params, searchParams }: PageProp
             reservation:reservations (id, group_id)
         `)
         .order('created_at', { ascending: false })
+
+    if (orgId) query = query.eq('organization_id', orgId)
 
     if (filter === 'unpaid') {
         query = query.in('status', ['DRAFT', 'SENT', 'OVERDUE'])

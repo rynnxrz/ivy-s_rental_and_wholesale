@@ -32,6 +32,8 @@ export default async function OrgRequestDetailPage(props: Props) {
     const { slug, id } = await props.params
     const basePath = `/${slug}/admin`
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
     const select = `
         *,
@@ -39,11 +41,13 @@ export default async function OrgRequestDetailPage(props: Props) {
         profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)
     `
 
-    const { data: reservation, error } = await supabase
+    let reservationQuery = supabase
         .from('reservations')
         .select(select)
         .eq('id', id)
-        .single()
+    if (orgId) reservationQuery = reservationQuery.eq('organization_id', orgId)
+
+    const { data: reservation, error } = await reservationQuery.single()
 
     if (error || !reservation) notFound()
 
@@ -60,7 +64,7 @@ export default async function OrgRequestDetailPage(props: Props) {
     }[] = []
 
     if (reservation.group_id) {
-        const { data: siblings } = await supabase
+        let siblingsQuery = supabase
             .from('reservations')
             .select(`id, created_at, group_id, renter_id, item_id, status,
                 admin_notes, dispatch_notes, return_notes, start_date, end_date,
@@ -70,6 +74,8 @@ export default async function OrgRequestDetailPage(props: Props) {
                 profiles:profiles!reservations_renter_id_fkey (full_name, email, company_name)`)
             .eq('group_id', reservation.group_id)
             .neq('id', reservation.id)
+        if (orgId) siblingsQuery = siblingsQuery.eq('organization_id', orgId)
+        const { data: siblings } = await siblingsQuery
 
         if (siblings) {
             type SiblingRow = typeof siblings[number]
@@ -94,16 +100,20 @@ export default async function OrgRequestDetailPage(props: Props) {
         }
     })
 
-    const { data: billingProfiles } = await supabase
+    let billingProfilesQuery = supabase
         .from('billing_profiles').select('*')
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true })
+    if (orgId) billingProfilesQuery = billingProfilesQuery.eq('organization_id', orgId)
+    const { data: billingProfiles } = await billingProfilesQuery
 
-    const { data: invoice } = await supabase
+    let invoiceLookupQuery = supabase
         .from('invoices').select('id')
         .eq('reservation_id', reservation.id)
         .order('created_at', { ascending: false })
-        .limit(1).single()
+        .limit(1)
+    if (orgId) invoiceLookupQuery = invoiceLookupQuery.eq('organization_id', orgId)
+    const { data: invoice } = await invoiceLookupQuery.maybeSingle()
 
     const invoiceId = invoice?.id
     const customer = reservation.profiles as { full_name?: string; email?: string; company_name?: string } | null

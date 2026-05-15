@@ -9,11 +9,15 @@ export default async function OrgNewItemPage({
     const { slug } = await params
     const basePath = `/${slug}/admin`
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
-    const [{ data: categories }, { data: collections }] = await Promise.all([
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('collections').select('*').order('name'),
-    ])
+    const [{ data: categories }, { data: collections }] = orgId
+        ? await Promise.all([
+            supabase.from('categories').select('*').eq('organization_id', orgId).order('name'),
+            supabase.from('collections').select('*').eq('organization_id', orgId).order('name'),
+        ])
+        : [{ data: [] }, { data: [] }]
 
     return (
         <div className="max-w-4xl mx-auto p-8">

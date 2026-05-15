@@ -18,12 +18,36 @@ export default async function OrgCustomersPage({
     const { slug } = await params
     const basePath = `/${slug}/admin`
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const orgId = user?.app_metadata?.current_org_id as string | undefined
 
-    const { data: customers, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, company_name, organization_domain, created_at')
-        .neq('role', 'admin')
-        .order('created_at', { ascending: false })
+    type CustomerProfile = {
+        id: string
+        full_name: string | null
+        email: string | null
+        company_name: string | null
+        organization_domain: string | null
+        created_at: string
+    }
+
+    let customers: CustomerProfile[] = []
+    let error: { message: string } | null = null
+
+    if (orgId) {
+        const { data: rows, error: queryError } = await supabase
+            .from('reservations')
+            .select('renter_id, profiles:profiles!reservations_renter_id_fkey(id, full_name, email, company_name, organization_domain, created_at)')
+            .eq('organization_id', orgId)
+        error = queryError
+        const seen = new Set<string>()
+        for (const row of rows ?? []) {
+            const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+            if (!profile || seen.has(profile.id)) continue
+            seen.add(profile.id)
+            customers.push(profile as CustomerProfile)
+        }
+        customers.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
 
     if (error) console.error('Error fetching customers:', error)
 
