@@ -167,11 +167,22 @@ export function LookbookViewer({
                     return { pageNumber: n, canvas }
                 }
 
-                const jobs: Promise<RenderedPage>[] = []
-                for (let n = 1; n <= total; n += 1) jobs.push(renderOne(n))
-                const out = await Promise.all(jobs)
+                // Worker pool — fully parallel renders can exhaust connection
+                // limits to Supabase Storage range requests; cap at 4 in flight.
+                const CONCURRENCY = 4
+                const out: RenderedPage[] = new Array(total)
+                let nextIdx = 1
+                async function worker() {
+                    while (!cancelled) {
+                        const n = nextIdx++
+                        if (n > total) return
+                        out[n - 1] = await renderOne(n)
+                    }
+                }
+                await Promise.all(
+                    Array.from({ length: Math.min(CONCURRENCY, total) }, worker),
+                )
                 if (cancelled) return
-                out.sort((a, b) => a.pageNumber - b.pageNumber)
                 setRenderedPages(out)
                 setLoading(false)
                 setFlipKey(k => k + 1)
