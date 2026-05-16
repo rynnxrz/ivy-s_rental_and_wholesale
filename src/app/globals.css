@@ -221,35 +221,9 @@
   border-style: solid;
 }
 
-/* Book view page slide transitions */
-@keyframes book-slide-in-from-right {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
-}
-@keyframes book-slide-out-to-left {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-100%); }
-}
-@keyframes book-slide-in-from-left {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(0); }
-}
-@keyframes book-slide-out-to-right {
-  from { transform: translateX(0); }
-  to   { transform: translateX(100%); }
-}
-
-@utility animate-book-in-right {
-  animation: book-slide-in-from-right 400ms ease-out forwards;
-}
-@utility animate-book-out-left {
-  animation: book-slide-out-to-left 400ms ease-out forwards;
-}
-@utility animate-book-in-left {
-  animation: book-slide-in-from-left 400ms ease-out forwards;
-}
-@utility animate-book-out-right {
-  animation: book-slide-out-to-right 400ms ease-out forwards;
+/* Book shadow for react-pageflip container */
+.book-shadow {
+  filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.4));
 }
 
 .skip-link {
