@@ -139,8 +139,9 @@ export function LookbookViewer({
         return () => window.removeEventListener('resize', measure)
     }, [])
 
-    // PDF rendering — wait for ALL pages before mounting flipbook so react-pageflip
-    // sees the full children count up front (it caches children on mount).
+    // PDF rendering — render page 1 fast for instant feedback, then render
+    // the rest in parallel. Mount flipbook only when ALL pages are ready so
+    // react-pageflip (which caches children on mount) sees the full count.
     useEffect(() => {
         let cancelled = false
         async function renderPdf() {
@@ -154,9 +155,7 @@ export function LookbookViewer({
                 const scale = 1.5
                 const total = pageCount > 0 ? pageCount : pdf.numPages
 
-                const out: RenderedPage[] = []
-                for (let n = 1; n <= total; n += 1) {
-                    if (cancelled) return
+                async function renderOne(n: number): Promise<RenderedPage> {
                     const page = await pdf.getPage(n)
                     const viewport = page.getViewport({ scale })
                     const canvas = document.createElement('canvas')
@@ -165,13 +164,17 @@ export function LookbookViewer({
                     const ctx = canvas.getContext('2d')
                     if (!ctx) throw new Error('could not get 2d context')
                     await page.render({ canvasContext: ctx, viewport, canvas }).promise
-                    out.push({ pageNumber: n, canvas })
+                    return { pageNumber: n, canvas }
                 }
-                if (!cancelled) {
-                    setRenderedPages(out)
-                    setLoading(false)
-                    setFlipKey(k => k + 1)
-                }
+
+                const jobs: Promise<RenderedPage>[] = []
+                for (let n = 1; n <= total; n += 1) jobs.push(renderOne(n))
+                const out = await Promise.all(jobs)
+                if (cancelled) return
+                out.sort((a, b) => a.pageNumber - b.pageNumber)
+                setRenderedPages(out)
+                setLoading(false)
+                setFlipKey(k => k + 1)
             } catch (err) {
                 if (!cancelled) {
                     console.error('[LookbookViewer] render failed', err)
