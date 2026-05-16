@@ -338,11 +338,11 @@ export function LookbookViewer({
                             ref={flipBookRef}
                             width={containerSize.width}
                             height={containerSize.height}
-                            size="stretch"
+                            size="fixed"
                             minWidth={280}
-                            maxWidth={1200}
+                            maxWidth={2400}
                             minHeight={370}
-                            maxHeight={1600}
+                            maxHeight={2400}
                             drawShadow={true}
                             flippingTime={800}
                             usePortrait={true}
