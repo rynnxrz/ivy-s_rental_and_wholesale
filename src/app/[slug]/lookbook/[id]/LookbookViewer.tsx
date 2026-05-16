@@ -91,6 +91,7 @@ export function LookbookViewer({
     const [currentPage, setCurrentPage] = useState(0)
     const [showProduct, setShowProduct] = useState<LookbookItemRow | null>(null)
     const [containerSize, setContainerSize] = useState({ width: 600, height: 800 })
+    const [flipKey, setFlipKey] = useState(0)
 
     const isMobile = useIsMobile()
     const cart = useLookbookCart()
@@ -114,7 +115,13 @@ export function LookbookViewer({
         const measure = () => {
             const rect = el.getBoundingClientRect()
             if (rect.width > 0 && rect.height > 0) {
-                setContainerSize({ width: Math.round(rect.width), height: Math.round(rect.height) })
+                const w = Math.round(rect.width)
+                const h = Math.round(rect.height)
+                setContainerSize(prev => {
+                    if (w === prev.width && h === prev.height) return prev
+                    setFlipKey(k => k + 1)
+                    return { width: w, height: h }
+                })
             }
         }
         measure()
@@ -232,7 +239,7 @@ export function LookbookViewer({
                 </header>
                 <div
                     className="overflow-hidden rounded-lg bg-white"
-                    style={{ aspectRatio: '3 / 4' }}
+                    style={{ aspectRatio: isMobile ? '3 / 4' : '3 / 2' }}
                 >
                     <ProductDetailPage
                         item={showProduct}
@@ -279,7 +286,7 @@ export function LookbookViewer({
             <div
                 ref={containerRef}
                 className="relative overflow-hidden rounded-lg bg-slate-900"
-                style={{ aspectRatio: '3 / 4' }}
+                style={{ aspectRatio: isMobile ? '3 / 4' : '3 / 2' }}
             >
                 {loading && (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -297,8 +304,9 @@ export function LookbookViewer({
                 {!loading && !error && renderedPages.length > 0 && (
                     /* @ts-expect-error react-pageflip types are incomplete */
                     <HTMLFlipBook
+                        key={flipKey}
                         ref={flipBookRef}
-                        width={containerSize.width}
+                        width={isMobile ? containerSize.width : Math.round(containerSize.width / 2)}
                         height={containerSize.height}
                         size="stretch"
                         minWidth={280}
@@ -307,9 +315,9 @@ export function LookbookViewer({
                         maxHeight={1280}
                         drawShadow={true}
                         flippingTime={800}
-                        usePortrait={true}
+                        usePortrait={isMobile}
                         maxShadowOpacity={0.5}
-                        showCover={false}
+                        showCover={!isMobile}
                         mobileScrollSupport={true}
                         onFlip={(e: { data: number }) => setCurrentPage(e.data)}
                         className="book-shadow"
