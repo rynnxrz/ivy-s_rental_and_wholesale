@@ -108,7 +108,7 @@ export function LookbookViewer({
         return map
     }, [items])
 
-    // Measure viewport for flip book dimensions (height-driven, with width fallback)
+    // Measure viewport for single-page flip book (portrait, height-driven)
     useEffect(() => {
         if (typeof window === 'undefined') return
 
@@ -116,7 +116,7 @@ export function LookbookViewer({
             const padding = 32 // 16px on each side
             const viewportW = window.innerWidth - padding
             const viewportH = window.innerHeight - padding
-            const aspectRatio = isMobile ? 3 / 4 : 3 / 2
+            const aspectRatio = 3 / 4 // single portrait page
 
             let h = viewportH
             let w = h * aspectRatio
@@ -137,7 +137,7 @@ export function LookbookViewer({
         measure()
         window.addEventListener('resize', measure)
         return () => window.removeEventListener('resize', measure)
-    }, [isMobile])
+    }, [])
 
     // PDF rendering — wait for ALL pages before mounting flipbook so react-pageflip
     // sees the full children count up front (it caches children on mount).
@@ -322,7 +322,7 @@ export function LookbookViewer({
                         <HTMLFlipBook
                             key={flipKey}
                             ref={flipBookRef}
-                            width={isMobile ? containerSize.width : Math.round(containerSize.width / 2)}
+                            width={containerSize.width}
                             height={containerSize.height}
                             size="stretch"
                             minWidth={280}
@@ -331,9 +331,9 @@ export function LookbookViewer({
                             maxHeight={1600}
                             drawShadow={true}
                             flippingTime={800}
-                            usePortrait={isMobile}
+                            usePortrait={true}
                             maxShadowOpacity={0.5}
-                            showCover={!isMobile}
+                            showCover={false}
                             mobileScrollSupport={true}
                             onFlip={(e: { data: number }) => setCurrentPage(e.data)}
                             className="book-shadow"
