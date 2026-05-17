@@ -405,7 +405,7 @@ export function LookbookViewer({
                                     minHeight={370}
                                     maxHeight={2400}
                                     drawShadow={true}
-                                    flippingTime={800}
+                                    flippingTime={550}
                                     usePortrait={true}
                                     maxShadowOpacity={0.5}
                                     showCover={false}
@@ -430,42 +430,37 @@ export function LookbookViewer({
                                 </HTMLFlipBook>
                             )}
 
-                            {/* Navigation arrows */}
-                            {!loading && !error && renderedPages.length > 1 && (
-                                <>
-                                    {!isFirstPage && (
-                                        <button
-                                            type="button"
-                                            onClick={flipPrev}
-                                            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/30 p-2.5 text-white/80 backdrop-blur-sm transition-all hover:bg-black/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                                            aria-label="Previous page"
-                                        >
-                                            <ChevronLeft className="size-5" />
-                                        </button>
-                                    )}
-                                    {!isLastPage && (
-                                        <button
-                                            type="button"
-                                            onClick={flipNext}
-                                            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/30 p-2.5 text-white/80 backdrop-blur-sm transition-all hover:bg-black/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                                            aria-label="Next page"
-                                        >
-                                            <ChevronRight className="size-5" />
-                                        </button>
-                                    )}
-                                </>
-                            )}
-
-                            {/* Page indicator */}
-                            {!loading && !error && totalPages > 1 && (
-                                <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-xs tabular-nums text-white/80 backdrop-blur-sm">
-                                    {currentPage + 1} / {totalPages}
-                                </div>
-                            )}
                         </>
                     )}
                 </div>
             </div>
+
+            {/* Floating bottom-right page controls — compact, low noise */}
+            {!showProduct && !loading && !error && totalPages > 1 && (
+                <div className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 rounded-full bg-slate-900/50 px-1 py-1 backdrop-blur-sm">
+                    <button
+                        type="button"
+                        onClick={flipPrev}
+                        disabled={isFirstPage}
+                        className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                        aria-label="Previous page"
+                    >
+                        <ChevronLeft className="size-4" />
+                    </button>
+                    <span className="px-1.5 text-[11px] tabular-nums text-white/70">
+                        {currentPage + 1} / {totalPages}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={flipNext}
+                        disabled={isLastPage}
+                        className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                        aria-label="Next page"
+                    >
+                        <ChevronRight className="size-4" />
+                    </button>
+                </div>
+            )}
 
             {/* Cart drawer */}
             <LookbookCartDrawer
