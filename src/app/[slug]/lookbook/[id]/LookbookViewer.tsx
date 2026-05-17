@@ -49,7 +49,9 @@ type Props = {
 }
 
 type RenderedPage = {
-    pageNumber: number
+    pageNumber: number        // logical 1-indexed page (after split)
+    originalPdfPage: number   // 1-indexed PDF page
+    half: 'full' | 'left' | 'right'
     canvas: HTMLCanvasElement
 }
 
@@ -96,9 +98,11 @@ export function LookbookViewer({
     const isMobile = useIsMobile()
     const cart = useLookbookCart()
 
-    const totalPages = pageCount > 0 ? pageCount : renderedPages.length
+    // After splitting landscape PDF pages into halves, the logical page count
+    // is determined by the rendered output, not the raw PDF page count.
+    const totalPages = renderedPages.length || pageCount
 
-    const itemsByPage = useMemo(() => {
+    const itemsByOriginalPage = useMemo(() => {
         const map = new Map<number, LookbookItemRow[]>()
         for (const it of items) {
             const list = map.get(it.page_number) ?? []
@@ -107,6 +111,35 @@ export function LookbookViewer({
         }
         return map
     }, [items])
+
+    // Re-map hot-zone bbox coords for split halves of a landscape PDF page.
+    // Original bbox_x/w are relative to the full PDF page; after splitting the
+    // page into left/right halves, items move to the half they fall into and
+    // their x/w get scaled by 2.
+    const itemsForRenderedPage = useCallback(
+        (rp: RenderedPage): LookbookItemRow[] => {
+            const all = itemsByOriginalPage.get(rp.originalPdfPage) ?? []
+            if (rp.half === 'full') return all
+            const eps = 0.01
+            if (rp.half === 'left') {
+                return all
+                    .filter(it => it.bbox_x + it.bbox_w <= 0.5 + eps)
+                    .map(it => ({
+                        ...it,
+                        bbox_x: it.bbox_x * 2,
+                        bbox_w: it.bbox_w * 2,
+                    }))
+            }
+            return all
+                .filter(it => it.bbox_x >= 0.5 - eps)
+                .map(it => ({
+                    ...it,
+                    bbox_x: (it.bbox_x - 0.5) * 2,
+                    bbox_w: it.bbox_w * 2,
+                }))
+        },
+        [itemsByOriginalPage],
+    )
 
     // Measure viewport for single-page flip book (portrait, height-driven)
     useEffect(() => {
@@ -155,34 +188,81 @@ export function LookbookViewer({
                 const scale = 1.5
                 const total = pageCount > 0 ? pageCount : pdf.numPages
 
-                async function renderOne(n: number): Promise<RenderedPage> {
+                // Render one PDF page. If it's a landscape spread (designer
+                // baked two logical pages into one PDF page), crop into left
+                // and right halves so the viewer always shows a portrait page.
+                async function renderOne(n: number): Promise<RenderedPage[]> {
                     const page = await pdf.getPage(n)
                     const viewport = page.getViewport({ scale })
-                    const canvas = document.createElement('canvas')
-                    canvas.width = viewport.width
-                    canvas.height = viewport.height
-                    const ctx = canvas.getContext('2d')
+                    const fullCanvas = document.createElement('canvas')
+                    fullCanvas.width = viewport.width
+                    fullCanvas.height = viewport.height
+                    const ctx = fullCanvas.getContext('2d')
                     if (!ctx) throw new Error('could not get 2d context')
-                    await page.render({ canvasContext: ctx, viewport, canvas }).promise
-                    return { pageNumber: n, canvas }
+                    await page.render({
+                        canvasContext: ctx,
+                        viewport,
+                        canvas: fullCanvas,
+                    }).promise
+
+                    const isLandscape = viewport.width > viewport.height
+                    if (!isLandscape) {
+                        return [{
+                            pageNumber: 0, // assigned later
+                            originalPdfPage: n,
+                            half: 'full',
+                            canvas: fullCanvas,
+                        }]
+                    }
+
+                    const halfW = Math.floor(viewport.width / 2)
+                    const h = viewport.height
+
+                    const leftCanvas = document.createElement('canvas')
+                    leftCanvas.width = halfW
+                    leftCanvas.height = h
+                    leftCanvas.getContext('2d')!.drawImage(
+                        fullCanvas, 0, 0, halfW, h, 0, 0, halfW, h,
+                    )
+
+                    const rightCanvas = document.createElement('canvas')
+                    rightCanvas.width = halfW
+                    rightCanvas.height = h
+                    rightCanvas.getContext('2d')!.drawImage(
+                        fullCanvas, halfW, 0, halfW, h, 0, 0, halfW, h,
+                    )
+
+                    return [
+                        { pageNumber: 0, originalPdfPage: n, half: 'left', canvas: leftCanvas },
+                        { pageNumber: 0, originalPdfPage: n, half: 'right', canvas: rightCanvas },
+                    ]
                 }
 
                 // Worker pool — fully parallel renders can exhaust connection
                 // limits to Supabase Storage range requests; cap at 4 in flight.
                 const CONCURRENCY = 4
-                const out: RenderedPage[] = new Array(total)
+                const grouped: RenderedPage[][] = new Array(total)
                 let nextIdx = 1
                 async function worker() {
                     while (!cancelled) {
                         const n = nextIdx++
                         if (n > total) return
-                        out[n - 1] = await renderOne(n)
+                        grouped[n - 1] = await renderOne(n)
                     }
                 }
                 await Promise.all(
                     Array.from({ length: Math.min(CONCURRENCY, total) }, worker),
                 )
                 if (cancelled) return
+
+                // Flatten in PDF order and assign logical 1-indexed page numbers.
+                const out: RenderedPage[] = []
+                for (const group of grouped) {
+                    if (!group) continue
+                    for (const rp of group) {
+                        out.push({ ...rp, pageNumber: out.length + 1 })
+                    }
+                }
                 setRenderedPages(out)
                 setLoading(false)
                 setFlipKey(k => k + 1)
@@ -360,7 +440,7 @@ export function LookbookViewer({
                                     <PageWithHotZones
                                         pageNumber={rp.pageNumber}
                                         canvas={rp.canvas}
-                                        items={itemsByPage.get(rp.pageNumber) ?? []}
+                                        items={itemsForRenderedPage(rp)}
                                         pulsed={pulsed}
                                         onItemClick={handleItemClick}
                                     />
