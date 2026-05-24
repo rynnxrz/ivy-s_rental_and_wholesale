@@ -1,7 +1,7 @@
 'use server'
 
 import { createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { RESERVATION_STATUSES, isArchivedReservation } from '@/lib/constants/reservation-status'
 import { IVY_LOAN_FORM_ACCEPTANCE_NOTE } from '@/lib/constants/loan-form'
 
@@ -179,9 +179,9 @@ export async function submitPaymentConfirmation(
     return { success: false, error: 'Failed to finalize payment confirmation.' }
   }
 
-  revalidatePath('/admin/reservations')
-  revalidatePath('/admin/invoices')
-  revalidatePath(`/admin/invoices/${invoice.id}`)
+  revalidateAdminPath('/reservations')
+  revalidateAdminPath('/invoices')
+  revalidateAdminPath(`/invoices/${invoice.id}`)
 
   return {
     success: true,

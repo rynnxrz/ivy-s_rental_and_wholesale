@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { requireAdmin } from '@/lib/auth/guards'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { runDocumentStructureSkill } from '@/lib/lookbook/document-structure-skill'
@@ -482,7 +482,7 @@ export async function startLookbookImportAction(formData: FormData) {
             overall_status: 'awaiting_structure_confirmation',
         })
 
-        revalidatePath('/admin/items')
+        revalidateAdminPath('/items')
         return { success: true, error: null, sessionId }
     } catch (error) {
         await completeAiDecision({
@@ -625,7 +625,7 @@ export async function saveStructureConfirmationAction(input: {
         })
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -744,7 +744,7 @@ export async function updateLookbookDraftItemAction(input: {
 
     await recordImportCorrections(correctionRows)
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -860,6 +860,6 @@ export async function commitLookbookImportAction(sessionId: string) {
         })
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null, importedCount: result.imported_count }
 }

@@ -4,7 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateInvoicePdf, fetchImageAsBase64, InvoiceItem } from '@/lib/pdf/generateInvoice'
 import { sendApprovalEmail } from '@/lib/email/sendApprovalEmail'
 import { sendShippingEmail } from '@/lib/email/sendShippingEmail'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { format } from 'date-fns'
 import { generateInvoiceFromReservation, updateInvoiceStatus } from '@/actions/invoice'
 import {
@@ -310,7 +310,7 @@ export async function createBillingProfile(formData: FormData) {
         return { error: 'Failed to create billing profile' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -354,7 +354,7 @@ export async function updateBillingProfile(profileId: string, formData: FormData
         return { error: 'Failed to update billing profile' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -394,7 +394,7 @@ export async function deleteBillingProfile(profileId: string) {
         return { error: 'Failed to delete billing profile' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -430,7 +430,7 @@ export async function setDefaultProfile(profileId: string) {
         return { error: 'Failed to set default profile' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -478,7 +478,7 @@ export async function updateSettings(formData: FormData) {
         return { error: 'Failed to update settings' }
     }
 
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -865,7 +865,7 @@ export async function approveReservation(
         return { success: true, error: 'DATABASE_UPDATED_BUT_EMAIL_FAILED' }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true }
 }
 
@@ -1056,7 +1056,7 @@ export async function markAsShipped(reservationId: string, attachInvoice: boolea
         return { success: true, warning: 'Dispatched but email failed' }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true }
 }
 
@@ -1110,8 +1110,8 @@ export async function saveEvidence(
 
     if (error) return { error: 'Failed to save evidence' }
 
-    revalidatePath('/admin/reservations')
-    revalidatePath(`/admin/reservations/${reservationId}`)
+    revalidateAdminPath('/reservations')
+    revalidateAdminPath(`/reservations/${reservationId}`)
     return { success: true }
 }
 
@@ -1149,8 +1149,8 @@ export async function finalizeReturn(reservationId: string) {
 
     if (error) return { error: 'Failed to return' }
 
-    revalidatePath('/admin/reservations')
-    revalidatePath(`/admin/reservations/${reservationId}`)
+    revalidateAdminPath('/reservations')
+    revalidateAdminPath(`/reservations/${reservationId}`)
     return { success: true }
 }
 
@@ -1178,7 +1178,7 @@ export async function archiveReservation(reservationId: string) {
         return { error: archiveResult.error || 'Failed to archive reservation' }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true, warning: archiveResult.warning }
 }
 
@@ -1205,7 +1205,7 @@ export async function archiveReservationGroup(groupId: string) {
         .select('id')
 
     if (!archiveStatusError) {
-        revalidatePath('/admin/reservations')
+        revalidateAdminPath('/reservations')
         return { success: true, count: archivedRows?.length || 0 }
     }
 
@@ -1232,7 +1232,7 @@ export async function archiveReservationGroup(groupId: string) {
         }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return {
         success: true,
         count: rowsToArchive.length,
@@ -1302,6 +1302,6 @@ export async function restoreReservationGroup(groupId: string) {
         return { error: 'Failed to restore reservations' }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true, count: reservations.length }
 }

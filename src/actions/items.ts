@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import type {
     BulkItemUpdates,
     GuidedImportIssue,
@@ -150,7 +150,7 @@ export async function createItem(item: ItemInsert) {
         return { success: false, error: error.message, data: null }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null, data }
 }
 
@@ -174,8 +174,8 @@ export async function updateItem(id: string, item: ItemUpdate) {
         return { success: false, error: error.message, data: null }
     }
 
-    revalidatePath('/admin/items')
-    revalidatePath(`/admin/items/${id}/edit`)
+    revalidateAdminPath('/items')
+    revalidateAdminPath(`/items/${id}/edit`)
     return { success: true, error: null, data }
 }
 
@@ -195,7 +195,7 @@ export async function deleteItem(id: string) {
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -212,7 +212,7 @@ export async function archiveItem(id: string) {
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -233,7 +233,7 @@ export async function bulkUpdateItemStatus(itemIds: string[], status: 'active' |
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -285,7 +285,7 @@ export async function bulkUpdateItems(itemIds: string[], updates: BulkItemUpdate
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -348,7 +348,7 @@ export async function runItemTaxonomyBackfill() {
         updated += 1
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
 
     return {
         success: true,
@@ -403,7 +403,7 @@ export async function createCategory(name: string) {
     }
 
     // Revalidate paths where categories are used if necessary, but mainly for the form we use client state update or re-fetch
-    revalidatePath('/admin/items/new')
+    revalidateAdminPath('/items/new')
     return { success: true, error: null, data }
 }
 
@@ -422,7 +422,7 @@ export async function createCollection(name: string) {
         return { success: false, error: error.message, data: null }
     }
 
-    revalidatePath('/admin/items/new')
+    revalidateAdminPath('/items/new')
     return { success: true, error: null, data }
 }
 
@@ -2300,7 +2300,7 @@ export async function removeStagingItemAction(id: string) {
         return { success: false, error: error.message }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -2361,7 +2361,7 @@ export async function updateStagingItemAction(
         return { success: false, error: error.message, data: null }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null, data }
 }
 
@@ -2400,7 +2400,7 @@ export async function renameStagingGroupAction(oldName: string, newName: string,
         return { success: false, error: updateError.message, updatedCount: 0 }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null, updatedCount: targetIds.length }
 }
 
@@ -2431,7 +2431,7 @@ export async function deleteStagingBatchAction(batchId: string) {
         return { success: false, error: `Failed to delete batch: ${batchError.message}` }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -2569,7 +2569,7 @@ export async function commitStagingItemsAction(batchId: string) {
                 .eq('id', batchId)
         }
 
-        revalidatePath('/admin/items')
+        revalidateAdminPath('/items')
 
         await logImportEvent(supabase, {
             batchId,
@@ -2599,7 +2599,7 @@ export async function commitStagingItemsAction(batchId: string) {
         }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
 
     await logImportEvent(supabase, {
         batchId,
@@ -3287,7 +3287,7 @@ export async function importPdfCatalogAction(formData: FormData): Promise<PdfCat
         }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
 
     return {
         success: runs.length > 0,
@@ -3478,7 +3478,7 @@ ${items.map(item => `- ${item.id}: ${item.sku || item.name} (${item.character_fa
             matchedCount += 1
         }
 
-        revalidatePath('/admin/items')
+        revalidateAdminPath('/items')
 
         return {
             success: true,
@@ -3625,7 +3625,7 @@ export async function answerImportQuestionsAction(input: {
         },
     })
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null }
 }
 
@@ -3815,7 +3815,7 @@ export async function runWebsiteMatchAction(batchIds: string[]): Promise<{
         }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
     return { success: true, error: null, matchedCount, totalItems }
 }
 
@@ -3940,7 +3940,7 @@ Expected JSON format:
         }
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
 
     return { success: true, error: null, updatedCount, unmatched }
 }

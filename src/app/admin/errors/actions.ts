@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 
 export async function retrySystemError(errorId: string) {
     const supabase = await createClient()
@@ -50,6 +50,6 @@ export async function retrySystemError(errorId: string) {
         })
         .eq('id', errorId)
 
-    revalidatePath('/admin/errors')
+    revalidateAdminPath('/errors')
     return { success: true, message: `Retry attempt #${newCount} recorded.` }
 }

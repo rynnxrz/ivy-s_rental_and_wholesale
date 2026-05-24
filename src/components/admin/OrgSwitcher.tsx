@@ -27,7 +27,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Building2, Check, ChevronDown, Plus } from 'lucide-react'
+import { ArrowLeftRight, Building2, Check, ChevronDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
     DropdownMenu,
@@ -68,9 +68,9 @@ function roleBadgeClasses(role: string): string {
         case 'admin':
             return 'bg-blue-50 text-blue-700 border-blue-200'
         case 'staff':
-            return 'bg-slate-100 text-slate-700 border-slate-200'
+            return 'bg-muted text-foreground border-border'
         default:
-            return 'bg-slate-100 text-slate-700 border-slate-200'
+            return 'bg-muted text-foreground border-border'
     }
 }
 
@@ -110,33 +110,88 @@ export function OrgSwitcher({
         router.push(`/${targetSlug}/admin`)
     }
 
-    // ── Single-org path: plain display, no dropdown trigger. ──────────────
+    // ── Single-org path: minimal dropdown with "Add workspace" option. ───
     if (!isMultiOrg) {
         return (
-            <div
-                className={cn(
-                    'mx-2 flex items-center rounded-lg py-2',
-                    expanded ? 'gap-3 px-3' : 'justify-center px-2',
-                )}
-                aria-label={`Workspace: ${currentOrg.name}`}
-                data-testid="org-switcher-single"
-            >
-                <Building2 className="h-5 w-5 flex-shrink-0 text-slate-700" />
-                {expanded && (
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <span className="truncate text-sm font-medium text-slate-900">
-                            {currentOrg.name}
-                        </span>
-                        <span
+            <div className="px-2 pb-1">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            title={!expanded ? `${currentOrg.name} · ${currentRole}` : undefined}
+                            data-testid="org-switcher-single"
+                            aria-label={`Workspace: ${currentOrg.name}`}
                             className={cn(
-                                'rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                                roleBadgeClasses(currentRole),
+                                'flex w-full items-center rounded-lg py-2 text-sm font-medium text-foreground transition-colors',
+                                'hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                expanded ? 'gap-2 px-3' : 'justify-center px-2',
                             )}
                         >
-                            {currentRole}
-                        </span>
-                    </div>
-                )}
+                            <Building2 className="h-5 w-5 flex-shrink-0 text-foreground" />
+                            {expanded && (
+                                <>
+                                    <span className="min-w-0 flex-1 truncate text-left">
+                                        {currentOrg.name}
+                                    </span>
+                                    <span
+                                        className={cn(
+                                            'rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                                            roleBadgeClasses(currentRole),
+                                        )}
+                                    >
+                                        {currentRole}
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                                </>
+                            )}
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        align="start"
+                        side="bottom"
+                        sideOffset={6}
+                        className="w-64"
+                    >
+                        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Workspace
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem
+                            disabled
+                            aria-current="true"
+                            className="flex items-start gap-2 px-2 py-2 bg-muted cursor-default"
+                        >
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="truncate text-sm font-medium text-foreground">
+                                        {currentOrg.name}
+                                    </span>
+                                    <span
+                                        className={cn(
+                                            'rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                                            roleBadgeClasses(currentRole),
+                                        )}
+                                    >
+                                        {currentRole}
+                                    </span>
+                                </div>
+                                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                    /{currentOrg.slug}
+                                </p>
+                            </div>
+                            <Check className="mt-1 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                            <Link
+                                href="/signup"
+                                className="flex items-center gap-2 px-2 py-2 text-sm text-foreground"
+                            >
+                                <Plus className="h-4 w-4" />
+                                <span>Add workspace</span>
+                            </Link>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         )
     }
@@ -152,12 +207,12 @@ export function OrgSwitcher({
                         data-testid="org-switcher-trigger"
                         aria-label={`Switch workspace (current: ${currentOrg.name}, ${currentRole})`}
                         className={cn(
-                            'flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-900 transition-colors',
-                            'hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300',
+                            'flex w-full items-center rounded-lg py-2 text-sm font-medium text-foreground transition-colors',
+                            'hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             expanded ? 'gap-2 px-3' : 'justify-center px-2',
                         )}
                     >
-                        <Building2 className="h-5 w-5 flex-shrink-0 text-slate-700" />
+                        <Building2 className="h-5 w-5 flex-shrink-0 text-foreground" />
                         {expanded && (
                             <>
                                 <span className="min-w-0 flex-1 truncate text-left">
@@ -171,7 +226,7 @@ export function OrgSwitcher({
                                 >
                                     {currentRole}
                                 </span>
-                                <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />
+                                <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                             </>
                         )}
                     </button>
@@ -183,7 +238,7 @@ export function OrgSwitcher({
                     className="w-64"
                     data-testid="org-switcher-menu"
                 >
-                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-slate-500">
+                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
                         Workspaces
                     </DropdownMenuLabel>
                     {memberships.map((m) => {
@@ -213,12 +268,12 @@ export function OrgSwitcher({
                                 }
                                 className={cn(
                                     'flex items-start gap-2 px-2 py-2',
-                                    isCurrent && 'bg-slate-100 cursor-default',
+                                    isCurrent && 'bg-muted cursor-default',
                                 )}
                             >
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="truncate text-sm font-medium text-slate-900">
+                                        <span className="truncate text-sm font-medium text-foreground">
                                             {orgName}
                                         </span>
                                         <span
@@ -230,7 +285,7 @@ export function OrgSwitcher({
                                             {m.role}
                                         </span>
                                     </div>
-                                    <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                                         /{orgSlug}
                                     </p>
                                 </div>
@@ -239,17 +294,26 @@ export function OrgSwitcher({
                                 ) : isLoading ? (
                                     <span
                                         aria-hidden="true"
-                                        className="mt-1 h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+                                        className="mt-1 h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-input border-t-foreground"
                                     />
                                 ) : null}
                             </DropdownMenuItem>
                         )
                     })}
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild data-testid="org-switcher-all">
+                        <Link
+                            href="/select-workspace"
+                            className="flex items-center gap-2 px-2 py-2 text-sm text-foreground"
+                        >
+                            <ArrowLeftRight className="h-4 w-4" />
+                            <span>All workspaces</span>
+                        </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild data-testid="org-switcher-add">
                         <Link
                             href="/signup"
-                            className="flex items-center gap-2 px-2 py-2 text-sm text-slate-700"
+                            className="flex items-center gap-2 px-2 py-2 text-sm text-foreground"
                         >
                             <Plus className="h-4 w-4" />
                             <span>Add workspace</span>

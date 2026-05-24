@@ -22,6 +22,7 @@ interface ItemsPageClientProps {
     categories: Category[]
     collections: Collection[]
     isAdmin: boolean
+    basePath?: string
 }
 
 export function ItemsPageClient({
@@ -29,6 +30,7 @@ export function ItemsPageClient({
     categories,
     collections,
     isAdmin,
+    basePath = '/admin',
 }: ItemsPageClientProps) {
     return (
         <div className="space-y-6">
@@ -37,7 +39,7 @@ export function ItemsPageClient({
                 description="Manage your rental inventory"
                 action={isAdmin && (
                     <Button asChild>
-                        <Link href="/admin/items/new">
+                        <Link href={`${basePath}/items/new`}>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Item
                         </Link>
@@ -50,6 +52,7 @@ export function ItemsPageClient({
                 isAdmin={isAdmin}
                 categories={categories}
                 collections={collections}
+                basePath={basePath}
             />
         </div>
     )

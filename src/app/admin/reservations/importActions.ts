@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { z } from 'zod'
 import { RESERVATION_STATUSES } from '@/lib/constants/reservation-status'
 import {
@@ -216,6 +216,6 @@ export async function importRequestFromJSON(jsonString: string, force: boolean =
         return { error: 'Failed to insert reservations.' }
     }
 
-    revalidatePath('/admin/reservations')
+    revalidateAdminPath('/reservations')
     return { success: true }
 }

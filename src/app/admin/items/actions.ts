@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 
 export async function syncItemVariants(itemName: string, updates: { collection_id?: string | null, material?: string | null }) {
     const supabase = await createClient()
@@ -36,5 +36,5 @@ export async function syncItemVariants(itemName: string, updates: { collection_i
         throw error
     }
 
-    revalidatePath('/admin/items')
+    revalidateAdminPath('/items')
 }

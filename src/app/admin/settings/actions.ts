@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidateAdminPath } from '@/lib/revalidate-admin'
 import { healthCheckAiProvider, listAiModels } from '@/lib/ai/gateway'
 import { healthCheckDocumentProvider } from '@/lib/ai/document-gateway'
 import { loadAiSettings } from '@/lib/ai/settings'
@@ -41,7 +41,7 @@ export async function toggleCategoryVisibility(id: string, hidden: boolean) {
         .eq('id', id)
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -58,7 +58,7 @@ export async function toggleCollectionVisibility(id: string, hidden: boolean) {
         .eq('id', id)
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -75,7 +75,7 @@ export async function deleteCategory(id: string) {
         .eq('id', id)
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -92,7 +92,7 @@ export async function deleteCollection(id: string) {
         .eq('id', id)
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -115,7 +115,7 @@ export async function createCategory(name: string) {
         .insert({ name, slug })
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -130,7 +130,7 @@ export async function createCollection(name: string) {
         .insert({ name, slug })
 
     if (error) throw error
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/settings')
     return { success: true }
 }
 
@@ -270,8 +270,8 @@ export async function saveAISettingsAction(settings: {
     }
 
     console.log('✅ [AI Settings] Successfully saved to database\n')
-    revalidatePath('/admin/items')
-    revalidatePath('/admin/settings')
+    revalidateAdminPath('/items')
+    revalidateAdminPath('/settings')
     return { success: true, error: null }
 }
 

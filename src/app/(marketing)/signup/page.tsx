@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/auth/signup-otp"
 import { signupAction } from "@/app/actions/auth/signup"
 import { track } from "@/lib/analytics/track"
+import { toast } from "sonner"
 
 type Stage = "form" | "code"
 
@@ -56,9 +57,14 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorField, setErrorField] = useState<string | null>(null)
+  const [loginRedirect, setLoginRedirect] = useState<{
+    slug: string
+    email: string
+  } | null>(null)
 
   // Countdown for "Resend code" — starts when entering Stage B.
   const [resendIn, setResendIn] = useState(RESEND_COOLDOWN_S)
+  const [resending, setResending] = useState(false)
 
   useEffect(() => {
     if (stage !== "code") return
@@ -87,6 +93,7 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
     setSubmitting(true)
     setError(null)
     setErrorField(null)
+    setLoginRedirect(null)
 
     const res = await requestSignupOtpAction({
       email: email.trim(),
@@ -97,6 +104,12 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
 
     setSubmitting(false)
     if (!res.ok) {
+      // BRIEF — email+slug overlap: show "Sign in to <slug>" CTA in
+      // place of the inline error.
+      if (res.action === "redirect_to_login" && res.slug) {
+        setLoginRedirect({ slug: res.slug, email: email.trim() })
+        return
+      }
       setError(res.error)
       setErrorField(res.field ?? null)
       return
@@ -134,7 +147,8 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
   }
 
   const onResend = async () => {
-    if (resendIn > 0) return
+    if (resendIn > 0 || resending) return
+    setResending(true)
     setError(null)
     const res = await requestSignupOtpAction({
       email: email.trim(),
@@ -143,11 +157,14 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
       country: country.trim() || undefined,
     })
     if (!res.ok) {
+      setResending(false)
       setError(res.error)
       return
     }
     track("signup_otp_sent", { email_domain: emailDomain(email), resend: true })
+    setResending(false)
     setResendIn(RESEND_COOLDOWN_S)
+    toast.success("Verification code sent")
   }
 
   return (
@@ -209,6 +226,24 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
 
                   {error && !errorField && (
                     <ErrorBanner message={error} />
+                  )}
+
+                  {loginRedirect && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                      <p className="mb-2">
+                        You already own{" "}
+                        <span className="font-medium">
+                          &quot;{loginRedirect.slug}&quot;
+                        </span>
+                        . Sign in instead.
+                      </p>
+                      <Link
+                        href={`/login?email=${encodeURIComponent(loginRedirect.email)}&org=${encodeURIComponent(loginRedirect.slug)}`}
+                        className="inline-flex h-9 items-center justify-center rounded-md bg-foreground px-4 text-xs font-medium text-background hover:opacity-90 transition-opacity"
+                      >
+                        Sign in to &quot;{loginRedirect.slug}&quot;
+                      </Link>
+                    </div>
                   )}
 
                   <button
@@ -293,12 +328,14 @@ function OtpSignupFlow({ router }: OtpFlowProps) {
                     <button
                       type="button"
                       onClick={onResend}
-                      disabled={resendIn > 0}
+                      disabled={resendIn > 0 || resending}
                       className="hover:text-foreground hover:underline underline-offset-4 disabled:opacity-60 disabled:no-underline"
                     >
-                      {resendIn > 0
-                        ? `Resend in ${resendIn}s`
-                        : "Resend code"}
+                      {resending
+                        ? "Sending..."
+                        : resendIn > 0
+                          ? `Resend in ${resendIn}s`
+                          : "Resend code"}
                     </button>
                   </div>
                 </form>

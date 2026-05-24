@@ -64,6 +64,7 @@ interface ItemFormProps {
     onSubmitOverride?: (data: ItemFormData & { image_paths: string[] }) => Promise<{ success: boolean; error?: string }>
     initialData?: Partial<ItemFormData> & { image_paths?: string[] }
     onCancel?: () => void
+    basePath?: string
 }
 
 const STATUS_OPTIONS: typeof ITEM_STATUS_OPTIONS = [
@@ -105,7 +106,8 @@ export const ItemForm = ({
     isStaging = false,
     onSubmitOverride,
     initialData,
-    onCancel
+    onCancel,
+    basePath = '/admin',
 }: ItemFormProps) => {
     const router = useRouter()
     const [isSubmitting, startSubmitting] = useTransition()
@@ -333,7 +335,7 @@ export const ItemForm = ({
 
                         } else {
                             toast.success("Item saved successfully")
-                            router.push('/admin/items')
+                            router.push(`${basePath}/items`)
                             router.refresh()
                         }
                     } else {
@@ -675,7 +677,7 @@ export const ItemForm = ({
                             ))}
                             {/* Only allow uploads if not in staging mode (or implement staging uploads later) */}
                             {/* Staging usually has external URLs, but we could allow uploads if needed. keeping enabled for now. */}
-                            <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400">
+                            <label className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-input hover:border-muted-foreground">
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -684,9 +686,9 @@ export const ItemForm = ({
                                     disabled={uploadingImage}
                                 />
                                 {uploadingImage ? (
-                                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
                                 ) : (
-                                    <Upload className="h-6 w-6 text-slate-400" />
+                                    <Upload className="h-6 w-6 text-muted-foreground/70" />
                                 )}
                             </label>
                         </div>
@@ -757,13 +759,13 @@ export const ItemForm = ({
                         if (isAddingVariation) {
                             // Confirm before leaving if variants were added
                             if (confirm("Your previously saved variants are safe. Do you want to stop adding more?")) {
-                                router.push('/admin/items')
+                                router.push(`${basePath}/items`)
                             }
                         } else {
                             if (isStaging && onSubmitOverride) {
                                 // In staging mode the parent dialog handles dismissal via onCancel.
                             } else {
-                                router.push('/admin/items')
+                                router.push(`${basePath}/items`)
                             }
                         }
                     }}

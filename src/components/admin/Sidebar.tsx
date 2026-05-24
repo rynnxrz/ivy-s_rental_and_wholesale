@@ -26,12 +26,12 @@ import {
 } from "@/components/ui/sheet"
 import { OrgSwitcher, type OrgSwitcherMembership } from './OrgSwitcher'
 
-const navItems: { href: string; label: string; icon: typeof LayoutDashboard; tour?: string }[] = [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/items', label: 'Items', icon: Package, tour: 'listings' },
-    { href: '/admin/reservations', label: 'Reservations', icon: Calendar, tour: 'reservations' },
-    { href: '/admin/invoices', label: 'Invoices', icon: FileText, tour: 'lookbook' },
-    { href: '/admin/customers', label: 'Customers', icon: Users, tour: 'team' },
+const navSuffixes: { suffix: string; label: string; icon: typeof LayoutDashboard; tour?: string }[] = [
+    { suffix: '', label: 'Dashboard', icon: LayoutDashboard },
+    { suffix: '/items', label: 'Items', icon: Package, tour: 'listings' },
+    { suffix: '/reservations', label: 'Reservations', icon: Calendar, tour: 'reservations' },
+    { suffix: '/invoices', label: 'Invoices', icon: FileText, tour: 'lookbook' },
+    { suffix: '/customers', label: 'Customers', icon: Users, tour: 'team' },
 ]
 
 
@@ -42,11 +42,12 @@ const navItems: { href: string; label: string; icon: typeof LayoutDashboard; tou
     - Default width: w-16 (collapsed).
     - Hover: w-64 (expanded).
     - Content in layout must have md:pl-16.
-  - Top section: OrgSwitcher (BRIEF-63) when org context is supplied;
-    legacy "Ivy's Rental" brand header otherwise. The legacy
-    `src/app/admin/layout.tsx` route (out of scope per BRIEF-63 file
-    boundaries) still renders <Sidebar /> without props, so all three
-    org props remain optional.
+  - Top section: OrgSwitcher when org context (currentOrg + currentRole
+    + memberships) is supplied; legacy brand header otherwise. Both the
+    `/admin/layout.tsx` and `/[slug]/admin/layout.tsx` route trees feed
+    the OrgSwitcher when they can resolve the current org. The bare
+    `<Sidebar />` no-context branch remains for the legacy-admin
+    fallback path (profiles.role === 'admin' with no org membership).
 */
 
 export interface SidebarProps {
@@ -66,6 +67,15 @@ export const Sidebar = ({
     const [isHovered, setIsHovered] = useState(false)
     const [isMobileOpen, setIsMobileOpen] = useState(false)
 
+    const basePath = currentOrg ? `/${currentOrg.slug}/admin` : '/admin'
+    const settingsHref = `${basePath}/settings`
+    const navItems = navSuffixes.map((s) => ({
+        href: `${basePath}${s.suffix}`,
+        label: s.label,
+        icon: s.icon,
+        tour: s.tour,
+    }))
+
     const handleSignOut = async () => {
         await supabase.auth.signOut()
         router.push('/login')
@@ -73,10 +83,10 @@ export const Sidebar = ({
 
     const closeMobileMenu = () => setIsMobileOpen(false)
 
-    // BRIEF-63 — render the OrgSwitcher only when the caller supplied
-    // org context (the new `/[slug]/admin/layout.tsx` does). The legacy
-    // `/admin/layout.tsx` mounts <Sidebar /> bare and keeps the old
-    // brand header so IVYJSTUDIO's production deployment is untouched.
+    // Render the OrgSwitcher whenever the caller supplied org context.
+    // Both `/admin/layout.tsx` and `/[slug]/admin/layout.tsx` feed it
+    // now; the bare-Sidebar fallback only applies to the rare
+    // legacy-admin path (profiles.role === 'admin', no membership).
     const hasOrgContext =
         !!currentOrg &&
         typeof currentRole === 'string' &&
@@ -102,7 +112,7 @@ export const Sidebar = ({
             >
                 <span
                     className={cn(
-                        'text-lg font-semibold text-slate-900 whitespace-nowrap transition-opacity',
+                        'text-lg font-semibold text-foreground whitespace-nowrap transition-opacity',
                         expanded ? 'opacity-100 delay-200' : 'opacity-0',
                     )}
                 >
@@ -117,7 +127,7 @@ export const Sidebar = ({
         <nav className="flex-1 space-y-1 px-2 py-4">
             {navItems.map((item) => {
                 const isActive = pathname === item.href ||
-                    (item.href !== '/admin' && pathname.startsWith(item.href))
+                    (item.href !== basePath && pathname.startsWith(item.href))
 
                 return (
                     <Link
@@ -130,8 +140,8 @@ export const Sidebar = ({
                             'flex items-center rounded-lg py-2 text-sm font-medium transition-colors whitespace-nowrap',
                             !expanded ? 'justify-center px-2' : 'gap-3 px-3',
                             isActive
-                                ? 'bg-slate-200 text-slate-900 shadow-sm'
-                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                ? 'bg-muted text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                         )}
                     >
                         <item.icon className="h-5 w-5 flex-shrink-0" />
@@ -155,25 +165,25 @@ export const Sidebar = ({
                         <Button
                             variant="outline"
                             size="icon"
-                            className="fixed top-4 right-4 z-50 bg-white shadow-md border-slate-200"
+                            className="fixed top-4 right-4 z-50 bg-card shadow-md border-border"
                         >
-                            <Menu className="h-5 w-5 text-slate-700" />
+                            <Menu className="h-5 w-5 text-foreground" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="w-64 p-0 bg-slate-50 border-r-slate-200">
+                    <SheetContent side="left" className="w-64 p-0 bg-muted/50 border-r-border">
                         <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                         <div className="flex h-full flex-col">
-                            <div className="border-b border-slate-200 bg-white py-3">
+                            <div className="border-b border-border bg-card py-3">
                                 {renderTopSlot(true)}
                             </div>
 
                             {renderNavItems(true, closeMobileMenu)}
 
-                            <div className="p-4 border-t border-slate-200 bg-white space-y-1">
+                            <div className="p-4 border-t border-border bg-card space-y-1">
                                 <Link
-                                    href="/admin/settings"
+                                    href={settingsHref}
                                     onClick={closeMobileMenu}
-                                    className="flex w-full items-center rounded-lg py-2 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 mb-1 gap-3"
+                                    className="flex w-full items-center rounded-lg py-2 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground mb-1 gap-3"
                                 >
                                     <Settings className="h-5 w-5" />
                                     <span>Settings</span>
@@ -182,7 +192,7 @@ export const Sidebar = ({
                                 <Button
                                     onClick={handleSignOut}
                                     variant="ghost"
-                                    className="w-full justify-start gap-3 text-slate-600 hover:text-red-600 hover:bg-red-50 px-3"
+                                    className="w-full justify-start gap-3 text-muted-foreground hover:text-red-600 hover:bg-red-50 px-3"
                                 >
                                     <LogOut className="h-5 w-5" />
                                     <span>Sign Out</span>
@@ -196,7 +206,7 @@ export const Sidebar = ({
             {/* --- DESKTOP SIDEBAR (Drawer Animation) --- */}
             <aside
                 className={cn(
-                    'hidden md:flex fixed left-0 top-0 h-screen flex-col border-r border-slate-100 bg-slate-50/95 backdrop-blur-sm z-40 overflow-hidden',
+                    'hidden md:flex fixed left-0 top-0 h-screen flex-col border-r border-border bg-muted/50/95 backdrop-blur-sm z-40 overflow-hidden',
                     'transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
                     isHovered ? 'w-60' : 'w-16'
                 )}
@@ -208,14 +218,14 @@ export const Sidebar = ({
                     {renderTopSlot(isHovered)}
                 </div>
 
-                <Separator className="bg-slate-200/50" />
+                <Separator className="bg-muted/50" />
 
                 {/* Nav */}
                 <div className="flex-1 flex flex-col overflow-hidden">
                     <nav className="flex-1 space-y-1 py-4" style={{ width: '240px' }}>
                         {navItems.map((item) => {
                             const isActive = pathname === item.href ||
-                                (item.href !== '/admin' && pathname.startsWith(item.href))
+                                (item.href !== basePath && pathname.startsWith(item.href))
 
                             return (
                                 <Link
@@ -226,8 +236,8 @@ export const Sidebar = ({
                                     className={cn(
                                         'flex items-center mx-2 rounded-lg py-2 text-sm font-medium transition-colors',
                                         isActive
-                                            ? 'bg-slate-200 text-slate-900'
-                                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                            ? 'bg-muted text-foreground'
+                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                                     )}
                                 >
                                     <div className="flex items-center justify-center w-12 flex-shrink-0">
@@ -247,19 +257,19 @@ export const Sidebar = ({
                     </nav>
                 </div>
 
-                <Separator className="bg-slate-200/50" />
+                <Separator className="bg-muted/50" />
 
                 {/* Footer Controls */}
                 <div className="py-2" style={{ width: '240px' }}>
                     <Link
-                        href="/admin/settings"
+                        href={settingsHref}
                         title={!isHovered ? 'Settings' : undefined}
                         data-tour="settings"
                         className={cn(
                             'flex items-center mx-2 rounded-lg py-2 text-sm font-medium transition-colors',
-                            pathname === '/admin/settings'
-                                ? 'bg-slate-200 text-slate-900'
-                                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                            pathname === settingsHref
+                                ? 'bg-muted text-foreground'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                         )}
                     >
                         <div className="flex items-center justify-center w-12 flex-shrink-0">
@@ -277,7 +287,7 @@ export const Sidebar = ({
 
                     <button
                         title={!isHovered ? 'Sign Out' : undefined}
-                        className="flex items-center mx-2 rounded-lg py-2 text-sm font-medium text-slate-500 transition-colors hover:text-red-600 hover:bg-red-50 w-[calc(100%-16px)]"
+                        className="flex items-center mx-2 rounded-lg py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-red-600 hover:bg-red-50 w-[calc(100%-16px)]"
                         onClick={handleSignOut}
                     >
                         <div className="flex items-center justify-center w-12 flex-shrink-0">
