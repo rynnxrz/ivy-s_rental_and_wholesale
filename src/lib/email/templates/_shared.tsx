@@ -53,6 +53,14 @@ interface LayoutProps {
     children: React.ReactNode
     unsubscribeUrl?: string
     managePreferencesUrl?: string
+    footerNote?: React.ReactNode
+    /**
+     * Whether to show the From/Reply-to address grid in the header.
+     * Defaults to true. Set to false for emails sent through Supabase's
+     * own mailer (auth emails), where the displayed From/Reply-to here
+     * would not match the actual sending address shown by the mail client.
+     */
+    showSenderInfo?: boolean
 }
 
 /**
@@ -64,6 +72,8 @@ export function Layout({
     children,
     unsubscribeUrl,
     managePreferencesUrl,
+    footerNote,
+    showSenderInfo = true,
 }: LayoutProps) {
     return (
         <Html>
@@ -93,11 +103,12 @@ export function Layout({
                         overflow: 'hidden',
                     }}
                 >
-                    <EmailHeader preview={preview} />
+                    <EmailHeader preview={preview} showSenderInfo={showSenderInfo} />
                     <Section style={{ padding: '28px' }}>{children}</Section>
                     <EmailFooter
                         unsubscribeUrl={unsubscribeUrl}
                         managePreferencesUrl={managePreferencesUrl}
+                        note={footerNote}
                     />
                 </Container>
             </Body>
@@ -109,7 +120,13 @@ export function Layout({
  * Top header bar — small lende logo, From/Reply-to mono grid, italic preheader.
  * Mirrors `EmailHeader` from email-shared.jsx.
  */
-function EmailHeader({ preview }: { preview: string }) {
+function EmailHeader({
+    preview,
+    showSenderInfo,
+}: {
+    preview: string
+    showSenderInfo: boolean
+}) {
     return (
         <Section
             style={{
@@ -119,42 +136,44 @@ function EmailHeader({ preview }: { preview: string }) {
             }}
         >
             <BrandLockup size="sm" />
-            <Section style={{ marginTop: '14px' }}>
-                <Row>
-                    <Column style={{ width: '70px', verticalAlign: 'top' }}>
-                        <Text
-                            style={{
-                                margin: 0,
-                                fontFamily: fonts.mono,
-                                fontSize: '11px',
-                                letterSpacing: '0.04em',
-                                color: colors.muted,
-                                lineHeight: 1.6,
-                            }}
-                        >
-                            From
-                            <br />
-                            Reply-to
-                        </Text>
-                    </Column>
-                    <Column style={{ verticalAlign: 'top' }}>
-                        <Text
-                            style={{
-                                margin: 0,
-                                fontFamily: fonts.mono,
-                                fontSize: '11px',
-                                letterSpacing: '0.04em',
-                                color: colors.muted,
-                                lineHeight: 1.6,
-                            }}
-                        >
-                            <span style={{ color: colors.text }}>{FROM_ADDRESS}</span>
-                            <br />
-                            {REPLY_TO}
-                        </Text>
-                    </Column>
-                </Row>
-            </Section>
+            {showSenderInfo && (
+                <Section style={{ marginTop: '14px' }}>
+                    <Row>
+                        <Column style={{ width: '70px', verticalAlign: 'top' }}>
+                            <Text
+                                style={{
+                                    margin: 0,
+                                    fontFamily: fonts.mono,
+                                    fontSize: '11px',
+                                    letterSpacing: '0.04em',
+                                    color: colors.muted,
+                                    lineHeight: 1.6,
+                                }}
+                            >
+                                From
+                                <br />
+                                Reply-to
+                            </Text>
+                        </Column>
+                        <Column style={{ verticalAlign: 'top' }}>
+                            <Text
+                                style={{
+                                    margin: 0,
+                                    fontFamily: fonts.mono,
+                                    fontSize: '11px',
+                                    letterSpacing: '0.04em',
+                                    color: colors.muted,
+                                    lineHeight: 1.6,
+                                }}
+                            >
+                                <span style={{ color: colors.text }}>{FROM_ADDRESS}</span>
+                                <br />
+                                {REPLY_TO}
+                            </Text>
+                        </Column>
+                    </Row>
+                </Section>
+            )}
             <Text
                 style={{
                     margin: '14px 0 0',
@@ -209,20 +228,30 @@ function BrandLockup({ size = 'sm' }: BrandLockupProps) {
 interface FooterProps {
     unsubscribeUrl?: string
     managePreferencesUrl?: string
+    note?: React.ReactNode
 }
 
+const DEFAULT_FOOTER_NOTE = (
+    <>
+        You&apos;re receiving this because you accepted an invitation to lende. If that
+        wasn&apos;t you, reply to this email and we&apos;ll sort it out.
+    </>
+)
+
 /**
- * Bottom footer — logo, ShipByX address + unsubscribe + manage preferences row,
- * reassurance line. Mirrors `EmailFooter` from email-shared.jsx.
+ * Bottom footer — logo, ShipByX address + optional unsubscribe/manage
+ * preferences row, reassurance line. Mirrors `EmailFooter` from
+ * email-shared.jsx. The unsubscribe/manage-preferences row only renders
+ * when a URL is provided — transactional/auth emails (reset password,
+ * signup confirmation, OTP) have no such links.
  */
-function EmailFooter({ unsubscribeUrl, managePreferencesUrl }: FooterProps = {}) {
-    const unsub = unsubscribeUrl ?? '#'
-    const manage = managePreferencesUrl ?? '#'
+function EmailFooter({ unsubscribeUrl, managePreferencesUrl, note }: FooterProps = {}) {
     const linkStyle = {
         color: colors.muted,
         textDecoration: 'underline',
         textUnderlineOffset: '3px' as const,
     }
+    const showLinks = !!(unsubscribeUrl || managePreferencesUrl)
     return (
         <Section
             style={{
@@ -240,15 +269,29 @@ function EmailFooter({ unsubscribeUrl, managePreferencesUrl }: FooterProps = {})
                     color: colors.muted,
                 }}
             >
-                ShipByX Ltd <span aria-hidden>·</span> Auckland, NZ{' '}
-                <span aria-hidden>·</span>{' '}
-                <Link href={unsub} style={linkStyle}>
-                    Unsubscribe
-                </Link>{' '}
-                <span aria-hidden>·</span>{' '}
-                <Link href={manage} style={linkStyle}>
-                    Manage preferences
-                </Link>
+                ShipByX Ltd <span aria-hidden>·</span> Auckland, NZ
+                {showLinks && (
+                    <>
+                        {' '}
+                        <span aria-hidden>·</span>{' '}
+                        {unsubscribeUrl && (
+                            <Link href={unsubscribeUrl} style={linkStyle}>
+                                Unsubscribe
+                            </Link>
+                        )}
+                        {unsubscribeUrl && managePreferencesUrl && (
+                            <>
+                                {' '}
+                                <span aria-hidden>·</span>{' '}
+                            </>
+                        )}
+                        {managePreferencesUrl && (
+                            <Link href={managePreferencesUrl} style={linkStyle}>
+                                Manage preferences
+                            </Link>
+                        )}
+                    </>
+                )}
             </Text>
             <Text
                 style={{
@@ -258,8 +301,7 @@ function EmailFooter({ unsubscribeUrl, managePreferencesUrl }: FooterProps = {})
                     color: colors.muted,
                 }}
             >
-                You&apos;re receiving this because you accepted an invitation to lende. If that
-                wasn&apos;t you, reply to this email and we&apos;ll sort it out.
+                {note ?? DEFAULT_FOOTER_NOTE}
             </Text>
         </Section>
     )

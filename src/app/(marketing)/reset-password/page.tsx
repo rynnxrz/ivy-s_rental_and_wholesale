@@ -2,11 +2,11 @@
 
 export const dynamic = "force-dynamic"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { resetPasswordAction } from "@/app/actions/auth/reset-password"
+import { invalidateResetSessionsAction } from "@/app/actions/auth/reset-password"
 
 /**
  * BRIEF-59 — /reset-password page.
@@ -20,7 +20,7 @@ import { resetPasswordAction } from "@/app/actions/auth/reset-password"
  */
 export default function ResetPasswordPage() {
     const router = useRouter()
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
     const [password, setPassword] = useState("")
     const [confirm, setConfirm] = useState("")
     const [error, setError] = useState<string | null>(null)
@@ -44,9 +44,6 @@ export default function ResetPasswordPage() {
         }
     }, [supabase])
 
-    const canSubmit =
-        password.length >= 8 && password === confirm && !loading && sessionReady === true
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError(null)
@@ -61,18 +58,47 @@ export default function ResetPasswordPage() {
         }
 
         setLoading(true)
-        const result = await resetPasswordAction(password)
-        setLoading(false)
 
-        if (!result.ok) {
-            setError(result.error)
+        const {
+            data: { user },
+            error: userError,
+        } = await supabase.auth.getUser()
+
+        if (userError || !user) {
+            setLoading(false)
+            setSessionReady(false)
+            setError("Your reset link has expired. Please request a new one.")
             return
         }
 
-        // The action calls signOut(global), so the cookies in this
-        // browser are now invalid. We do a hard navigation to /login
-        // (router.push + refresh) so the marketing layout re-evaluates
-        // auth state cleanly.
+        const {
+            data: { session },
+        } = await supabase.auth.getSession()
+
+        const { error: updateError } = await supabase.auth.updateUser({
+            password,
+        })
+
+        if (updateError) {
+            setLoading(false)
+            setError(updateError.message)
+            return
+        }
+
+        if (session?.access_token) {
+            const result = await invalidateResetSessionsAction(session.access_token)
+            if (!result.ok) {
+                setLoading(false)
+                setError(result.error)
+                return
+            }
+        }
+
+        await supabase.auth.signOut({ scope: "local" })
+        setLoading(false)
+
+        // The global invalidation action clears old sessions. We also
+        // clear this browser's local auth state before returning to login.
         router.replace("/login?password_reset=1")
         router.refresh()
     }
@@ -175,7 +201,7 @@ export default function ResetPasswordPage() {
 
                             <button
                                 type="submit"
-                                disabled={!canSubmit}
+                                disabled={loading}
                                 className="w-full inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                             >
                                 {loading ? "Updating..." : "Update password"}

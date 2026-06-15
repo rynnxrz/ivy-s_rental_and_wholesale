@@ -7,6 +7,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { setActiveOrgAndRedirectAction } from "@/app/select-workspace/select-workspace-action"
+import { listWorkspacesForCurrentUserAction } from "@/app/actions/auth/post-login-workspace"
 
 interface Membership {
   organization_id: string
@@ -40,40 +41,30 @@ function SelectWorkspaceContent() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        router.replace("/login")
-        return
-      }
-
-      const [{ data: rows, error: memberError }, { data: profile }] = await Promise.all([
-        supabase
-          .from("organization_members")
-          .select("organization_id, role, organizations!inner(slug, name)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("profiles")
-          .select("last_active_org_id")
-          .eq("id", user.id)
-          .maybeSingle(),
-      ])
-
+      const res = await listWorkspacesForCurrentUserAction()
       if (cancelled) return
-      if (memberError) {
-        setError(memberError.message)
+      if (!res.ok) {
+        if (res.reason === "unauthenticated") {
+          router.replace("/login")
+          return
+        }
+        setError(res.error)
         return
       }
-      const list = (rows ?? []) as unknown as Membership[]
+      const list = res.memberships as Membership[]
 
       // Single-org defensive bounce: in case the user landed here
       // directly with only 1 membership, send them straight in.
       if (list.length === 1) {
-        const slug = list[0].organizations?.slug
+        const only = list[0]
+        const slug = only.organizations?.slug
         if (slug) {
-          router.replace(`/${slug}/admin`)
+          const picked = await setActiveOrgAndRedirectAction(only.organization_id)
+          const target = picked.ok && isSafeNext(nextHint, picked.slug ?? slug)
+            ? (nextHint as string)
+            : `/${picked.ok ? picked.slug ?? slug : slug}/admin`
+          router.refresh()
+          router.replace(target)
           return
         }
       }
@@ -83,12 +74,12 @@ function SelectWorkspaceContent() {
       }
 
       setMemberships(list)
-      setLastActiveOrgId((profile as { last_active_org_id?: string } | null)?.last_active_org_id ?? null)
+      setLastActiveOrgId(res.lastActiveOrgId)
     })()
     return () => {
       cancelled = true
     }
-  }, [router, supabase])
+  }, [nextHint, router, supabase])
 
   const onPick = async (orgId: string, slug: string) => {
     setPickingId(orgId)
