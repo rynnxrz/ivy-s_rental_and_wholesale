@@ -69,7 +69,7 @@ export default async function LookbookPage({
         .from('pdf_lookbook_items')
         .select(
             'id, page_number, bbox_x, bbox_y, bbox_w, bbox_h, match_status, ' +
-                'inventory_item_id, items:inventory_item_id(id, sku, name, rental_price, replacement_cost, images, description, category, material, color, weight, specs)',
+                'inventory_item_id, items:inventory_item_id(id, sku, name, rental_price, replacement_cost, images:image_paths, description, category, material, color, weight, specs)',
         )
         .eq('lookbook_id', lookbook.id)
         .not('bbox_x', 'is', null)

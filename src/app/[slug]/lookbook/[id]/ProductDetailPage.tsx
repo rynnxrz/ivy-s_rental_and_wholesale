@@ -2,6 +2,7 @@
 
 import { ChevronLeft } from 'lucide-react'
 
+import { ProductImage } from '@/components/catalog/ProductImage'
 import { useLookbookCart, type LookbookCartItem } from '@/store/lookbook-cart'
 import type { LookbookItemRow } from './LookbookViewer'
 
@@ -74,25 +75,20 @@ export function ProductDetailPage({ item, onBack, isMobile }: Props) {
                     </button>
                 </div>
 
-                {/* Scrollable content */}
-                <div className="flex-1 overflow-y-auto">
-                    {/* Hero image */}
-                    <div className="aspect-square w-full bg-slate-100">
-                        {heroImage ? (
-                            <img
-                                src={heroImage}
-                                alt={detail.name ?? 'Product'}
-                                className="h-full w-full object-cover"
-                            />
-                        ) : (
-                            <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                                No image
-                            </div>
-                        )}
-                    </div>
+                {/* Content — centered as one unit so it doesn't leave a dead
+                    gap above the CTA when there's little text; scrolls if
+                    the content ever exceeds the panel height. */}
+                <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-4">
+                    {/* Hero image — compact card, native size, never upscaled */}
+                    <ProductImage
+                        src={heroImage}
+                        alt={detail.name ?? 'Product'}
+                        className="h-40 w-40 shrink-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"
+                        priority
+                    />
 
                     {/* Details */}
-                    <div className="space-y-4 px-5 py-5">
+                    <div className="mt-5 w-full max-w-xs space-y-2 text-center">
                         {detail.category && (
                             <p className="text-xs font-medium uppercase tracking-widest text-slate-400">
                                 {detail.category}
@@ -112,21 +108,21 @@ export function ProductDetailPage({ item, onBack, isMobile }: Props) {
                                 {detail.description}
                             </p>
                         )}
-
-                        {/* Specs grid */}
-                        {specs.length > 0 && (
-                            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 border-t border-slate-100 pt-4">
-                                {specs.map((s) => (
-                                    <div key={s.label} className="contents">
-                                        <dt className="text-xs font-medium text-slate-400">
-                                            {s.label}
-                                        </dt>
-                                        <dd className="text-sm text-slate-700">{s.value}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        )}
                     </div>
+
+                    {/* Specs grid */}
+                    {specs.length > 0 && (
+                        <dl className="mt-4 grid w-full max-w-xs grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-left">
+                            {specs.map((s) => (
+                                <div key={s.label} className="contents">
+                                    <dt className="text-xs font-medium text-slate-400">
+                                        {s.label}
+                                    </dt>
+                                    <dd className="text-sm text-slate-700">{s.value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    )}
                 </div>
 
                 {/* Sticky CTA */}

@@ -181,9 +181,9 @@ export function LookbookViewer({
         return () => window.removeEventListener('resize', measure)
     }, [renderedPages])
 
-    // PDF rendering — render page 1 fast for instant feedback, then render
-    // the rest in parallel. Mount flipbook only when ALL pages are ready so
-    // react-pageflip (which caches children on mount) sees the full count.
+    // PDF rendering — render and show pages in small batches so the book
+    // becomes interactive as soon as the first batch is ready, instead of
+    // waiting for the whole document.
     useEffect(() => {
         let cancelled = false
         async function renderPdf() {
@@ -247,34 +247,47 @@ export function LookbookViewer({
                     ]
                 }
 
-                // Worker pool — fully parallel renders can exhaust connection
-                // limits to Supabase Storage range requests; cap at 4 in flight.
-                const CONCURRENCY = 4
+                // Flatten in PDF order and assign logical 1-indexed page numbers.
+                function flatten(grouped: RenderedPage[][]): RenderedPage[] {
+                    const out: RenderedPage[] = []
+                    for (const group of grouped) {
+                        if (!group) continue
+                        for (const rp of group) {
+                            out.push({ ...rp, pageNumber: out.length + 1 })
+                        }
+                    }
+                    return out
+                }
+
+                // Render in small batches so the book becomes interactive as
+                // soon as the first few pages are ready, rather than blocking
+                // on the whole document. Each batch renders with a worker pool
+                // (fully parallel renders can exhaust connection limits to
+                // Supabase Storage range requests) and is flushed to state —
+                // the flipbook remounts (via flipKey) to pick up the growing
+                // page count.
+                const BATCH_SIZE = 4
                 const grouped: RenderedPage[][] = new Array(total)
                 let nextIdx = 1
+                let batchEnd = 0
                 async function worker() {
                     while (!cancelled) {
                         const n = nextIdx++
-                        if (n > total) return
+                        if (n > batchEnd) return
                         grouped[n - 1] = await renderOne(n)
                     }
                 }
-                await Promise.all(
-                    Array.from({ length: Math.min(CONCURRENCY, total) }, worker),
-                )
-                if (cancelled) return
-
-                // Flatten in PDF order and assign logical 1-indexed page numbers.
-                const out: RenderedPage[] = []
-                for (const group of grouped) {
-                    if (!group) continue
-                    for (const rp of group) {
-                        out.push({ ...rp, pageNumber: out.length + 1 })
-                    }
+                for (let start = 1; start <= total; start += BATCH_SIZE) {
+                    nextIdx = start
+                    batchEnd = Math.min(start + BATCH_SIZE - 1, total)
+                    await Promise.all(
+                        Array.from({ length: batchEnd - start + 1 }, worker),
+                    )
+                    if (cancelled) return
+                    setRenderedPages(flatten(grouped))
+                    setLoading(false)
+                    setFlipKey(k => k + 1)
                 }
-                setRenderedPages(out)
-                setLoading(false)
-                setFlipKey(k => k + 1)
             } catch (err) {
                 if (!cancelled) {
                     console.error('[LookbookViewer] render failed', err)
@@ -298,9 +311,12 @@ export function LookbookViewer({
 
     // Pre-warm product hero images so the detail view appears instantly when
     // a hot zone is clicked. Uses the HTMLImageElement cache — no DOM nodes
-    // attached, browser caches the bytes for later reuse.
+    // attached, browser caches the bytes for later reuse. Deferred until the
+    // PDF has started rendering so it doesn't compete for bandwidth/CPU
+    // during initial page load.
     useEffect(() => {
         if (typeof window === 'undefined') return
+        if (loading) return
         const seen = new Set<string>()
         for (const it of items) {
             const url = it.item?.images?.[0]
@@ -310,7 +326,7 @@ export function LookbookViewer({
             img.decoding = 'async'
             img.src = url
         }
-    }, [items])
+    }, [items, loading])
 
     // Navigation
     const flipNext = useCallback(() => {
