@@ -75,7 +75,11 @@ export async function setActiveOrgAndRedirectAction(
     //    the next refreshSession picks it up — even if last_active_org_id
     //    fallback logic is still warming.
     const { error: stampError } = await service.auth.admin.updateUserById(user.id, {
-        app_metadata: { current_org_id: organizationId },
+        app_metadata: {
+            ...(user.app_metadata ?? {}),
+            current_org_id: organizationId,
+            current_org_role: membership.role,
+        },
     })
     if (stampError) {
         return { ok: false, error: stampError.message }

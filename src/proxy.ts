@@ -32,9 +32,9 @@ const TENANT_ROUTES = [
     'payment-confirmation',
 ] as const
 
-// Routes whose pages are physically at `src/app/[slug]/(storefront)/{route}`.
+// Routes whose pages are physically under `src/app/[slug]`.
 // Middleware must NOT rewrite these — let Next.js route to the new files.
-const MIGRATED_TENANT_ROUTES = new Set<string>(['catalog', 'wholesale'])
+const MIGRATED_TENANT_ROUTES = new Set<string>(['admin', 'catalog', 'wholesale'])
 
 const DEFAULT_ORG = 'ivyjstudio'
 

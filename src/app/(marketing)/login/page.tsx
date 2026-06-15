@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
@@ -10,6 +10,7 @@ import {
   requestLoginOtpAction,
   verifyLoginOtpAction,
 } from "@/app/actions/auth/login-otp"
+import { resolvePostLoginWorkspaceAction } from "@/app/actions/auth/post-login-workspace"
 import { toast } from "sonner"
 
 type Stage = "email" | "code" | "password"
@@ -27,7 +28,7 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   // ?email=<email> prefill (set by signup redirect when slug overlap)
   const emailHint = searchParams?.get("email")?.trim() ?? ""
@@ -39,12 +40,11 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null)
   const [errorField, setErrorField] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-
-  const passwordResetSuccess = searchParams?.get("password_reset") === "1"
-  const [resetBanner, setResetBanner] = useState<boolean>(passwordResetSuccess)
-  useEffect(() => {
-    setResetBanner(searchParams?.get("password_reset") === "1")
-  }, [searchParams])
+  const resetBanner = searchParams?.get("password_reset") === "1"
+  const [rememberedLogin, setRememberedLogin] = useState<
+    "checking" | "none" | "redirecting" | "error"
+  >(resetBanner ? "none" : "checking")
+  const [rememberedError, setRememberedError] = useState<string | null>(null)
 
   // BRIEF-60 — `?org=<slug>` direct-land hint.
   const orgHint = searchParams?.get("org")?.trim().toLowerCase() ?? null
@@ -57,61 +57,61 @@ function LoginContent() {
   const [resending, setResending] = useState(false)
   useEffect(() => {
     if (stage !== "code") return
-    setResendIn(RESEND_COOLDOWN_S)
     const i = window.setInterval(() => {
       setResendIn((s) => (s <= 0 ? 0 : s - 1))
     }, 1000)
     return () => window.clearInterval(i)
   }, [stage])
 
+  useEffect(() => {
+    if (resetBanner) {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (cancelled) return
+
+      if (!user) {
+        setRememberedLogin("none")
+        return
+      }
+
+      setRememberedLogin("redirecting")
+      const res = await resolvePostLoginWorkspaceAction({ orgHint, nextHint })
+      if (cancelled) return
+
+      if (!res.ok) {
+        setRememberedError(res.error)
+        setRememberedLogin("error")
+        return
+      }
+
+      router.refresh()
+      router.replace(res.target)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [nextHint, orgHint, resetBanner, router, supabase])
+
   // ---------------------------------------------------------------------
   // Post-auth multi-org redirect (shared by OTP and password paths).
   // ---------------------------------------------------------------------
-  const redirectAfterAuth = async (userId: string) => {
-    const { data: memberships, error: memberError } = await supabase
-      .from("organization_members")
-      .select("organization_id, organizations!inner(slug)")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-
-    if (memberError) {
-      setError(memberError.message)
+  const redirectAfterAuth = async () => {
+    const res = await resolvePostLoginWorkspaceAction({ orgHint, nextHint })
+    if (!res.ok) {
+      setError(res.error)
       setLoading(false)
       return
     }
 
-    type Row = { organization_id: string; organizations: { slug: string } }
-    const rows = (memberships ?? []) as unknown as Row[]
-    const slugs = rows
-      .map((r) => r.organizations?.slug)
-      .filter((s): s is string => typeof s === "string" && s.length > 0)
-    const count = slugs.length
-
-    // Honour `?org=<slug>` → skip picker if the user is in that org.
-    if (orgHint && slugs.includes(orgHint)) {
-      router.refresh()
-      router.push(nextHint ?? `/${orgHint}/admin`)
-      return
-    }
-
-    if (count === 0) {
-      router.refresh()
-      router.push(nextHint ?? "/admin")
-      return
-    }
-
-    if (count === 1) {
-      router.refresh()
-      router.push(nextHint ?? `/${slugs[0]}/admin`)
-      return
-    }
-
-    // ≥ 2 orgs → workspace picker.
     router.refresh()
-    const target = nextHint
-      ? `/select-workspace?next=${encodeURIComponent(nextHint)}`
-      : "/select-workspace"
-    router.push(target)
+    router.push(res.target)
   }
 
   // ---------------------------------------------------------------------
@@ -131,6 +131,7 @@ function LoginContent() {
       setErrorField(res.field ?? null)
       return
     }
+    setResendIn(RESEND_COOLDOWN_S)
     setStage("code")
   }
 
@@ -155,7 +156,7 @@ function LoginContent() {
       return
     }
 
-    await redirectAfterAuth(res.userId)
+    await redirectAfterAuth()
   }
 
   const onResendCode = async () => {
@@ -200,7 +201,65 @@ function LoginContent() {
       return
     }
 
-    await redirectAfterAuth(userId)
+    await redirectAfterAuth()
+  }
+
+  const onRememberedSignOut = async () => {
+    await supabase.auth.signOut()
+    setRememberedLogin("none")
+    setRememberedError(null)
+    router.refresh()
+  }
+
+  if (rememberedLogin === "checking" || rememberedLogin === "redirecting") {
+    return (
+      <main>
+        <section>
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-8 pt-24 pb-20 md:pt-32 md:pb-28">
+            <div className="max-w-sm mx-auto text-center">
+              <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase mb-8">
+                ● Login
+              </p>
+              <h1 className="text-3xl font-light tracking-[0.02em] leading-[1.1] text-foreground mb-2">
+                Continuing to your workspace.
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                We found an active session on this browser.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  if (rememberedLogin === "error") {
+    return (
+      <main>
+        <section>
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-8 pt-24 pb-20 md:pt-32 md:pb-28">
+            <div className="max-w-sm mx-auto text-center">
+              <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase mb-8">
+                ● Login
+              </p>
+              <h1 className="text-3xl font-light tracking-[0.02em] leading-[1.1] text-foreground mb-2">
+                Couldn&apos;t open your workspace.
+              </h1>
+              <p className="text-sm text-muted-foreground mb-6">
+                {rememberedError ?? "Please sign in again to continue."}
+              </p>
+              <button
+                type="button"
+                onClick={onRememberedSignOut}
+                className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+              >
+                Sign in with another account
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    )
   }
 
   return (

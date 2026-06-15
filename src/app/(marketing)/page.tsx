@@ -1,9 +1,11 @@
+import { Suspense } from "react"
 import { Hero } from "@/components/marketing/Hero"
 import { Problem } from "@/components/marketing/Problem"
 import { ThreeWorkflows } from "@/components/marketing/ThreeWorkflows"
 import { BuiltForJewelry } from "@/components/marketing/BuiltForJewelry"
 import { Pricing } from "@/components/marketing/Pricing"
 import { FinalCTA } from "@/components/marketing/FinalCTA"
+import { RecoveryRedirectFallback } from "./RecoveryRedirectFallback"
 
 // M-06: SoftwareApplication schema for the home page so search engines and
 // LLM scrapers can identify lende as a SaaS product. Pricing is described in
@@ -34,6 +36,9 @@ const softwareApplicationSchema = {
 export default function LandingPage() {
   return (
     <main id="main-content" tabIndex={-1}>
+      <Suspense fallback={null}>
+        <RecoveryRedirectFallback />
+      </Suspense>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
