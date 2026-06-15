@@ -54,6 +54,13 @@ interface LayoutProps {
     unsubscribeUrl?: string
     managePreferencesUrl?: string
     footerNote?: React.ReactNode
+    /**
+     * Whether to show the From/Reply-to address grid in the header.
+     * Defaults to true. Set to false for emails sent through Supabase's
+     * own mailer (auth emails), where the displayed From/Reply-to here
+     * would not match the actual sending address shown by the mail client.
+     */
+    showSenderInfo?: boolean
 }
 
 /**
@@ -66,6 +73,7 @@ export function Layout({
     unsubscribeUrl,
     managePreferencesUrl,
     footerNote,
+    showSenderInfo = true,
 }: LayoutProps) {
     return (
         <Html>
@@ -95,7 +103,7 @@ export function Layout({
                         overflow: 'hidden',
                     }}
                 >
-                    <EmailHeader preview={preview} />
+                    <EmailHeader preview={preview} showSenderInfo={showSenderInfo} />
                     <Section style={{ padding: '28px' }}>{children}</Section>
                     <EmailFooter
                         unsubscribeUrl={unsubscribeUrl}
@@ -112,7 +120,13 @@ export function Layout({
  * Top header bar — small lende logo, From/Reply-to mono grid, italic preheader.
  * Mirrors `EmailHeader` from email-shared.jsx.
  */
-function EmailHeader({ preview }: { preview: string }) {
+function EmailHeader({
+    preview,
+    showSenderInfo,
+}: {
+    preview: string
+    showSenderInfo: boolean
+}) {
     return (
         <Section
             style={{
@@ -122,42 +136,44 @@ function EmailHeader({ preview }: { preview: string }) {
             }}
         >
             <BrandLockup size="sm" />
-            <Section style={{ marginTop: '14px' }}>
-                <Row>
-                    <Column style={{ width: '70px', verticalAlign: 'top' }}>
-                        <Text
-                            style={{
-                                margin: 0,
-                                fontFamily: fonts.mono,
-                                fontSize: '11px',
-                                letterSpacing: '0.04em',
-                                color: colors.muted,
-                                lineHeight: 1.6,
-                            }}
-                        >
-                            From
-                            <br />
-                            Reply-to
-                        </Text>
-                    </Column>
-                    <Column style={{ verticalAlign: 'top' }}>
-                        <Text
-                            style={{
-                                margin: 0,
-                                fontFamily: fonts.mono,
-                                fontSize: '11px',
-                                letterSpacing: '0.04em',
-                                color: colors.muted,
-                                lineHeight: 1.6,
-                            }}
-                        >
-                            <span style={{ color: colors.text }}>{FROM_ADDRESS}</span>
-                            <br />
-                            {REPLY_TO}
-                        </Text>
-                    </Column>
-                </Row>
-            </Section>
+            {showSenderInfo && (
+                <Section style={{ marginTop: '14px' }}>
+                    <Row>
+                        <Column style={{ width: '70px', verticalAlign: 'top' }}>
+                            <Text
+                                style={{
+                                    margin: 0,
+                                    fontFamily: fonts.mono,
+                                    fontSize: '11px',
+                                    letterSpacing: '0.04em',
+                                    color: colors.muted,
+                                    lineHeight: 1.6,
+                                }}
+                            >
+                                From
+                                <br />
+                                Reply-to
+                            </Text>
+                        </Column>
+                        <Column style={{ verticalAlign: 'top' }}>
+                            <Text
+                                style={{
+                                    margin: 0,
+                                    fontFamily: fonts.mono,
+                                    fontSize: '11px',
+                                    letterSpacing: '0.04em',
+                                    color: colors.muted,
+                                    lineHeight: 1.6,
+                                }}
+                            >
+                                <span style={{ color: colors.text }}>{FROM_ADDRESS}</span>
+                                <br />
+                                {REPLY_TO}
+                            </Text>
+                        </Column>
+                    </Row>
+                </Section>
+            )}
             <Text
                 style={{
                     margin: '14px 0 0',
