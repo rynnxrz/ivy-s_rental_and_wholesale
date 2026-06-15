@@ -56,7 +56,7 @@ test.describe('auth recovery routing', () => {
             'utf8',
         )
 
-        expect(source).toContain('disabled={loading || sessionReady === false}')
+        expect(source).toContain('disabled={loading}')
         expect(source).not.toContain('disabled={!canSubmit}')
     })
 

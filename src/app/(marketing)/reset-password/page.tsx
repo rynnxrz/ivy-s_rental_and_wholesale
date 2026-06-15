@@ -201,7 +201,7 @@ export default function ResetPasswordPage() {
 
                             <button
                                 type="submit"
-                                disabled={loading || sessionReady === false}
+                                disabled={loading}
                                 className="w-full inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                             >
                                 {loading ? "Updating..." : "Update password"}
